@@ -1,0 +1,20 @@
+# 本机环境产物(含机器信息,不上传)
+环境快照/
+输出/
+自检报告.md
+
+# 语料与爬取(付费合集索引/站方数据,版权与 ToS 原因不上传)
+data/
+
+# 工具二进制与虚拟环境(tools-env 仅保留说明)
+tools-env/.venv/
+tools-env/frida-server/
+
+# 每日机制的本机实况(radar README 机制说明保留)
+radar/发现日志.md
+radar/MCP测试报告.md
+radar/工具测试报告.md
+
+# 系统
+.DS_Store
+*.pyc
