@@ -59,7 +59,8 @@ unidbg、执行全链、工具雷达、frida-mcp/jadx-mcp/ghidra-mcp 等 MCP 工
 1. 单入口选分支后,以各分支 INDEX 为路由,点名开 1-2 篇,禁通读
 2. 正文规范:只有思路与代码,不放外部链接/出处/人名;语料出处走 data/ 索引
 3. 对 APK 说「执行全链」即走 pipeline 分支(参考产物结构见 `pipeline/README.md`)
-4. 新知识入库:手法→手法/对应区,平台→平台/对应区,新工具→总表+radar 基线(入库必须冒烟)
+4. 一切测试值/hook 输出/探针遵守 `测试值规范.md`([RE] 前缀/0x52455052 魔法值/REPROBE-日期 序号;禁 0x42/deadbeef 等高碰撞值);收尾 grep 值系确认零残留
+5. 新知识入库:手法→手法/对应区,平台→平台/对应区,新工具→总表+radar 基线(入库必须冒烟)
 5. 库的已知遗留缺点清单见 `自检报告.md`(改动前先看避免踩回);radar 的工具现况见 `radar/MCP测试报告.md` 与 `radar/工具测试报告.md`
 6. SSL pinning 知识主从:`手法/04-对抗攻防/ssl-pinning绕过.md` 为主篇,java层/sslpinning与证书.md(脚本)、抓包全场景.md(场景)、大厂档案(按厂)为从,冲突以主篇为准
-7. 换新机器:先执行 `初始化.md`(AI 自动装环境);radar 定时任务需按 radar/README 在新机重建
+8. 换新机器:先执行 `初始化.md`(AI 自动装环境);radar 定时任务需按 radar/README 在新机重建

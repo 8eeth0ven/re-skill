@@ -63,6 +63,7 @@
 | [静态分析工具.md](05-工具矩阵/静态分析工具.md) || 反编译器横评/ROSAL 反混淆/SnikrFlow 符号执行/DexKit/加固识别 |
 | [模拟执行框架.md](05-工具矩阵/模拟执行框架.md) || unidbg 用法/补环境坑/与 frida 对比 |
 | [工具实操笔记.md](05-工具矩阵/工具实操笔记.md) | 命令级实操:jadx 全选项(单类秒级/--fallback 已废/--deobf 毁非混淆包)/r2 工作流(aflj 键名坑)/androguard 可复用脚本/frida 本机 spawn·attach(macOS 只能 spawn CLI 目标) |
+| [工具检测与魔改.md](05-工具矩阵/工具检测与魔改.md) | **工具×对抗三列总表**(19 工具:检测面/魔改路径)/frida 四形态特征对账/重打包链与 V1·V2 签名绕过/魔改四层方法论(L1 部署→L4 替代)/零检测面清单与「能离线就离线」决策律 |
 | [专项与信息收集.md](05-工具矩阵/专项与信息收集.md) || **陌生 APK 第一分钟**:APKiD/apkleaks/DIE/UltraSina 等 |
 
 ## 07-内核级
@@ -95,6 +96,7 @@
 |------|-----------|
 | [纯算还原方法论.md](10-纯算法/纯算还原方法论.md) || 三层路线/算法指纹识别/白盒 AES+DFA/魔改三步法/12 参数案例/unidbg 补环境 |
 | [去混淆实战.md](10-纯算法/去混淆实战.md) || 8 类混淆/平坦化四路线+unicorn·angr 骨架/VMP 五步法/决策树 |
+| [jsvmp与vmp-lifter实操.md](10-纯算法/jsvmp与vmp-lifter实操.md) || **lifter 实操层**:JSVMP 五件套解剖/handler 语义双路提取(静态 babel+动态差分 probe)/翻译器+重放 diff 三段咬合脚本/dex VMP 四步工程/JSVMP·dex·native VM 定位与 RPC 决策 |
 | [协议脱机与RPC.md](10-纯算法/协议脱机与RPC.md) || **脱机主入口**:三级火箭/frida RPC 工程化(JS+Python 骨架)/protobuf 黑盒/防重放/JA3 保持 |
 
 ## 11-链路内核级
@@ -119,6 +121,21 @@
 | 文件 | 什么时候开 |
 |------|-----------|
 | [trace实战.md](13-trace/trace实战.md) || **任何「跟一下执行流/谁调用了 X/系统调用面」任务**:11 工具全景对比表(syscall/函数/块/指令层)+frida-trace·Stalker·syscall 模拟三脚本本机实测(macOS spawn 坑/控量三参数/6.5 万事件每秒上限/减速 1.48 倍等硬数字)+调用树后处理+场景决策树+trace 工具自身检测面 |
+
+## 14-手游框架
+
+| 文件 | 什么时候开 |
+|------|-----------|
+| [14-手游框架/Unity与IL2CPP.md](14-手游框架/Unity与IL2CPP.md) || **Unity 手游主入口**:判定 APK 形态→Il2CppDumper 全流程(dump.cs/IDA 挂脚本/RVA 修正)→frida-il2cpp-bridge hook 实战→mono 直接 dnSpy→global-metadata 加密变体(头校验/dump 时机/Zygisk 版)→实战三枪 |
+| [14-手游框架/UE与Cocos.md](14-手游框架/UE与Cocos.md) || UE:repak/FModel 解 pak(AES key 定位)/utoc→GNames GObjects 反射 dump(UEDumper 思路)/lua 热更;Cocos:jsc 的 xxtea key 三路定位与解密/luajit 字节码反编译/opcode 魔改恢复 |
+| [14-手游框架/RN与Flutter逆向.md](14-手游框架/RN与Flutter逆向.md) || RN:Hermes 版本头→hbctool 拆改回编/hermes-dec 近似源码/字符串表定位/纯 JS bundle+source map;Flutter:**blutter+dae 双工具链**(libapp.so 符号还原→frida hook dart 函数→so 层加密参数定位端到端) |
+| [14-手游框架/框架检测与对抗.md](14-手游框架/框架检测与对抗.md) || 游戏专属检测:引擎完整性自检(il2cpp/pak/脚本 hash)/游戏内风控(输入流·时间戳·服务端统计)/模拟器检测为何强(传感器熵+GPU 指纹)/单机改值 vs 网游封号边界 |
+
+## 15-游戏对抗
+
+| 文件 | 什么时候开 |
+|------|-----------|
+| [反作弊对抗.md](15-游戏对抗/反作弊对抗.md) || **反作弊引擎分析(授权语境,边界声明在篇首)**:ACE 架构(驱动+用户态+云,蜜罐/DMA 对抗/预启动)/EAC·BattlEye 加载链与签名/Vanguard 等引擎判型表/通用三层原理(内核读写·混淆通信·云端行为模型)/trace 差集定位检测规则/测试机隔离(VM 检测三根源:RTC时序·GPU·固件链)/自家游戏测试交付清单/外挂制作分发法律风险明写 |
 
 ## 维护约定
 

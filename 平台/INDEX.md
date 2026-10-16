@@ -56,6 +56,13 @@
 | [iOS逆向体系.md](04-iOS安全/iOS逆向体系.md) || Mach-O(LC_ENCRYPTION_INFO/CryptID)/OC 运行时(objc_msgSend 汇编)/Swift/砸壳四工具/fishhook 重绑/越狱代际(unc0ver→Dopamine rootless)/theos Tweak |
 | [iOS攻防与进阶.md](04-iOS安全/iOS攻防与进阶.md) || 反调试(sysctl P_TRACED/PT_DENY_ATTACH)×绕法速查/越狱检测 6 类+frida 绕法(本地原文)/加固矩阵/汉化五步 |
 
+## 05-macOS安全(2 篇,2026-10 新建;编号与 05-WEB并行,按名取用)
+
+| 文件 | 什么时候开 |
+|------|-----------|
+| [macOS逆向与攻击面.md](05-macOS安全/macOS逆向与攻击面.md) || **mac 独立区主篇**:Mach-O 实操(otool/nm/codesign 本机实测)/dyld 注入三组对照(DYLD_INSERT+平台二进制豁免)/r2·LLDB 实测流程(thread return 绕校验)/TCC 双库·XPC 端点枚举(launchctl)·持久化·公证/Gatekeeper/加固(Swift/Metal/公证 hash)/EDR on mac |
+| [鸿蒙HarmonyOS.md](05-macOS安全/鸿蒙HarmonyOS.md) || hap 格式(签名 zip/模块结构)/ArkTS·方舟编译器 abc 字节码/工具现状(abc-decompiler·abc2txt)/与 Android 概念映射表/软总线·元服务攻击面/PSIRT 报送/待核清单 |
+
 ## 05-WEB安全(2 篇;漏洞测试清单见 skill 知识库)
 
 | 文件 | 什么时候开 |

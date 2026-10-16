@@ -10,6 +10,7 @@
 | Android app/SDK/ROM/车机 | [打穿短表/安卓.md](打穿短表/安卓.md)(25 行) | so 只导 JNI_OnLoad → RegisterNatives 拿动态注册表 |
 | Windows 驱动/内核/桌面服务 | [打穿短表/Windows.md](打穿短表/Windows.md)(23 行) | 签名驱动 DACL 缺失 → IOCTL 提码打 METHOD_NEITHER |
 | Electron/CEF/安装包/扩展/游戏资产/供应链 | [打穿短表/桌面与生态.md](打穿短表/桌面与生态.md)(25 行) | 自定义协议参数注 URL → 探 process/require |
+| 浏览器内核 V8/Chromium 沙箱与 IPC/扩展/SW | [打穿短表/浏览器与V8.md](打穿短表/浏览器与V8.md)(24 行) | 新 API 首版实现的 Typer 边界 → --trace-turbo 找第一个错节点 |
 | 任何平台通用的选靶/复现/防撞/报送/收口 | [打穿短表/通用与收口.md](打穿短表/通用与收口.md)(26 行) | 修复 commit 反查同类调用点(patch 不全=新号) |
 
 ## 速记三律
