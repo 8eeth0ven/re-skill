@@ -30,7 +30,7 @@ xxd -l 16 ext/assets/index.android.bundle
 # ↑魔数固定                  ↑offset 8 起小端 u32 = 字节码版本(0x54=84)
 ```
 
-版本决定工具选型：**hbctool 只支持 76/84/85/86/89/90 子集**；不在集内(更新/更老)一律换 hermes-dec(§1.3)。
+版本决定工具选型：**hbctool 只支持 76/84/85/86/89/90 子集**；**94~96(RN 0.73~0.83 及关 Hermes V1 的 0.84+)用 hermit(§1.3b)**；其余(更老/98+)一律换 hermes-dec(§1.3)兜底。
 
 ### 1.2 hbctool 全流程(拆指令 → 改 → 回编)
 
@@ -59,6 +59,18 @@ hbc-decompiler ext/assets/index.android.bundle out.js      # 伪代码(近似 JS
 ```
 
 定位用 hbctool(字符串表好用)，读逻辑用 hermes-dec 的 decompiler——两者经常配合开。
+
+### 1.3b hermit(94~96 反编译+结构化 patch,新)
+
+```bash
+# release 预编译(github.com/xV4L3x/hermit),macOS arm64:
+tar -xzf hermit-0.1.0-macos-arm64.tar.gz
+xattr -dr com.apple.quarantine hermit-0.1.0-macos-arm64   # 未签名,清一次 quarantine
+hermit-0.1.0-macos-arm64/hermit ext/assets/index.android.bundle   # GDB 风格 REPL+全屏字节码编辑器
+# CLI 工具包(hermit-tools): hbc_disasm / hbc_dump / hbc_strings / hbc_functions / hbc_patch / hbc_roundtrip / hbc_section_map
+```
+
+与 hbctool 的 hasm 文本改法不同,hermit 是**结构化 patch**:指令可增可删(自动重定位跳转/异常表/字表),改完可字节级 round-trip 校验;还带确定性(非 AI)反编译到可读 JS 和 CFG/DOT。94~96 之外的版本(98 = RN 0.84+ 默认 Hermes V1)仍不支持,退 hermes-dec。2026-10 入库,冒烟 0.1.0 通过。
 
 ### 1.4 逆向 Hermes 字符串表(定位业务函数的正道)
 
