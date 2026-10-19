@@ -9,7 +9,7 @@
 | 项 | 值 |
 |----|----|
 | 系统 | macOS 26.6.2 (25G83), arm64 |
-| frida | 17.23.3(Python 侧 `/Users/Zhuanz/.zcode/skills/re/tools-env/.venv/bin/`) |
+| frida | 17.23.3(Python 侧 `~/re-skill/tools-env/.venv/bin/`) |
 | 靶子 | `/opt/homebrew/opt/python@3.13/bin/python3`(pyenv `which python3` 解析出的真实 Mach-O;`/usr/bin/python3` bundle 版会卡,弃) |
 | 靶行为 | 循环 14 次:`os.open("/tmp/re_probe_target.txt")` → 写 `REPROBE-20261016-NNN`+`0x52455052` → sleep 1s |
 | 任务 | 观测/接管/阻断靶子对探针文件的 open——五种等价手法竞速 |

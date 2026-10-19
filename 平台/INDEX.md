@@ -49,12 +49,14 @@
 | [Linux安全.md](03-Linux平台/Linux安全.md) || ELF 详解(段节/重定位/GOT-PLT 延迟绑定手推图/dlopen 内部)/GDB+GEF 选型与 python 自动化/ptrace 反调试四板斧/ELF 病毒四型/Mirai/Qiling-Unicorn |
 | [其他平台.md](03-Linux平台/其他平台.md) || macOS(Mach-O 对照/Hopper)/docker 逃逸五型/历史平台(Symbian/WinCE/黑莓/DOS) |
 
-## 04-iOS安全(2 篇)
+## 04-iOS安全(4 篇)
 
 | 文件 | 什么时候开 |
 |------|-----------|
 | [iOS逆向体系.md](04-iOS安全/iOS逆向体系.md) || Mach-O(LC_ENCRYPTION_INFO/CryptID)/OC 运行时(objc_msgSend 汇编)/Swift/砸壳四工具/fishhook 重绑/越狱代际(unc0ver→Dopamine rootless)/theos Tweak |
 | [iOS攻防与进阶.md](04-iOS安全/iOS攻防与进阶.md) || 反调试(sysctl P_TRACED/PT_DENY_ATTACH)×绕法速查/越狱检测 6 类+frida 绕法(本地原文)/加固矩阵/汉化五步 |
+| [iOS文件与签名实战.md](04-iOS安全/iOS文件与签名实战.md) || **文件与签名深挖(15 案例)**:dyld 加载 4-pass 校验/lazy bind 汇编级/CodeResources 校验链+resource-rules 绕过/Impactor 协议/砸壳命令与坑(Killed:9)/越狱链(Pangu payload 藏法·APFS 快照绕过·remountRootFS)/iBoot 递归栈溢出全流程/KDP 内核调试/fairplayd 块调度反混淆 |
+| [iOS动态实战案例集.md](04-iOS安全/iOS动态实战案例集.md) || **动态对抗 17 案例**:inlinehook 特征码 patch/LLDB 反反调试五步/svc 全扫 hook/某音寄存器改法/Theos·Tweak 全流程/免越狱 dylib 注入(macho_edit)/SwiftDump/mTLS 证书提取+CFB 密文改写/URLScheme+JSBridge 审计 |
 
 ## 05-macOS安全(2 篇,2026-10 新建;编号与 05-WEB并行,按名取用)
 
@@ -70,13 +72,14 @@
 | [WEB安全体系.md](05-WEB安全/WEB安全体系.md) || 渗透全流程+工具链/20 子漏洞类总表(互链)/H2-H3-WebSocket-GraphQL/WAF/应急响应(内存马排查) |
 | [代码审计.md](05-WEB安全/代码审计.md) || 污点方法论/Java(Struts·Spring CVE 模式/Shiro·Fastjson 演进线,CC1·Fastjson 本地原文)/PHP·Python·.NET/diff 找 0day/CodeQL |
 
-## 06-二进制漏洞(3 篇,本地精华语料 183 篇引用)
+## 06-二进制漏洞(4 篇,本地精华语料 183 篇引用)
 
 | 文件 | 什么时候开 |
 |------|-----------|
 | [堆利用与防护.md](06-二进制漏洞/堆利用与防护.md) || glibc chunk/bin 谱系/tcache 2.26→2.32 演进/**house of 13 式对照表**(本地原文,堆布局 ASCII)/FSOP 三代/防护绕过/ROP·SROP·BROP·dlresolve |
 | [漏洞类型与利用.md](06-二进制漏洞/漏洞类型与利用.md) || V8 六 CVE 模式(对象伪造/hole/TC)/Linux 内核(DirtyPipe·DirtyCred·22555)/Windows CSC/WinRAR·Office/VMware/Fuzzing 七引擎/Exp 编写 |
 | [CTF体系.md](06-二进制漏洞/CTF体系.md) || KCTF 赛制/2023-2024 年度题目技术点表/PWN-逆向方法论 |
+| [ARM64与ROP实战.md](06-二进制漏洞/ARM64与ROP实战.md) || **ARM 汇编实战 16 案**:指令速查(PC+8 坑/立即数 ROR 编码/IT)/Thumb bit0 对齐+lldb 修复/BL·BLX 编码手算/CrackMe 套路(魔数除法·跳转表)/C++ 虚函数 vtable 汇编层/inlinehook 汇编形态/iOS armv7·arm64 ROP 两案全代码 |
 
 ## 07-智能设备(已拆多级:iot/ 与 无线硬件/ 子目录,按需点名)
 
@@ -100,8 +103,8 @@
 | [无线硬件/WiFi安全.md](07-智能设备/无线硬件/WiFi安全.md) || KRACK/WPS/固件漏洞 |
 | [无线硬件/BLE与Zigbee.md](07-智能设备/无线硬件/BLE与Zigbee.md) || BLE 手环认证绕过/Zigbee 入门 |
 | [无线硬件/SDR与无线.md](07-智能设备/无线硬件/SDR与无线.md) || SDR 工具链/重放/伪基站 |
-| [无线硬件/汽车安全.md](07-智能设备/无线硬件/汽车安全.md) || CAN/UDS/滚动码 |
-| [无线硬件/BIOS与UEFI.md](07-智能设备/无线硬件/BIOS与UEFI.md) || 启动链/Secure Boot |
+| [无线硬件/汽车安全.md](07-智能设备/无线硬件/汽车安全.md) || CAN/UDS/滚动码+**实战 4 案例**:ICSim 仿真最小权限环境(cannelloni·vconfig·cangw)/智能警报器云端 IDOR/插线端子逆向(电源针脚起步·T-BOX 高价值端子)/5G 车联网攻击方向 |
+| [无线硬件/BIOS与UEFI.md](07-智能设备/无线硬件/BIOS与UEFI.md) || 启动链/Secure Boot+**实战 3 案例**:DCI/CCA 抓 CSME·BIOS 日志(GDK7 改错永久失效坑)/OEM 隐藏 WMI 接口还原(acpidump 三连·MOF 提取)/CR3 被 MmMapIoSpace 拒映射原理与 MMPFN 替换绕过 |
 
 ### 区级
 

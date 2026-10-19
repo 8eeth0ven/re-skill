@@ -18,3 +18,6 @@ radar/工具测试报告.md
 # 系统
 .DS_Store
 *.pyc
+
+# 工具大二进制(codeql/ghidra/joern 等)整目录不上传
+tools-env/

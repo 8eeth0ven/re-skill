@@ -98,6 +98,9 @@
 | [去混淆实战.md](10-纯算法/去混淆实战.md) || 8 类混淆/平坦化四路线+unicorn·angr 骨架/VMP 五步法/决策树 |
 | [jsvmp与vmp-lifter实操.md](10-纯算法/jsvmp与vmp-lifter实操.md) || **lifter 实操层**:JSVMP 五件套解剖/handler 语义双路提取(静态 babel+动态差分 probe)/翻译器+重放 diff 三段咬合脚本/dex VMP 四步工程/JSVMP·dex·native VM 定位与 RPC 决策 |
 | [协议脱机与RPC.md](10-纯算法/协议脱机与RPC.md) || **脱机主入口**:三级火箭/frida RPC 工程化(JS+Python 骨架)/protobuf 黑盒/防重放/JA3 保持 |
+| [OLLVM原理与Pass源码.md](10-纯算法/OLLVM原理与Pass源码.md) || **混淆器生成侧**:Flattening/SplitBBlocks Pass 源码六步/指令膨胀·花指令插入/逻辑等价公式(nor 万用门)/跳转加密(Hikari vs Goron)/字符串加密三代对照+自写 Pass/arm 落地形态 |
+| [混淆还原案例集-静态.md](10-纯算法/混淆还原案例集-静态.md) || **静态还原 8 案例**:花指令特征清单与 patch 脚本/Hex-Rays 两步秒 BCF/Binary Ninja 去平坦化 HLIL 提取/ARM64 专项三轮迭代/initArray 字符串解密回填/IDA&FRIDA 联调 |
+| [混淆还原案例集-动态.md](10-纯算法/混淆还原案例集-动态.md) || **动态还原 7 案例**:Unicorn 反平坦化(arm32 TBB/TBH)/全指令 trace 算法 C 复刻/AES·MD5 hook 链推理/MBA 取反化简/Xposed 爆破;案例参数·hook 点·坑拿来即改 |
 
 ## 11-链路内核级
 
@@ -136,6 +139,13 @@
 | 文件 | 什么时候开 |
 |------|-----------|
 | [反作弊对抗.md](15-游戏对抗/反作弊对抗.md) || **反作弊引擎分析(授权语境,边界声明在篇首)**:ACE 架构(驱动+用户态+云,蜜罐/DMA 对抗/预启动)/EAC·BattlEye 加载链与签名/Vanguard 等引擎判型表/通用三层原理(内核读写·混淆通信·云端行为模型)/trace 差集定位检测规则/测试机隔离(VM 检测三根源:RTC时序·GPU·固件链)/自家游戏测试交付清单/外挂制作分发法律风险明写 |
+
+## 16-常用速查
+
+| 文件 | 什么时候开 |
+|------|-----------|
+| [常用手法速查.md](16-常用速查/常用手法速查.md) || **最简单最常用的一层**:16 行功能定位大表(root/frida/签名/加密 key/壳特征…锚点+命令)/NOP 与强制返回值字节表(五架构,本机实测 12/12)/分支·smali·so 补丁实操流/10 条简单漏洞模式速查;伴生自验脚本 verify_patch.py |
+| [verify_patch.py](16-常用速查/verify_patch.py) || 补丁字节自验:capstone 反汇编校验+unicorn 演示返 0→返 1(改字节表先跑它) |
 
 ## 维护约定
 
