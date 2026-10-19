@@ -1,9 +1,9 @@
 # Western corpus · Windows RE tutorial collections (mytechnotalent / Yurichev / crackmes.de)
 
 > Positioning: distinctive lessons from the big free English books & the crackmes.de solution archive.
-> Deduped against `platforms/01-windows/fundamentals.md` (crypto-ID, PE, calling conventions, vtable/if-else patterns),
-> `platforms/06-binary-vuln/arm64-rop-practice.md` (ARM register/PC/Thumb basics) and
-> `corpus/06-crypto/keygen-algorithm-cases.md` (keygen-writing techniques). Only novel angles kept.
+> Deduped against `../../platforms/01-windows/fundamentals.md` (crypto-ID, PE, calling conventions, vtable/if-else patterns),
+> `../../platforms/06-binary-vuln/arm64-rop-practice.md` (ARM register/PC/Thumb basics) and
+> `../06-crypto/keygen-algorithm-cases.md` (keygen-writing techniques). Only novel angles kept.
 
 ## I. Methodology: the Program → Debug → Hack pedagogy (mytechnotalent RE4E)
 
@@ -257,7 +257,7 @@ Author: crackmes.one maintainers
 - crackmes.de is gone; crackmes.one absorbed the full archive. Imported writeups show "This writeup is only available for download" — the zip is password-protected with **crackmes.de** (newer ones with `crackmes.one`). Plan for this when batch-mining old solutions: fetch `/static/solution/<id>.zip`, unzip with the archive password, expect mixed OllyDbg-era formats.
 - Site mechanics that matter for mining: difficulty 1-6 *user-voted*, quality 1-5 separately; writeups are counted per crackme; comments often contain spoiler-flagged serials — solving an unlisted crackme's approach from comment spoilers is possible without downloading the binary.
 - challenges.re (Yurichev's exercise site) is the book's companion: 87 numbered exercises, no solutions published on purpose; tagged classes — "black boxes" (level 3), obfuscation, unknown cryptoalgorithm, simple copy-protection, 4-byte XOR mask, LOOP-instruction, bit fields, crackme/keygenme, broken compression algorithm. Numbering is chaotic and permanent: cite by number.
-> Same approach: the site's auto-validated crackmes (submit key, server checks) — same loop as keygen verification in `corpus/06-crypto/keygen-algorithm-cases.md`, different packaging.
+> Same approach: the site's auto-validated crackmes (submit key, server checks) — same loop as keygen verification in `../06-crypto/keygen-algorithm-cases.md`, different packaging.
 
 ## VI. File-format & entropy craft (Yurichev RE4B ch.9)
 

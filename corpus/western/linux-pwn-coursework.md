@@ -1,6 +1,6 @@
 # Western corpus · Linux pwn coursework (pwn.college / ir0nstone / GuyInATuxedo)
 
-> Positioning: recipe-driven exploitation workflows and tooling commands complementing our theory files (`platforms/06-binary-vuln/heap-exploitation.md`, `vuln-types-exploitation.md`). Our files explain ptmalloc internals and vuln spectra; this file adds exercise-driven recipes, per-bug-class debugger commands, format-string arithmetic, and era-specific applicability (glibc 2.26 → 2.34+). No basics re-explained.
+> Positioning: recipe-driven exploitation workflows and tooling commands complementing our theory files (`../../platforms/06-binary-vuln/heap-exploitation.md`, `../../../platforms/06-binary-vuln/vuln-types-exploitation.md`). Our files explain ptmalloc internals and vuln spectra; this file adds exercise-driven recipes, per-bug-class debugger commands, format-string arithmetic, and era-specific applicability (glibc 2.26 → 2.34+). No basics re-explained.
 
 ## 0. Curriculum ladder (what these courses teach, in order)
 

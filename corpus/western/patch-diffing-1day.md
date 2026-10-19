@@ -278,7 +278,7 @@ Author: Maddie Stone
 
 ## Dedup note (against cve-hunter)
 
-cve-hunter (`re/cve-hunter/README.md`) does known-CVE × version-string matching over OpenWrt SBOM and explicitly states version match "does not prove the patch is missing". Everything in this file — pair acquisition, delta decoding, binary diffing, similarity/confidence triage, variant fan-out — is new capability. Natural composition: cve-hunter's ledger seeds *which* component versions to pair-diff; this file's loop supplies the proof.
+cve-hunter (`../../../../../../cve-hunter/README.md`) does known-CVE × version-string matching over OpenWrt SBOM and explicitly states version match "does not prove the patch is missing". Everything in this file — pair acquisition, delta decoding, binary diffing, similarity/confidence triage, variant fan-out — is new capability. Natural composition: cve-hunter's ledger seeds *which* component versions to pair-diff; this file's loop supplies the proof.
 
 ## Sources
 

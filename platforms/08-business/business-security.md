@@ -116,7 +116,7 @@ randomization), device farms, cloud phones, fingerprint browsers
 (residential proxies)                                  Risk decisions: blocklists/rules/model scores/challenges (slider/SMS)
 ```
 
-- **Device fingerprint**: app-side collection (Android ID/IMEI/sensors/system properties) and adversarial countermeasures (spoofing, hiding, consistency detection) → deep-dive canonical doc `techniques/04-evasion/device-fingerprint-risk.md`; full detection principles → `../../techniques/04-evasion/detection-landscape.md` in the same directory.
+- **Device fingerprint**: app-side collection (Android ID/IMEI/sensors/system properties) and adversarial countermeasures (spoofing, hiding, consistency detection) → deep-dive canonical doc `../../techniques/04-evasion/device-fingerprint-risk.md`; full detection principles → `../../techniques/04-evasion/detection-landscape.md` in the same directory.
 - **Behavioral adversarial operations**: request speed/frequency features are the black market's most exposed surface; device farms flatten per-device differences yet leave aggregate signatures (same device cluster).
 - **Challenge escalation ladder**: funnel design of rules → model → challenge (invisible → slider → SMS); on the black-market side, real-device farms counter invisible challenges.
 - Only by merging the detector's view with the detected side's view is the picture complete: when the offensive side must pass risk control (registration/login/marketing endpoints), read the adversarial chapters of the techniques library first, instead of looking only from the web layer.
