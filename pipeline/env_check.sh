@@ -1,61 +1,61 @@
 #!/usr/bin/env bash
-# pipeline 分支 环境体检脚本(可独立执行)
-# 用途:S0 阶段逐项探测逆向链路依赖,输出表格 + EXIT_CODE
-# 退出码:0=全绿 1=有黄(非关键缺项,链路可降级继续) 2=关键红(jadx+apktool 双缺,反编译降级)
-# 基准:macOS arm64, bash 3.2 兼容(无关联数组)
-# 用法:bash env_check.sh   (stdout 输出报告;建议 > env_report.txt 2>&1)
+# pipeline branch environment check (runnable standalone)
+# Purpose: probe every dependency of the RE chain for stage S0, output a table + EXIT_CODE
+# Exit codes: 0 = all green 1 = has yellows (non-critical gaps; the chain degrades and continues) 2 = critical red (jadx+apktool both missing; decompilation degrades)
+# Baseline: macOS arm64, bash 3.2 compatible (no associative arrays)
+# Usage: bash env_check.sh   (report on stdout; recommended: > env_report.txt 2>&1)
 
-set -u  # 不用 -e:探测类脚本失败要继续
+set -u  # no -e: a probe script must keep going on failures
 
-# ---------- 计数器 ----------
+# ---------- counters ----------
 OK_N=0; WARN_N=0; FAIL_N=0; CRIT_N=0
-ROW_LOG=""   # 汇总行缓冲(最后打总表)
+ROW_LOG=""   # summary row buffer (final table printed at the end)
 
-# 状态记录:ok/warn/fail <名称> <详情>
+# State recording: ok/warn/fail <name> <detail>
 ok()   { OK_N=$((OK_N+1));   printf "| %-26s | OK    | %s\n" "$1" "$2"; ROW_LOG="$ROW_LOG$1=OK\n"; }
 warn() { WARN_N=$((WARN_N+1)); printf "| %-26s | WARN  | %s\n" "$1" "$2"; ROW_LOG="$ROW_LOG$1=WARN($2)\n"; }
 fail() { FAIL_N=$((FAIL_N+1)); printf "| %-26s | FAIL  | %s\n" "$1" "$2"; ROW_LOG="$ROW_LOG$1=FAIL($2)\n"; }
-crit() { CRIT_N=$((CRIT_N+1)); printf "| %-26s | FAIL* | %s  [关键项]\n" "$1" "$2"; ROW_LOG="$ROW_LOG$1=CRIT($2)\n"; }
+crit() { CRIT_N=$((CRIT_N+1)); printf "| %-26s | FAIL* | %s  [critical]\n" "$1" "$2"; ROW_LOG="$ROW_LOG$1=CRIT($2)\n"; }
 info() { printf "| %-26s | INFO  | %s\n" "$1" "$2"; }
 
 VER_TIMEOUT=10
 
-# 取版本第一行(探测类命令可能挂,统一 timeout 包)
+# First version line (probe commands can hang; wrap everything in timeout)
 ver_of() { timeout $VER_TIMEOUT "$@" 2>&1 | head -1 | cut -c1-60; }
 
 echo "=============================================================="
-echo " pipeline 分支 环境体检  @ $(date '+%F %T')"
-echo " 主机: $(uname -srm)"
+echo " pipeline branch environment check  @ $(date '+%F %T')"
+echo " host: $(uname -srm)"
 echo "=============================================================="
 
-# ---------- 一、核心命令行工具(which + version) ----------
+# ---------- 1. core command-line tools (which + version) ----------
 echo
-echo "## 一、命令行工具"
-echo "| 工具 | 状态 | 详情 |"
+echo "## 1. Command-line tools"
+echo "| tool | state | detail |"
 echo "|------|------|------|"
 
-# jadx(关键)
+# jadx (critical)
 if p=$(which jadx 2>/dev/null); then
   v=$(ver_of jadx --version)
   ok "jadx" "$v ($p)"
 else
-  crit "jadx" "未安装: brew install jadx"
+  crit "jadx" "not installed: brew install jadx"
 fi
 
-# apktool(关键)
+# apktool (critical)
 if p=$(which apktool 2>/dev/null); then
   v=$(ver_of apktool --version)
   ok "apktool" "$v ($p)"
 else
-  crit "apktool" "未安装: brew install apktool"
+  crit "apktool" "not installed: brew install apktool"
 fi
 
-# java(关键工具的运行时)
+# java (the runtime of the critical tools)
 if p=$(which java 2>/dev/null); then
   v=$(ver_of java -version)
   ok "java" "$v"
 else
-  crit "java" "未安装(详见 https://adoptium.net)"
+  crit "java" "not installed (see https://adoptium.net)"
 fi
 
 # adb
@@ -66,18 +66,18 @@ done
 if [ -n "$ADB_BIN" ]; then
   ok "adb" "$(ver_of "$ADB_BIN" version) ($ADB_BIN)"
 else
-  warn "adb" "未找到(S3 动态降级;SDK: $HOME/Library/Android/sdk)"
+  warn "adb" "not found (S3 dynamic degrades; SDK: $HOME/Library/Android/sdk)"
 fi
 
-# aapt2(扫 SDK build-tools)
+# aapt2 (scan SDK build-tools)
 AAPT2_BIN=""
 for bt in "$HOME/Library/Android/sdk"/build-tools/*/aapt2; do
-  [ -x "$bt" ] && AAPT2_BIN="$bt"   # 取最高版本(字典序最后)
+  [ -x "$bt" ] && AAPT2_BIN="$bt"   # take the highest version (last in lexicographic order)
 done
 if [ -n "$AAPT2_BIN" ]; then
   ok "aapt2(SDK)" "$(ver_of "$AAPT2_BIN" version) ($AAPT2_BIN)"
 else
-  warn "aapt2(SDK)" "SDK build-tools 未找到(S1-C 降级:PKG 用文件名)"
+  warn "aapt2(SDK)" "SDK build-tools not found (S1-C degrades: PKG falls back to the file name)"
 fi
 
 # radare2 / 7z / node / uv / unzip / shasum / nm / curl
@@ -91,21 +91,21 @@ for t in radare2 7z node uv unzip shasum nm curl; do
     [ -z "$d" ] && d="$p"
     ok "$t" "$(echo "$d" | cut -c1-60)"
   else
-    warn "$t" "未安装(非关键,按需降级)"
+    warn "$t" "not installed (non-critical, degrade as needed)"
   fi
 done
 
-# timeout(coreutils;超时纪律依赖)
+# timeout (coreutils; the timeout discipline depends on it)
 if p=$(which timeout gtimeout 2>/dev/null | head -1); then
   ok "timeout(gnu)" "$p ($(ver_of $p --version | head -1))"
 else
-  warn "timeout(gnu)" "无 gtimeout:长命令无超时保护(建议 brew install coreutils)"
+  warn "timeout(gnu)" "no gtimeout: long commands run without timeout protection (brew install coreutils recommended)"
 fi
 
-# ---------- 二、tools-env venv 与 python 库 ----------
+# ---------- 2. tools-env venv and python libs ----------
 echo
-echo "## 二、tools-env venv(~/.zcode/skills/re/tools-env/.venv)"
-echo "| 项 | 状态 | 详情 |"
+echo "## 2. tools-env venv (~/.zcode/skills/re/tools-env/.venv)"
+echo "| item | state | detail |"
 echo "|----|------|------|"
 
 VENV_PY="~/.zcode/skills/re/tools-env/.venv/bin/python"
@@ -116,31 +116,31 @@ if [ -x "$VENV_PY" ]; then
       v=$("$VENV_PY" -c "import $m,sys;print(getattr($m,'__version__','?'))" 2>/dev/null)
       ok "venv::$m" "import OK ${v:-?}"
     else
-      warn "venv::$m" "不可 import(在装/未装→对应阶段降级)"
+      warn "venv::$m" "cannot import (installing/missing → the matching stage degrades)"
     fi
   done
 else
-  warn "venv" "不存在或不可执行(APKiD/apkleaks/frida 线全降级)"
+  warn "venv" "missing or not executable (the APKiD/apkleaks/frida lines all degrade)"
 fi
 
-# ---------- 三、Android SDK / AVD / 设备 ----------
+# ---------- 3. Android SDK / AVD / devices ----------
 echo
-echo "## 三、Android SDK / AVD"
-echo "| 项 | 状态 | 详情 |"
+echo "## 3. Android SDK / AVD"
+echo "| item | state | detail |"
 echo "|----|------|------|"
 
 SDK_DIR="$HOME/Library/Android/sdk"
 if [ -d "$SDK_DIR" ]; then
-  ok "SDK 目录" "$SDK_DIR (build-tools: $(ls "$SDK_DIR/build-tools" 2>/dev/null | tr '\n' ' '))"
+  ok "SDK dir" "$SDK_DIR (build-tools: $(ls "$SDK_DIR/build-tools" 2>/dev/null | tr '\n' ' '))"
 else
-  warn "SDK 目录" "$SDK_DIR 不存在(S3 动态整段降级)"
+  warn "SDK dir" "$SDK_DIR does not exist (the S3 dynamic stage degrades wholesale)"
 fi
 
 EMU_BIN="$SDK_DIR/emulator/emulator"
 if [ -x "$EMU_BIN" ]; then ok "emulator" "$($EMU_BIN -version 2>/dev/null | head -1 | cut -c1-50)"
-else warn "emulator" "SDK emulator 不可执行"; fi
+else warn "emulator" "SDK emulator not executable"; fi
 
-# AVD 清单(读 ~/.android/avd/*.ini)
+# AVD inventory (read ~/.android/avd/*.ini)
 AVD_LIST=""
 if [ -d "$HOME/.android/avd" ]; then
   AVD_LIST=$(ls "$HOME/.android/avd" 2>/dev/null | grep '\.ini$' | sed 's/\.ini$//' | tr '\n' ' ' | sed 's/ *$//')
@@ -148,47 +148,47 @@ fi
 if [ -n "$AVD_LIST" ]; then
   ok "AVD" "$AVD_LIST"
 else
-  fail "AVD" "无 AVD(S3 需 android_create_avd 或手动建)"
+  fail "AVD" "no AVD (S3 needs android_create_avd or manual creation)"
 fi
 
-# 已连接设备
+# Connected devices
 if [ -n "$ADB_BIN" ]; then
   DEV=$("$ADB_BIN" devices 2>/dev/null | tail -n +2 | grep -c 'device$' || true)
-  if [ "${DEV:-0}" -ge 1 ]; then ok "adb 设备" "${DEV} 台在线"
-  else info "adb 设备" "0 台(S3 由 android-emulator MCP 起模拟器)"
+  if [ "${DEV:-0}" -ge 1 ]; then ok "adb devices" "${DEV} online"
+  else info "adb devices" "0 devices (S3: the android-emulator MCP starts the emulator)"
   fi
 fi
 
-# ---------- 四、MCP 探测(bash 侧只能间接测;agent 侧需真调 MCP) ----------
+# ---------- 4. MCP probing (the bash side can only probe indirectly; the agent must invoke the real MCP) ----------
 echo
-echo "## 四、MCP(bash 侧间接探测;agent 须另行真调 MCP 工具确认)"
-echo "| 项 | 状态 | 详情 |"
+echo "## 4. MCP (indirect probing on the bash side; the agent must separately invoke the real MCP tools to confirm)"
+echo "| item | state | detail |"
 echo "|----|------|------|"
 
-# node 活着≈node_repl 内核可用(bash 侧)
+# node alive ≈ the node_repl kernel is usable (bash side)
 if which node >/dev/null 2>&1; then
-  ok "node_repl(间接)" "node $(node -v) 在线;agent 侧: node_repl js 调 1+1 验证"
+  ok "node_repl (indirect)" "node $(node -v) online; agent side: verify by calling node_repl js with 1+1"
 fi
 
-# ida-pro-mcp:默认 127.0.0.1:13337(HTTP);curl 探活
+# ida-pro-mcp: defaults to 127.0.0.1:13337 (HTTP); curl liveness probe
 if curl -s -m 2 -o /dev/null -w '%{http_code}' http://127.0.0.1:13337 2>/dev/null | grep -q '^[1-5]'; then
-  ok "ida-pro-mcp(端口)" "127.0.0.1:13337 有响应;agent 侧: check_connection 确认"
+  ok "ida-pro-mcp (port)" "127.0.0.1:13337 responds; agent side: confirm with check_connection"
 else
-  info "ida-pro-mcp(端口)" "127.0.0.1:13337 无响应(IDA 未启动插件→链路自动跳过,不阻塞)"
+  info "ida-pro-mcp (port)" "127.0.0.1:13337 no response (IDA plugin not started → the chain skips it automatically, non-blocking)"
 fi
 
-info "android-emulator MCP" "bash 不可测;agent 侧: android_preflight(实测评:AVD $AVD_LIST 就绪即 S3 可跑)"
-info "fofa MCP" "bash 不可测;无 FOFA_KEY 时链路直接跳过"
+info "android-emulator MCP" "not testable from bash; agent side: android_preflight (measured note: once AVD $AVD_LIST is ready, S3 can run)"
+info "fofa MCP" "not testable from bash; without FOFA_KEY the chain skips it outright"
 
-# ---------- 五、jadx/apktool 小样本自验(用 /tmp 造最小 dex/zip) ----------
+# ---------- 5. jadx/apktool small-sample self-check (build a minimal dex/zip under /tmp) ----------
 echo
-echo "## 五、小样本自验(/tmp 造最小 dex→zip→反编译)"
-echo "| 项 | 状态 | 详情 |"
+echo "## 5. Small-sample self-check (build a minimal dex → zip → decompile under /tmp)"
+echo "| item | state | detail |"
 echo "|----|------|------|"
 
 TMPD=$(mktemp -d "${TMPDIR:-/tmp}/autore_env.XXXXXX")
 SAMPLE="$TMPD/sample.apk"
-SMOKED=0   # 是否成功造出含 dex 样本
+SMOKED=0   # whether a dex-bearing sample was successfully built
 
 D8_BIN=""
 for bt in "$HOME/Library/Android/sdk"/build-tools/*/d8; do [ -x "$bt" ] && D8_BIN="$bt"; done
@@ -200,7 +200,7 @@ EOF
   if timeout 60 javac -d "$TMPD" "$TMPD/T.java" >/dev/null 2>&1 \
      && timeout 60 "$D8_BIN" "$TMPD/T.class" --output "$TMPD" >/dev/null 2>&1 \
      && [ -f "$TMPD/classes.dex" ]; then
-    # 造 zip:优先 zip,无则 python
+    # build the zip: zip if present, else python
     if which zip >/dev/null 2>&1; then
       (cd "$TMPD" && zip -q -j sample.apk classes.d* >/dev/null 2>&1)
     else
@@ -211,45 +211,45 @@ EOF
 fi
 
 if [ "$SMOKED" -eq 1 ]; then
-  # jadx 自验:能反编译出 T 源文件
+  # jadx self-check: must decompile the T source file
   if which jadx >/dev/null 2>&1; then
     rm -rf "$TMPD/jadx_smoke"
     timeout 120 jadx -d "$TMPD/jadx_smoke" "$SAMPLE" >/dev/null 2>&1
     if find "$TMPD/jadx_smoke" -name 'T.java' 2>/dev/null | grep -q .; then
-      ok "jadx 冒烟" "最小 dex zip 反编译出 T.java"
+      ok "jadx smoke" "minimal dex zip decompiled to T.java"
     else
-      warn "jadx 冒烟" "执行了但未产出 T.java(手工复核 jadx)"
+      warn "jadx smoke" "ran but produced no T.java (recheck jadx by hand)"
     fi
   fi
-  # apktool 自验:对无 manifest 样本报结构化错误=工具链(java+jar)活着
+  # apktool self-check: a structured error on a manifest-less sample = the toolchain (java+jar) is alive
   if which apktool >/dev/null 2>&1; then
     rm -rf "$TMPD/apk_smoke"
     timeout 120 apktool d -f -o "$TMPD/apk_smoke" "$SAMPLE" >"$TMPD/apktool_smoke.log" 2>&1
     rc=$?
     if [ $rc -eq 0 ]; then
-      ok "apktool 冒烟" "rc=0 成功解码最小样本(无 manifest 时仅出 smali,工具链活)"
+      ok "apktool smoke" "rc=0, decoded the minimal sample (no manifest → smali only, toolchain alive)"
     elif grep -qiE 'AndroidManifest|could not|not a valid|exception' "$TMPD/apktool_smoke.log"; then
-      ok "apktool 冒烟" "rc=$rc 且报错结构化(能解析 zip 并正确定位缺 manifest=工具链活)"
+      ok "apktool smoke" "rc=$rc and the error is structured (parses the zip and correctly pinpoints the missing manifest = toolchain alive)"
     else
-      warn "apktool 冒烟" "rc=$rc 无可识别输出(手工复核 apktool)"
+      warn "apktool smoke" "rc=$rc with unrecognizable output (recheck apktool by hand)"
     fi
   fi
 else
-  warn "冒烟样本" "未能造出最小 dex(javac/d8 缺:$([ -n "$D8_BIN" ] && echo d8-ok || echo d8-missing)/$(which javac >/dev/null 2>&1 && echo javac-ok || echo javac-missing))→跳过冒烟,version 探测为准"
+  warn "smoke sample" "failed to build a minimal dex (javac/d8 gaps: $([ -n "$D8_BIN" ] && echo d8-ok || echo d8-missing)/$(which javac >/dev/null 2>&1 && echo javac-ok || echo javac-missing)) → skipping the smoke test, version probes are authoritative"
 fi
 rm -rf "$TMPD"
 
-# ---------- 六、汇总与退出码 ----------
+# ---------- 6. summary and exit code ----------
 echo
 echo "=============================================================="
-echo "## 汇总"
-printf "绿 OK=%d  黄 WARN=%d  红 FAIL=%d  关键红 FAIL*=%d\n" "$OK_N" "$WARN_N" "$FAIL_N" "$CRIT_N"
+echo "## Summary"
+printf "green OK=%d  yellow WARN=%d  red FAIL=%d  critical-red FAIL*=%d\n" "$OK_N" "$WARN_N" "$FAIL_N" "$CRIT_N"
 echo "--------------------------------------------------------------"
 printf "$ROW_LOG"
 echo "--------------------------------------------------------------"
-# 降级提示(写给 agent 读)
-echo "降级映射:venv::* WARN→S1-B/S1-C 走特征匹配/grep 兜底;adb/AVD FAIL→S3 整段标注;timeout WARN→长命令改后台+kill"
-echo "EXIT_CODE 判定:全绿=0;有黄或非关键红=1;jadx+apktool 关键红=2(反编译双降级为 unzip+aapt2)"
+# degradation hints (written for the agent to read)
+echo "Degradation mapping: venv::* WARN → S1-B/S1-C fall back to signature matching/grep; adb/AVD FAIL → S3 flagged wholesale; timeout WARN → long commands move to background+kill"
+echo "EXIT_CODE decision: all green = 0; any yellow or non-critical red = 1; jadx+apktool critical red = 2 (decompilation doubly degrades to unzip+aapt2)"
 
 if [ "$CRIT_N" -gt 0 ]; then
   EXIT=2

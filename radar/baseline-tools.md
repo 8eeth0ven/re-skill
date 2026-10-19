@@ -1,0 +1,220 @@
+# Tool Radar · Known-Tools Baseline (for diffing when discovering new tools)
+
+> 213 entries total | After a newly discovered tool is evaluated and cataloged, it must be appended to this list — otherwise it will be discovered again next round
+
+- 010 Editor
+- APKiD
+- APatch
+- ARTHookScripts
+- AXMlEditor
+- Androguard
+- AndroidNativeEmu
+- BinaryNinja
+- BlackDex
+- Burp Suite
+- Bytecode Viewer
+- CFR
+- Charles
+- Cydia Substrate
+- DEX-Tracer
+- DIE (Detect It Easy)
+- Deadpool
+- DexExtractor
+- DexKit
+- Dexposed
+- Dobby
+- DroidLysis
+- EdXposed
+- Epic
+- FART
+- FRIDA-DEXDump
+- FUPK3
+- FartFixer
+- FastHook
+- Fiddler
+- GDA
+- Ghidra
+- Hide My Applist (HMA)
+- HideMyApplist
+- HttpCanary
+- IDA
+- IDA Free
+- IDA Pro
+- IDA remote debugging + frida
+- JDex
+- JEB
+- JEB (Pro)
+- JeanGrey
+- JustTrustMe
+- KernelPatch
+- KernelSU
+- Kitsune Magisk (Magisk Delta)
+- Krakatau
+- LIEF
+- LSPilot
+- LSPosed
+- Magisk
+- MobSF
+- MoveCertificate
+- Obfuscapk
+- Pine
+- PlayIntegrityFix
+- Procyon
+- ProxyDroid / iptables
+- Quark Engine
+- R2Droid
+- ROPgadget
+- ROSAL
+- ReArk
+- RePairip
+- ReZygisk
+- Renef
+- Reqable
+- SandHook
+- Sekiro
+- ShadowHook
+- Shamiko
+- Simplify
+- SnikrFlow
+- SoFixer
+- StrongR-frida
+- TaiChi
+- TruffleHog
+- Uber Apk Signer
+- UltraSina/androidReverse
+- Vineflower
+- VirtualXposed
+- VoidLink
+- Volatility
+- Waydroid / cloud real-device farms / LDPlayer etc.
+- WinDbg (Preview)
+- Wireshark
+- Xposed (original)
+- YAHFA
+- Youpk
+- Zygisk
+- Zygisk Next
+- Zygisk-Assistant
+- akabe1 unpinning series
+- android-kernel-hacking-toolkit
+- angr
+- apkanalyzer / aapt2
+- apkleaks
+- apkstre
+- apktool
+- archmage
+- arsc_parser
+- barbatos
+- bpftrace
+- curl_cffi
+- d810
+- dblinker
+- detect-it-easy
+- dex2jar / enjarify
+- dexllm
+- dexllm (dex-analyzer-for-llm)
+- dpt-shell
+- dumpDex
+- eBPFDexDumper
+- eBPFDexDumper-rs
+- frida
+- frida + SSL-universal-bypass
+- frida-dump
+- frida-gadget
+- frida-gadget silent injection
+- frida-il2cpp-bridge
+- frida-mcp
+- frida-server rename + port change
+- frida-tools
+- frida_dump
+- ghidra-mcp
+- hluda
+- hooker
+- hookerView
+- il2cpp-bridge
+- imHex
+- jadx
+- jadx / jadx-gui
+- jadx-mcp
+- jniq
+- kallsyms-finder
+- medusa
+- mitmproxy
+- mobile-security-mcp
+- noxen
+- objection
+- pbtk
+- phoenixAES
+- protoscope
+- pwntools
+- pyelftools
+- qiling
+- r0capture
+- radare2 / cutter
+- scrcpy + adb
+- smali/baksmali
+- strongR-frida-android
+- syzkaller
+- undetected-frida (zer0def)
+- unicorn
+- unidbg
+- unidbg-boot-server
+- vardoger
+- vmlinux-to-elf
+- wxshadow
+- 反射大师 (Reflection Master)
+- various signature-detection scripts
+- shadow frida / multi-instance isolation
+- REA
+- eleven
+- recurse
+- knife
+- r0re
+- ddc
+- dae
+- Ryuumonbuchi
+- unpack
+- FlutterTap
+- apiaxess
+- ReShift
+- reconbridge
+- Veridiff
+- loupe
+- ASC
+- lamda
+- agent-device
+- radare2-mcp
+- x64dbg-mcp-server
+- mcp-windbg
+- binary_ninja_mcp
+- binary-ninja-headless-mcp
+- Reversecore_MCP
+- re-mcp
+- mcp-termux
+- reverify
+- reverse-skill
+- reverse-skills (P4nda0s)
+- android-reverse-engineering-skill
+- claude-reverse-skills
+- mrphrazer/ghidra-headless-mcp
+- stackplz
+- JNIAnalyzer
+- frida-scripts (0xdea)
+- ghidra-scripts (0xdea)
+- Gepetto
+- lighthouse
+- ret-sync
+- JADXecute
+- Jarida
+- Frida-Script-Runner
+- frida-interception-and-unpinning
+- Il2CppDumper / Zygisk-Il2CppDumper
+- DexSQL (LSPosed/dexsql-release)
+- rust_ASC
+- hermit (xV4L3x, Hermes HBC)
+- radguard (full pseudo-code export for the ASC ecosystem, folded into the ASC review)
+- (dedupe: high-frequency hits already evaluated, not cataloged) awesome-frida / awesome-reverse-engineering / universal-modder / replica-skill / Ghidrathon / docker-mcp-gateway / volatility-mcp / ntoseye / zengfr codeshare collections / WebTraceView / gdb-mcp family / angrMCP / droidmind / android-mcp-server / LabyREnt (nonexistent)
+- (dedupe: evaluated in the 2026-10-16 daily round, not cataloged) open-claude-ui / overdrive / ForzaHorizon1-ReImagined / Galaxy-Android / retrokit / awesome-music-gear-firmware / awesome-REA / awesome-ai-reverse-engineering / REA-Reconstruction-Companion / rea-capcut / REA-Argonaut / dsh-plugin-rea / rea-lab / decomp.wtf / binny / hexvero / DexAndroid (TimeCyber) / tracea / MobileRE-Skill×2 / Revlab / claude-reverse-engineering-skill (EncidXVII) / FDartVMP / jeeves (nitayart) / kasada-full-reverse / reverse-SKILL / wechat-asr-bridge / ByteMatch / Android15-Frida-Injection-Framework / fox-hide / BBA (repo not located; downgraded to weekly recheck, 3 consecutive failures)
+- jshookmcp (vmoranv, a JS/Web RE agent MCP workbench)
+- ablation (Ablation-Tool, a firmware semantic RE + vulnerability scanning framework)
+- (dedupe: evaluated in the 2026-10-18 daily round, not cataloged) molt-dex / Rea-Unlock / REA-Gith/REA (REA official mirror repo) / Fuck-IDM / transfermovil-src-reversed / CyPort / freeband / MiTV-Remote / 8bitdo-ultimate2-linux / iss_pc / Skill-Hut / devoprotect / uea+hea / captcha-fingerprint-reproduction / rekit (listed in awesome-frida but not locatable on GitHub) / 5 new MobileRE-Skill copies

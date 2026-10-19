@@ -1,32 +1,32 @@
-# 逆向工具雷达(持续发现→学习管线)
+# Reverse-Engineering Tool Radar (continuous discovery → learning pipeline)
 
-不断发现互联网上新的逆向相关工具,评估后流入知识库。由每日定时自动化驱动,也可随时手动让 agent 按「发现流程」跑一轮。
+Continuously discover new reverse-engineering-related tools on the internet, evaluate them, and let them flow into the knowledge base. Driven by daily scheduled automation; an agent can also run a round manually at any time by following the "discovery process" below.
 
-## 文件
+## Files
 
-| 文件 | 用途 |
+| File | Purpose |
 |------|------|
-| `基线工具清单.md` | 已知工具基线(条数见清单头部),diff 用;**入库新工具后必须追加到此清单**,否则会重复发现 |
-| `发现日志.md` | 每轮发现结果增量落盘(日期/工具/链接/一句话/去向) |
-| `基线工具清单.md` | 已知工具 diff 底册(**入库新工具后必须追加**) |
-| `MCP测试报告.md` / `工具测试报告.md` | 本机 MCP 与工具现况(哪些能用/怎么用) |
+| `baseline-tools.md` | Known-tools baseline (entry count at the top of the list), used for diffing; **after cataloging a new tool it must be appended to this list**, otherwise it will be rediscovered |
+| `发现日志.md` | Incremental on-disk log of each discovery round (date / tool / link / one-liner / disposition) |
+| `baseline-tools.md` | The known-tools diff base register (**must be appended to after cataloging a new tool**) |
+| `MCP测试报告.md` / `工具测试报告.md` | Current local MCP and tool status (which ones work / how to use them) |
 
-## 发现流程(每轮)
+## Discovery process (each round)
 
-1. **发现源**(按优先级,限流就换下一个):
-   - GitHub Search API:`https://api.github.com/search/repositories?q=topic:frida+topic:android created:>N天前` / `reverse-engineering`、`android`、`ios`、`ghidra`、`unidbg`、`dynamic-analysis` 等 topic 组合;`sort=stars`
-   - GitHub trending:WebFetch github.com/trending?since=weekly 过滤逆向相关
-   - awesome 列表 diff:awesome-reversing / awesome-android-security / awesome-frida / awesome-ghidra 的最近 commit
-   - 安全论坛工具版新帖(WebSearch site:bbs.kanxue.com 工具)
-   - Hex-Rays/Google Project Zero/开发者博客新工具
-2. **diff**:新工具名 grep `基线工具清单.md`,只留基线没有的
-3. **评估**:每个新工具看 README/GitHub 判断——star 数与增速/是否解决现有库未覆盖的问题/是否活跃。值得入库的打 ★
-4. **学习入库**(★ 项):按归类 Edit 进 wiki——Android 逆向工具→`re/手法/05-工具矩阵/工具总表.md` 对应分类(+必要时专项篇);跨平台/其他→`re/平台/` 对应区;同时把工具名**追加进基线清单**
-5. **本地冒烟(能装的必须测)**:python 系→`UV_CACHE_DIR=/tmp/uv-cache uv pip install -p ~/.zcode/skills/re/tools-env/.venv/bin/python <包>` 后 import/version 验证;CLI 系(brew/直接下载)→装后跑 --version 或小样本;测完记入日志「冒烟:✓/✗原因」。测试规范与已知坑(venv 无 pip 须用 uv、MCP /tmp 沙箱限制、keystone 不兼容 py3.13)见 `工具测试报告.md`
-6. **落盘**:发现日志追加 `## YYYY-MM-DD | 发现 N 项,入库 M 项` + 表格(工具|链接|一句话|归类|入库✓/✗|冒烟);全部轮结果写完结束
+1. **Discovery sources** (in priority order; on rate-limit, move to the next):
+   - GitHub Search API: `https://api.github.com/search/repositories?q=topic:frida+topic:android created:>N days ago` / `reverse-engineering`, `android`, `ios`, `ghidra`, `unidbg`, `dynamic-analysis` and other topic combos; `sort=stars`
+   - GitHub trending: WebFetch github.com/trending?since=weekly, filter for RE-related repos
+   - awesome-list diffs: recent commits of awesome-reversing / awesome-android-security / awesome-frida / awesome-ghidra
+   - New posts on security-forum tool boards (WebSearch site:bbs.kanxue.com tools)
+   - New tools from Hex-Rays / Google Project Zero / developer blogs
+2. **diff**: grep each new tool name against `baseline-tools.md`; keep only what the baseline lacks
+3. **Evaluate**: for each new tool, read its README/GitHub and judge — star count and growth / whether it solves a problem the library doesn't yet cover / whether it's actively maintained. Mark ★ on the ones worth cataloging
+4. **Learn & catalog** (★ items): Edit into the wiki by category — Android RE tools → the matching category in `../techniques/05-toolbox/tool-master-table.md` (+ a dedicated article when necessary); cross-platform/other → the matching section under `platforms/`; also **append the tool name to the baseline list**
+5. **Local smoke test (everything installable must be tested)**: python-family → after `UV_CACHE_DIR=/tmp/uv-cache uv pip install -p ~/.zcode/skills/re/tools-env/.venv/bin/python <pkg>`, verify via import/version; CLI family (brew / direct download) → run `--version` or a small sample after installing; record the result in the log as "smoke: ✓/✗ reason". Test conventions and known pitfalls (venv has no pip so uv is mandatory, MCP /tmp sandbox limits, keystone incompatible with py3.13) are in `工具测试报告.md`
+6. **Persist**: append to the discovery log `## YYYY-MM-DD | N discovered, M cataloged` + table (tool | link | one-liner | category | cataloged ✓/✗ | smoke); the round ends when all results are written
 
-## 规则
+## Rules
 
-- 只收逆向/安全分析工具(不收漏洞 PoC 集合、不收教程仓库)
-- 信息不足(打不开/空仓)只记日志不入库
-- 入库写法遵守库规范:不放作者名/精确 star 数,状态用「可用/新/停更」
+- Only reverse-engineering / security-analysis tools (no vulnerability PoC collections, no tutorial repos)
+- Insufficient information (unreachable / empty repo): log only, do not catalog
+- Catalog entries follow library conventions: no author names / exact star counts; status uses "usable / new / unmaintained"

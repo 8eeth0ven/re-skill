@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# 四杀门② 新颖性查重:组件/产品名 → NVD keywordSearch,带本地缓存与限速
-# 用法: python3 novelty.py bpalogin [fstools openwrt ...]
-# 输出: 每词 命中数+CVE 列表;总 verdict: NEW(全 0)/KNOWN(有命中,人工比对语义)
+# Kill-gate ② novelty dedupe: component/product name → NVD keywordSearch, with local cache and rate limiting
+# Usage: python3 novelty.py bpalogin [fstools openwrt ...]
+# Output: per keyword hit count + CVE list; overall verdict: NEW (all 0) / KNOWN (hits, manual semantic comparison)
 import json, sys, time, urllib.request, urllib.parse
 from pathlib import Path
 
@@ -23,7 +23,7 @@ def nvd(keyword):
             with OPENER.open(req, timeout=30) as r:
                 data = json.loads(r.read())
             cp.write_text(json.dumps(data, ensure_ascii=False))
-            time.sleep(6)  # 无 key 限速 5/30s
+            time.sleep(6)  # no-key rate limit: 5 requests / 30s
             return data
         except Exception as e:
             log = f"NVD-ERR {keyword}: {e}"
@@ -41,14 +41,14 @@ def main():
     for w in words:
         data = nvd(w)
         if data is None:
-            print(f"{w}: 查询失败(网络),人工复核")
+            print(f"{w}: query failed (network), manual recheck")
             verdicts.append("ERR")
             continue
         n = data.get("totalResults", 0)
         ids = [v["cve"]["id"] for v in data.get("vulnerabilities", [])][:8]
-        print(f"{w}: 命中 {n} {ids}")
+        print(f"{w}: hits {n} {ids}")
         verdicts.append("KNOWN" if n else "NEW")
-    print("verdict:", "KNOWN(需人工语义比对)" if "KNOWN" in verdicts else ("NEW" if "NEW" in verdicts else "ERR"))
+    print("verdict:", "KNOWN (manual semantic comparison needed)" if "KNOWN" in verdicts else ("NEW" if "NEW" in verdicts else "ERR"))
 
 
 if __name__ == "__main__":

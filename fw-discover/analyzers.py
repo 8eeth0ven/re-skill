@@ -1,6 +1,6 @@
-# 固件自主漏洞发现规则(非 CVE 版本比对——每条都是本机静态分析"自己发现"的候选)
-# 输入: 解包后的 rootfs 树; 输出: [(类别, 证据dict, 优先级 0-4, 说明)]
-# 优先级: 4=已验证弱凭证/私钥 3=命令注入流候选(网络面) 2=telnetd/默认口令 1=硬编码账号 0=信息类
+# Autonomous firmware vulnerability discovery rules (not CVE version matching — every entry is a candidate "discovered by us" through local static analysis)
+# Input: an unpacked rootfs tree; output: [(class, evidence dict, priority 0-4, description)]
+# Priority: 4 = verified weak credential / private key; 3 = command-injection flow candidate (network-facing); 2 = telnetd / default password; 1 = hardcoded account; 0 = informational
 import os, re, stat
 from pathlib import Path
 
@@ -19,7 +19,7 @@ def is_elf(p):
 
 
 def scan_file(path):
-    """单文件发现规则(字节级,兼容任何可读文件)"""
+    """Per-file discovery rules (byte-level, works on any readable file)"""
     try:
         if path.stat().st_size > 12 * 1024 * 1024:
             return []
@@ -29,11 +29,11 @@ def scan_file(path):
     out = []
     low = data.lower()
 
-    # 1) 出厂私钥
+    # 1) Factory private key
     if b"-----begin" in low and b"private key" in low:
-        out.append(("shipped-private-key", {"path": str(path), "evidence": "PEM 私钥块"}, 4))
+        out.append(("shipped-private-key", {"path": str(path), "evidence": "PEM private-key block"}, 4))
 
-    # 2) nvram/配置默认口令(非空字面量)
+    # 2) nvram/config default passwords (non-empty literals)
     for m in DEFAULT_CRED_RE.finditer(data):
         v = m.group(1)
         if v.lower() not in (b"none", b"none)", b"false", b"none;", b"none\r"):
@@ -41,7 +41,7 @@ def scan_file(path):
         if len(out) > 24:
             break
 
-    # 3) 命令注入流候选: 网络参数来源标记 × 执行函数标记 同文件共现(ELF/脚本一体适用)
+    # 3) Command-injection flow candidate: network parameter source markers × exec function markers co-occurring in one file (applies to ELF and scripts alike)
     net = [x for x in NET_MARKERS if x in data]
     ex = [x for x in EXEC_MARKERS if b"%s\x00" % x in data or b"%s(" % x in data or x in data]
     if net and ex:
@@ -50,7 +50,7 @@ def scan_file(path):
             "net_markers": [x.decode() for x in net], "exec_markers": [x.decode() for x in ex],
             "elf": is_elf(path)}, 3))
 
-    # 4) 脚本 eval/反引号吃外部参数
+    # 4) Script eval/backticks consuming external parameters
     if low.endswith((b".sh", b".cgi")) or b"#!/bin/sh" in data[:64]:
         for i, line in enumerate(data.split(b"\n")):
             if b"eval" in line and any(x in line for x in (b"QUERY_STRING", b"POST", b"$1", b"$*")):
@@ -60,7 +60,7 @@ def scan_file(path):
 
 
 def parse_account_file(path):
-    """passwd/shadow 解析: 返回 [(user, hash, 空/锁/无)]"""
+    """passwd/shadow parser: returns [(user, hash, empty/locked/none)]"""
     rows = []
     try:
         for line in path.read_text("utf-8", "replace").splitlines():
@@ -76,14 +76,14 @@ ACTIVE_HASH_RE = re.compile(r"^(?:\$1\$|\$5\$|\$6\$|\$2[aby]\$|[./0-9A-Za-z]{13}
 
 
 def scan_rootfs(root, fw_name):
-    """整个 rootfs 树 → 发现列表"""
+    """Whole rootfs tree → discovery list"""
     root = Path(root)
     out = []
     accounts = []
     for dirpath, dirnames, filenames in os.walk(root):
         for fn in filenames:
             p = Path(dirpath) / fn
-            # 帐号文件
+            # account files
             if fn in ("passwd", "shadow", "shadow-") and p.parent.name == "etc":
                 for user, h, fp in parse_account_file(p):
                     if ACTIVE_HASH_RE.match(h):
@@ -92,12 +92,12 @@ def scan_rootfs(root, fw_name):
                 cls, ev, pri = f
                 out.append({"fw": fw_name, "cls": cls, "pri": pri, **ev})
 
-    # passwd/shadow 中的活动哈希账号 = 硬编码账号候选
+    # accounts with active hashes in passwd/shadow = hardcoded-account candidates
     for a in accounts:
         out.append({"fw": fw_name, "cls": "hardcoded-account", "pri": 1,
                     "path": a["path"], "evidence": f"{a['user']}:{a['hash']}"})
 
-    # telnetd 后门: 扫启动脚本
+    # telnetd backdoor: scan boot scripts
     for rc in list(root.rglob("rcS")) + list(root.rglob("inittab")) + \
               [p for p in root.rglob("*") if p.suffix in (".sh", ".rc", ".init") and p.is_file()]:
         try:
@@ -115,7 +115,7 @@ def scan_rootfs(root, fw_name):
 
 
 def test_des_creds(candidates):
-    """本地可做的真测试: 对 DES crypt(13 位)哈希跑小字典,命中则提级为 verified-weak-cred"""
+    """A real test doable locally: run a small wordlist against DES crypt (13-char) hashes; hits get promoted to verified-weak-cred"""
     import subprocess
     hits = []
     for c in candidates:
@@ -128,7 +128,7 @@ def test_des_creds(candidates):
                                    capture_output=True, text=True, timeout=5)
                 if r.stdout.strip() == h:
                     hits.append({**c, "cls": "verified-weak-cred", "pri": 4,
-                                 "evidence": f"{c['evidence']} ← 字典命中: {w}"})
+                                 "evidence": f"{c['evidence']} ← wordlist hit: {w}"})
                     break
             except Exception:
                 break

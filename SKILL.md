@@ -1,69 +1,69 @@
 \---  
 name: re  
 description: |  
-逆向工程统一技能(单入口·多分支):一个入口路由到 平台分类/手法体系/全自动执行/工具雷达。  
-分支:①平台(Windows/Android/Linux/iOS/WEB/二进制漏洞/智能设备/业务/AI/区块链/漏洞根因)  
-②手法(frida/脱壳/对抗攻防/抓包/纯算法/内核级/函数全景/链路内核级/绕过决策/AI 逆向)  
-③自动执行(输入 APK→零人工报告)④工具雷达(每日发现新工具并冒烟)。  
-当用户提到以下任意关键词时触发本技能:  
-逆向、Android 逆向、iOS 逆向、IoT、frida、hook、脱壳、抓包、  
-SSL pinning、反调试、root 检测、加固、OLLVM、混淆、VMP、算法还原、风控、  
-RPC、syscall、eBPF、内核 hook、绕过、RASP、pwn、CTF、漏洞根因、  
-unidbg、执行全链、工具雷达、frida-mcp/jadx-mcp/ghidra-mcp 等 MCP 工具。  
-即使用户只说"看看这个 app 的加密"、"这个 so 怎么逆"、"跑一遍管线"也触发。  
+Unified reverse engineering skill (single entry · multiple branches): one entry routing to platform taxonomy / technique systems / fully automated execution / tool radar.  
+Branches: ① Platforms (Windows/Android/Linux/iOS/WEB/binary vulnerabilities/smart devices/business/AI/blockchain/root-cause analysis)  
+② Techniques (frida/unpacking/attack-and-evasion/traffic capture/pure algorithm restoration/kernel-level/function panorama/syscall chains/bypass decisions/AI RE)  
+③ Automated execution (input APK → report with zero human effort) ④ Tool radar (discover new tools daily and smoke-test them).  
+Trigger this skill when the user mentions any of the following keywords:  
+reverse engineering, Android RE, iOS RE, IoT, frida, hook, unpacking, traffic capture,  
+SSL pinning, anti-debugging, root detection, app packers, OLLVM, obfuscation, VMP, algorithm restoration, risk control,  
+RPC, syscall, eBPF, kernel hook, bypass, RASP, pwn, CTF, vulnerability root cause,  
+unidbg, full-chain execution, tool radar, MCP tools such as frida-mcp/jadx-mcp/ghidra-mcp.  
+Trigger even when the user only says "look at this app's encryption", "how do I reverse this .so", or "run the pipeline".  
 \---
 
-# 逆向统一技能 re(单入口 · 多分支)
+# Unified Reverse Engineering Skill re (Single Entry · Multiple Branches)
 
-一个入口,四条分支。**先问「我处在什么处境」——场景驱动的完整用法见 [`使用场景.md`](使用场景.md)(SRC 实战 6 场景/攻防对抗 3 场景/审计辅助 3 场景/学习 3 场景/自动化 3 指令/不用 re 的边界)**;再按需求选分支,进分支 INDEX 点名开篇(禁止通读)。
+One entry, four branches. **First ask "what situation am I in" — for the scenario-driven full usage guide see [`usage-scenarios.md`](usage-scenarios.md) (6 SRC field scenarios / 3 attack-and-evasion scenarios / 3 audit-assist scenarios / 3 learning scenarios / 3 automation commands / the boundary where re is NOT used)**; then pick a branch by need, enter the branch INDEX and open articles by name (full reads are forbidden).
 
-**真机测试**:手机/单片机插上后说「跑真机/串口验证」→按 `真机测试.md` 自走(全链含保护纪律:不刷机不烧录不动系统;frida-server 三架构已备于 tools-env/frida-server/)。
+**Real-device testing**: once a phone/microcontroller is plugged in, say "run real-device / serial validation" → it follows `device-testing.md` autonomously (full chain including protection discipline: no flashing, no firmware burning, no touching system partitions; frida-server for three architectures is prepared under tools-env/frida-server/).
 
-**无人值守**:人只说一句「无人值守:逆向 <apk> / 挖 <目标> CVE」即全自动走完——总控任务书与红线见 [`无人值守.md`](无人值守.md)。
+**Unattended mode**: just say "unattended: reverse <apk> / hunt CVEs for <target>" and it runs end to end fully automatically — the master task brief and red lines are in [`unattended.md`](unattended.md).
 
-**一句话总纲**:卡在「看不到(app 抓不到包)/进不去(壳·检测)/算不出(签名加密)/被反制(hook 被干)」→ 用本技能;「拿到接口测漏洞」→ skill;「拿到源码」→ secure-code-audit。
+**One-sentence summary**: stuck at "can't see it (no app traffic) / can't get in (packers · detection) / can't compute it (signature encryption) / being countered (hooks killed)" → use this skill; "got an API, test it for bugs" → skill; "got the source code" → secure-code-audit.
 
-## 分支路由(入口唯一决策表;不确定选哪条时先读 使用场景.md 按处境对号)
+## Branch Routing (the single entry decision table; if unsure which branch, read usage-scenarios.md first and match your situation)
 
-| 你要做什么                                                                          | 走哪条分支 | 入口                                                                                   |
-| ------------------------------------------------------------------------------ | ----- | ------------------------------------------------------------------------------------ |
-| **按平台/领域学或查**(Windows/Android/iOS/Linux/WEB/二进制漏洞/智能设备/业务/AI/区块链,以及跨领域「漏洞根因学」) | 平台分支  | `平台/INDEX.md`(11 区,每篇标「什么时候开」)                                                       |
-| **按手法干**(hook/脱壳/对抗/抓包/算法还原/脱机/内核级/绕过决策/链路时序/AI 逆向)                            | 手法分支  | `手法/INDEX.md`(11 区)+ 下文「手法速选」                                                        |
-| **查具体案例/老手法/年代演变**(某壳怎么脱/加固演化史/某软件注册算法/家族样本/协议还原案例)                             | 语料分支  | `语料/INDEX.md`(全量 18915 篇语义去重蒸馏,九分类,条目=章节名+作者)                                        |
-| **自动干活**:给 APK 出报告,零人工                                                         | 执行分支  | `pipeline/pipeline.md`(五阶段 DAG,含验收门与降级;环境体检 `pipeline/env_check.sh`)                 |
-| **要拿 CVE / 拿到目标快速找洞** | 先开 `打穿短表-CVE.md`(认特征→一枪→判据→假点,六形态 19 行) | 分支能不能:`从逆向到CVE-能力审计.md`;报送:`漏洞披露与CVE申请.md`;**本地批量刷候选**:`cve-hunter/README.md`(已知 CVE×版本比对,N-day 台账)+`fw-discover/README.md`(**自主发现**:公开路由器固件解包→六类规则挖 0day 候选,半小时保活) |
-| **找/补工具**,或看每天自动发现了什么新工具                                                       | 雷达分支  | `radar/README.md`(流程)+ `radar/发现日志.md`(每日 09:00 自动:发现→入库→本地冒烟)+ `手法/05-工具矩阵/工具总表.md` |
-| **首次在新机器使用**                                                                        | 环境初始化 | 先执行 [`初始化.md`](初始化.md)                                                               |
+| What you want to do | Which branch | Entry |
+| -------------- | ----- | ------------------------------------------------------------------------------------ |
+| **Learn or look things up by platform/domain** (Windows/Android/iOS/Linux/WEB/binary vulnerabilities/smart devices/business/AI/blockchain, plus the cross-domain "root-cause analysis of vulnerabilities") | Platforms branch | `platforms/INDEX.md` (11 zones, every article tagged "when to open it") |
+| **Work by technique** (hook/unpacking/evasion/traffic capture/algorithm restoration/offline RPC/kernel-level/bypass decisions/chain timing/AI RE) | Techniques branch | `techniques/INDEX.md` (11 zones) + the "quick technique picker" below |
+| **Look up concrete cases / old techniques / era evolution** (how to unpack a given packer / packer evolution history / some program's registration algorithm / family samples / protocol restoration cases) | Corpus branch | `corpus/INDEX.md` (all 18915 articles semantically deduped and distilled, nine categories, entry = chapter name + author) |
+| **Automated work**: produce a report from an APK, zero human effort | Execution branch | `pipeline/pipeline.md` (five-stage DAG with acceptance gates and fallbacks; environment health check `pipeline/env_check.sh`) |
+| **Want a CVE / find bugs fast against a target** | First open `breach-tables-cve.md` (recognize the signature → one shot → hit criteria → false leads; 6 forms, 19 rows) | Branch capability: `re-to-cve-audit.md`; disclosure: `disclosure-cve.md`; **local batch candidate grinding**: `cve-hunter/README.md` (known CVE × version matching, N-day ledger) + `fw-discover/README.md` (**autonomous discovery**: unpack public router firmware → six rule classes mining 0day candidates, 30-minute keepalive) |
+| **Find/fill in tools**, or see what new tools the daily automation discovered | Radar branch | `radar/README.md` (process) + `radar/发现日志.md` (daily 09:00 automatic: discover → catalog → local smoke test) + `techniques/05-toolbox/tool-master-table.md` |
+| **First use on a new machine** | Environment init | Run [`setup.md`](setup.md) first |
 
-## 手法速选(高频任务直达,详见 手法/INDEX.md)
+## Quick Technique Picker (direct routes for high-frequency tasks; see techniques/INDEX.md for details)
 
-| 任务 | 先开 |
+| Task | Open first |
 |------|------|
-| **函数被检测/一条思路不行**  | `手法/12-绕过决策/绕过决策手册.md`(检测点×多路绕法×适用情况)                        |
-| 写 frida hook | `手法/02-frida/java层` + `native层hook速查`(按域/主题点名) |
-| 脱壳                | `手法/03-脱壳dump/`(frida→eBPF 递进)                               |
-| 抓包(通用→按厂)         | `手法/04-对抗攻防/抓包全场景.md` → `大厂抓包对抗档案.md`(字节/阿里/微信/美团等 16 厂关键函数) |
-| 过风控/设备指纹          | `手法/04-对抗攻防/设备指纹与风控.md`                                      |
-| 纯算法/白盒/去混淆/脱机 RPC | `手法/10-纯算法/` 三篇                                              |
-| hook 被干找更深层函数     | `手法/09-函数全景/`(五层映射+降级链)                                      |
-| 完整调用链到内核          | `手法/11-链路内核级/观测点矩阵与使用路径.md` 收口                               |
-| 为什么会有漏洞(根因)       | `平台/11-漏洞根因学/`(六大类+内核十案+映射表)                                 |
+| **A function is detected / one line of thinking fails** | `techniques/12-bypass/bypass-playbook.md` (detection points × multiple bypass routes × applicability) |
+| Writing a frida hook | `techniques/02-frida/java-layer` + `techniques/02-frida/native-hook-cheatsheet.md` (call up by domain/topic) |
+| Unpacking | `techniques/03-unpacking/` (frida → eBPF progression) |
+| Traffic capture (generic → per-vendor) | `techniques/04-evasion/capture-all-scenarios.md` → `techniques/04-evasion/vendor-capture-countermeasures.md` (key functions for 16 vendors incl. ByteDance/Alibaba/WeChat/Meituan) |
+| Defeating risk control / device fingerprinting | `techniques/04-evasion/device-fingerprint-risk.md` |
+| Pure algorithms / white-box / deobfuscation / offline RPC | the three articles in `techniques/10-algo-restore/` |
+| Hook killed; find a deeper function | `techniques/09-function-map/` (five-layer mapping + fallback chain) |
+| The full call chain down to the kernel | wrap up with `techniques/11-syscall-chain/observation-matrix.md` |
+| Why the bug exists at all (root cause) | `platforms/11-root-cause/` (six major classes + ten kernel cases + mapping table) |
 
-| **30 秒定位常用功能/NOP 补丁/简单漏洞模式** | `手法/16-常用速查/常用手法速查.md`(16 行定位大表+五架构补丁字节,本机实测自验) |
+| **Locate common functions in 30 s / NOP patches / simple bug patterns** | `techniques/16-quick-ref/quick-reference.md` (16-row locating table + patch bytes for five architectures, self-verified on this machine) |
 
-## 工具环境(分支三/五共用)
+## Tool Environment (shared by branches 3/5)
 
-- CLI:jadx/apktool/radare2(r2)/adb/7z(brew 系)
-- python 系全在 `tools-env/.venv`(frida 17.x/unicorn/capstone/androguard/ropper/apkid/apkleaks);**装包必须**:`UV_CACHE_DIR=/tmp/uv-cache uv pip install -p tools-env/.venv/bin/python <包>`(沙箱禁 ~/.cache;venv 无 pip)
-- MCP 实况见 `radar/MCP测试报告.md`(android-emulator 可自动化;IDA 需手动启插件;FOFA 无 key;iOS 无 Xcode)
+- CLI: jadx/apktool/radare2 (r2)/adb/7z (brew family)
+- The python stack lives in `tools-env/.venv` (frida 17.x/unicorn/capstone/androguard/ropper/apkid/apkleaks); **installing packages requires**: `UV_CACHE_DIR=/tmp/uv-cache uv pip install -p tools-env/.venv/bin/python <package>` (the sandbox forbids ~/.cache; the venv has no pip)
+- For live MCP status see `radar/MCP测试报告.md` (android-emulator is automatable; IDA needs the plugin started manually; FOFA has no key; iOS has no Xcode)
 
-## 使用规则
+## Usage Rules
 
-1. 单入口选分支后,以各分支 INDEX 为路由,点名开 1-2 篇,禁通读
-2. 正文规范:只有思路与代码,不放外部链接/出处/人名;语料出处走 data/ 索引
-3. 对 APK 说「执行全链」即走 pipeline 分支(参考产物结构见 `pipeline/README.md`)
-4. 一切测试值/hook 输出/探针遵守 `测试值规范.md`([RE] 前缀/0x52455052 魔法值/REPROBE-日期 序号;禁 0x42/deadbeef 等高碰撞值);收尾 grep 值系确认零残留
-5. 新知识入库:手法→手法/对应区,平台→平台/对应区,新工具→总表+radar 基线(入库必须冒烟)
-5. 库的已知遗留缺点清单见 `自检报告.md`(改动前先看避免踩回);radar 的工具现况见 `radar/MCP测试报告.md` 与 `radar/工具测试报告.md`
-6. SSL pinning 知识主从:`手法/04-对抗攻防/ssl-pinning绕过.md` 为主篇,java层/sslpinning与证书.md(脚本)、抓包全场景.md(场景)、大厂档案(按厂)为从,冲突以主篇为准
-8. 换新机器:先执行 `初始化.md`(AI 自动装环境);radar 定时任务需按 radar/README 在新机重建
+1. After picking a branch from the single entry, use that branch's INDEX as the router and open 1-2 articles by name; full reads are forbidden
+2. Body-text conventions: ideas and code only, no external links / attributions / personal names; corpus attributions go through the data/ index
+3. Saying "run the full chain" to an APK enters the pipeline branch (see `pipeline/README.md` for the reference artifact structure)
+4. All test values / hook output / probes follow `test-values.md` ([RE] prefix / 0x52455052 magic value / REPROBE-date sequence numbers; high-collision values like 0x42/deadbeef are forbidden); at wrap-up, grep the value family to confirm zero residue
+5. Ingesting new knowledge: techniques → the matching techniques/ zone, platforms → the matching platforms/ zone, new tools → the master table + radar baseline (a smoke test is mandatory on ingestion)
+5. The library's known legacy-defect list is in `自检报告.md` (read it before changes to avoid re-stepping on known mines); the radar's current tool status is in `radar/MCP测试报告.md` and `radar/工具测试报告.md`
+6. SSL-pinning knowledge hierarchy: `techniques/04-evasion/ssl-pinning-bypass.md` is the primary article; java-layer/sslpinning-and-certificates.md (scripts), capture-all-scenarios.md (scenarios), and the per-vendor archive (by vendor) are subordinate; on conflict, the primary article wins
+8. Moving to a new machine: run `setup.md` first (the AI installs the environment automatically); the radar scheduled task must be rebuilt on the new machine per radar/README

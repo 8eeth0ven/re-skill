@@ -1,29 +1,29 @@
-# re — 逆向工程统一知识库与自动化技能
+# re — Unified Reverse Engineering Knowledge Base & Automation Skill
 
-单入口、多分支的逆向工程知识库:平台分类 × 手法体系 × 全自动执行 × 工具雷达 × 环境盘点,面向授权安全研究(CTF / SRC / 自有资产审计)。
+A single-entry, multi-branch reverse engineering knowledge base: platform taxonomy × technique systems × fully automated execution × tool radar × environment inventory, aimed at authorized security research (CTF / SRC / auditing your own assets).
 
-## 快速上手
+## Quick Start
 
-1. 读 `SKILL.md`(分支路由)或 `使用场景.md`(按处境对号 18 个场景)
-2. 新机器初始化:按 `初始化.md` 自动安装(AI 可执行),先跑 `pipeline/env_scan.py` 留存环境快照
-3. 挖洞起手:`打穿短表-CVE.md` 总路由 → 六类分类短表(每类 20+ 行枪法)
+1. Read `SKILL.md` (branch routing) or `usage-scenarios.md` (18 scenarios matched by situation)
+2. New-machine bootstrap: follow `setup.md` for automatic installation (AI-executable); run `pipeline/env_scan.py` first to save an environment snapshot
+3. Starting a hunt: `breach-tables-cve.md` master router → the category breach tables (20+ rows of plays per category)
 
-## 结构
+## Structure
 
-| 分支 | 内容 |
+| Branch | Contents |
 |------|------|
-| `手法/` | frida 脚本(java层/native/高级)/脱壳/对抗攻防/大厂抓包档案/内核级/函数五层全景/链路内核级时序/绕过决策/trace 实战/纯算法/工具矩阵 |
-| `平台/` | Windows(含 win-vuln 漏洞挖掘专项)/Android/iOS/Linux/WEB/二进制漏洞/智能设备/业务/AI/区块链/漏洞根因学 |
-| `pipeline/` | 全自动 APK 分析五阶段 DAG(输入 APK→零人工报告) |
-| `radar/` | 每日工具雷达机制(发现→入库→本地冒烟) |
-| `真机测试.md` | 手机/单片机插上即测(含设备保护纪律) |
-| `漏洞披露与CVE申请.md` | 从发现到编号的完整流程 |
+| `techniques/` | frida scripts (java-layer/native/advanced) / unpacking / attack-and-evasion / per-vendor traffic-capture archives / kernel-level / five-layer function panorama / syscall-chain timing / bypass decision-making / trace in practice / pure algorithm restoration / toolbox |
+| `platforms/` | Windows (incl. the win-vuln vulnerability-hunting track) / Android / iOS / Linux / WEB / binary vulnerabilities / smart devices / business / AI / blockchain / root-cause analysis |
+| `pipeline/` | Fully automated five-stage APK analysis DAG (input APK → report with zero human effort) |
+| `radar/` | Daily tool radar mechanism (discover → catalog → local smoke test) |
+| `device-testing.md` | Plug-and-test for phones / microcontrollers (with device-protection discipline) |
+| `disclosure-cve.md` | The complete flow from finding to CVE ID |
 
-## 使用规范
+## Usage Rules
 
-- 支持在授权范围内使用,见 `DISCLAIMER.md`
-- 知识入库规范:正文只保留思路与代码(不带外部链接/出处/人名)
+- Use only within authorized scope; see `DISCLAIMER.md`
+- Knowledge ingestion rules: body text keeps only ideas and code (no external links / attributions / personal names)
 
 ## License
 
-MIT(见 LICENSE)
+MIT (see LICENSE)
