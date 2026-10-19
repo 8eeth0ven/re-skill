@@ -9,7 +9,7 @@
 | Item | Value |
 |----|----|
 | OS | macOS 26.6.2 (25G83), arm64 |
-| frida | 17.23.3 (Python side at `~/re-skill/tools-env/.venv/bin/`) |
+| frida | 17.23.3 (Python side at `tools-env/.venv/bin/`) |
 | Target | `/opt/homebrew/opt/python@3.13/bin/python3` (the real Mach-O that pyenv's `which python3` resolves to; the `/usr/bin/python3` bundle build hangs - dropped) |
 | Target behavior | Loops 14 times: `os.open("/tmp/re_probe_target.txt")` -> write `REPROBE-20261016-NNN`+`0x52455052` -> sleep 1s |
 | Task | Observe/take over/block the target's open of the probe file - five equivalent techniques in a race |
@@ -307,5 +307,5 @@ $ ps aux | grep re_target → (no leftover processes)
 ```
 
 Scripts and full logs archived at: `/tmp/re_race_20261016/` (s1~s5.log + the attribution _t series + diag.log). Re-run:
-`cd /tmp/re_race_20261016 && XDG_CACHE_HOME=./cache ../../../../../../.zcode/skills/re/tools-env/.venv/bin/python run.py s1_attach.js S1`
+`cd /tmp/re_race_20261016 && XDG_CACHE_HOME=./cache <skill-root>/tools-env/.venv/bin/python run.py s1_attach.js S1`
 (Note: the XDG_CACHE_HOME redirect exists because the default `~/.cache/frida` is unwritable inside the sandbox.)

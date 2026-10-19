@@ -1,7 +1,7 @@
 # Kernel Vulnerability Root-Cause Case Library (Linux + Windows)
 
 > Positioning: **root cause and fix, case by case** — where the vulnerable code sits, which assumption gets broken, why it becomes a privilege-escalation primitive, and how upstream fixed it.
-> Exploitation primitive chains (heap spray/reclaim/ROP finale) are not repeated here → cross-link `~/.zcode/skills/re/techniques/07-kernel/kernel-exploit-fuzzing.md` §1; the CVE name overview → `../06-binary-vuln/vuln-types-exploitation.md` §3.
+> Exploitation primitive chains (heap spray/reclaim/ROP finale) are not repeated here → cross-link `techniques/07-kernel/kernel-exploit-fuzzing.md` §1; the CVE name overview → `../06-binary-vuln/vuln-types-exploitation.md` §3.
 > Uniform case template: **background → vulnerable code → the broken assumption → trigger conditions and race window → primitive-ization → fix diff**.
 
 ---
@@ -89,7 +89,7 @@ What gets written is the page cache; what is bypassed is not memory protection b
 + buf->flags = 0;          // 新挂进来的页缓存引用,一律不可合并
 ```
 
-Fix philosophy: **patch the source of dirty state, not the check logic** — pipe_write's merge fast path isn't wrong; what was wrong was letting an external page enter carrying a stale flag. Shipped simultaneously in 5.16.11/5.15.25/5.10.102. Successor lineage (Dirty Frag/Copy Fail/Fragnesia, the 2025–2026 same-family in-place page-cache writes) → `~/.zcode/skills/re/techniques/07-kernel/kernel-exploit-fuzzing.md` §2.
+Fix philosophy: **patch the source of dirty state, not the check logic** — pipe_write's merge fast path isn't wrong; what was wrong was letting an external page enter carrying a stale flag. Shipped simultaneously in 5.16.11/5.15.25/5.10.102. Successor lineage (Dirty Frag/Copy Fail/Fragnesia, the 2025–2026 same-family in-place page-cache writes) → `techniques/07-kernel/kernel-exploit-fuzzing.md` §2.
 
 ---
 

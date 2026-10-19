@@ -279,7 +279,7 @@ Since glibc 2.32, `next` is no longer stored in plaintext: `PROTECT_PTR(pos, ptr
 
 ### 4.2 ART/Dalvik: Why dex Can Be Dumped
 
-An Android packer's encryption exists only in the **file state**; to execute code, the `ClassLoader` (and `dex2oat`) must obtain the **plaintext dex** (in memory / a private mmap). The trust boundary is the loader: everything after loading (the plaintext dex, Class objects, oat artifacts) is attacker-readable — so the root cause of frida dexDump/FART-style unpacking is **architectural: interpreted execution requires a plaintext instruction stream in process memory**; countermeasures can only raise the cost of timing and locating (reflective call sites, per-function decryption, VMP), never abolish it. For the dex/oat/vdex formats and the compilation chain, see [02-android/file-formats.md](../02-android/file-formats.md) and [compiler-and-system.md](../02-android/compiler-and-system.md); the full unpacking toolkit is in `~/.zcode/skills/re/techniques/`.
+An Android packer's encryption exists only in the **file state**; to execute code, the `ClassLoader` (and `dex2oat`) must obtain the **plaintext dex** (in memory / a private mmap). The trust boundary is the loader: everything after loading (the plaintext dex, Class objects, oat artifacts) is attacker-readable — so the root cause of frida dexDump/FART-style unpacking is **architectural: interpreted execution requires a plaintext instruction stream in process memory**; countermeasures can only raise the cost of timing and locating (reflective call sites, per-function decryption, VMP), never abolish it. For the dex/oat/vdex formats and the compilation chain, see [02-android/file-formats.md](../02-android/file-formats.md) and [compiler-and-system.md](../02-android/compiler-and-system.md); the full unpacking toolkit is in `techniques/`.
 
 ### 4.3 eval/Dynamic Typing: The Runtime's Built-in Injection Surface
 
@@ -331,4 +331,4 @@ The five patterns combine pairwise orthogonally into the complete generative gra
 | [05-web/code-audit.md](../05-web/code-audit.md) | CC1/Fastjson/Shiro evolution line, gadget originals (entrance surface) |
 | [02-android/compiler-and-system.md](../02-android/compiler-and-system.md) · [file-formats.md](../02-android/file-formats.md) | ART/JIT/dex-oat formats (the format side of the dump root cause) |
 | [01-windows/protection.md](../01-windows/protection.md) | VMP/junk code/opcode-obfuscation countermeasures (the technique side of §5) |
-| `~/.zcode/skills/re/techniques/` | frida/unpacking/dex dump full chain |
+| `techniques/` | frida/unpacking/dex dump full chain |

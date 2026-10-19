@@ -54,7 +54,7 @@ The knowledge-base node carries the full PTES/OSSTMM-style process. Representati
 - **Post-exploitation**: the intranet is essentially information gathering (the community free-course viewpoint); the four classics of domain penetration (Kerberoasting/AS-REP/Golden/Silver Ticket), NTLM Relay; pick tunnels by protocol (ICMP/DNS/HTTP tunnels); for C2 secondary development see the representative posts "CS 4.4 Secondary-Development Notes: The Basics", "The Enhancements", and "CobaltStrike Analysis 2 - Beacon Parsing".
   - Persistence tiers: webshell (easy to detect) -> memory shell (§7.2) -> scheduled tasks/services (system layer) -> BIOS/Bootkit (hardware layer; in-tree cross-link Windows>Rootkit/BIOS).
   - Lateral movement: credential reuse (password-sync rate), fscan-style one-click subnet sweeping, abuse of management channels such as WSUS/SCCM/PAM.
-- **App pentesting (the mobile surface folded into the WEB playbook)**: "Beike APP Penetration Test WP" (JSBridge auth bypass / TOKEN written into sdcard logs / cookies sent in HTTP plaintext), "UNI-APP Penetration Testing - Traffic Capture"; deeper hook/capture counterplay -> `~/.zcode/skills/re/techniques/04-evasion/capture-all-scenarios.md`.
+- **App pentesting (the mobile surface folded into the WEB playbook)**: "Beike APP Penetration Test WP" (JSBridge auth bypass / TOKEN written into sdcard logs / cookies sent in HTTP plaintext), "UNI-APP Penetration Testing - Traffic Capture"; deeper hook/capture counterplay -> `techniques/04-evasion/capture-all-scenarios.md`.
   - The interface between app pentesting and WEB: most app business bugs ultimately land on the HTTP API layer (broken access control/replay/logic); the only differences are transport encryption (signing/certificate pinning) and client-side storage; once the anti-analysis layer is stripped off, it reverts to the WEB playbook.
 
 ### 2.3 Penetration testing vs red team vs SRC bug hunting (concept layering)
@@ -126,10 +126,10 @@ Combo-chain perspective (chaining multiple bugs for escalation) -> `h1-组合攻
 - **HTTP/1.1**: method/status-code semantics, Keep-Alive, why pipelining was abandoned; the root of classic request smuggling (CL/TE ambiguity) -> `http-smuggling-test.md`.
 - **HTTP/2** (RFC 9113): binary framing + multiplexing + HPACK header compression; h2c upgrade smuggling, cleartext h2c-to-backend smuggling; cache-key ambiguity.
 - **HTTP/3 / QUIC** (RFC 9114): UDP transport, 0-RTT replay risk, connection migration (Connection ID); capture requires QUIC decryption (Wireshark support is limited).
-- **TLS 1.3**: 1-RTT handshake, forward secrecy by default; MITM debugging relies on mitmproxy/Charles with a trusted root certificate; app-side SSL-pinning bypass -> `~/.zcode/skills/re/techniques/04-evasion/ssl-pinning-bypass.md`.
+- **TLS 1.3**: 1-RTT handshake, forward secrecy by default; MITM debugging relies on mitmproxy/Charles with a trusted root certificate; app-side SSL-pinning bypass -> `techniques/04-evasion/ssl-pinning-bypass.md`.
 - **WebSocket**: Upgrade handshake, missing Origin validation = cross-site WebSocket hijacking (CSWSH), session abuse when auth runs only once -> `websocket-test.md`.
 - **GraphQL**: introspection full-schema leak, batching against rate limits, deep-query DoS, field-level broken access control (an IDOR variant) -> `graphql-test.md` + `~/.zcode/skills/api-pentest/知识库/fuzz与业务逻辑.md`.
-- **App-private protocols**: capture and restoration of protobuf/custom encrypted bodies -> `~/.zcode/skills/re/techniques/04-evasion/capture-all-scenarios.md`.
+- **App-private protocols**: capture and restoration of protobuf/custom encrypted bodies -> `techniques/04-evasion/capture-all-scenarios.md`.
 - API panorama (REST/RPC auth matrix, object graph) -> `~/.zcode/skills/api-pentest/知识库/鉴权与对象图.md`.
 
 ## 5. Firewalls [1001400] + Tools & Scripts > waf [1001523] — WAF and bypass overview
@@ -252,4 +252,4 @@ Deep dives on the Burp ecosystem (extension development/batch automation) and AI
 - API/auth -> `~/.zcode/skills/api-pentest/知识库/`
 - White box -> this directory's companion [code-audit.md](code-audit.md) + `~/.zcode/skills/secure-code-audit/`
 - Business -> [../08-business/business-security.md](../08-business/business-security.md)
-- App-side counterplay -> `~/.zcode/skills/re/techniques/`
+- App-side counterplay -> `techniques/`

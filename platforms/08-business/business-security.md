@@ -116,7 +116,7 @@ randomization), device farms, cloud phones, fingerprint browsers
 (residential proxies)                                  Risk decisions: blocklists/rules/model scores/challenges (slider/SMS)
 ```
 
-- **Device fingerprint**: app-side collection (Android ID/IMEI/sensors/system properties) and adversarial countermeasures (spoofing, hiding, consistency detection) → deep-dive canonical doc `~/.zcode/skills/re/techniques/04-evasion/device-fingerprint-risk.md`; full detection principles → `../../techniques/04-evasion/detection-landscape.md` in the same directory.
+- **Device fingerprint**: app-side collection (Android ID/IMEI/sensors/system properties) and adversarial countermeasures (spoofing, hiding, consistency detection) → deep-dive canonical doc `techniques/04-evasion/device-fingerprint-risk.md`; full detection principles → `../../techniques/04-evasion/detection-landscape.md` in the same directory.
 - **Behavioral adversarial operations**: request speed/frequency features are the black market's most exposed surface; device farms flatten per-device differences yet leave aggregate signatures (same device cluster).
 - **Challenge escalation ladder**: funnel design of rules → model → challenge (invisible → slider → SMS); on the black-market side, real-device farms counter invisible challenges.
 - Only by merging the detector's view with the detected side's view is the picture complete: when the offensive side must pass risk control (registration/login/marketing endpoints), read the adversarial chapters of the techniques library first, instead of looking only from the web layer.
@@ -169,5 +169,5 @@ Upstream (infrastructure)     Midstream (operations)         Downstream (monetiz
 - Dedicated business-security posts are scarce in the community (the tree having zero entries in this category proves it); the valuable content concentrates on **app-side adversarial work** (a Beike app pentest write-up: a JSBridge auth bypass that is really a business-surface flaw) and risk control (tree node 1001669, risk-control adversarial section).
 - WEB security overview → [../05-web/web-security.md](../05-web/web-security.md)
 - White-box logic vulnerability hunting → [../05-web/code-audit.md](../05-web/code-audit.md) §7
-- App side → `~/.zcode/skills/re/techniques/04-evasion/` (device fingerprinting / traffic interception / Root hiding)
+- App side → `techniques/04-evasion/` (device fingerprinting / traffic interception / Root hiding)
 - All logic/race testing details → `~/.zcode/skills/skill/知识库/` (idor-test / race-condition-test / authbypass-test / cn-business-security / h1-组合攻击链短表)

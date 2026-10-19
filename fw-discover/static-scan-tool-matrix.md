@@ -52,9 +52,9 @@
 
 ```
 brew:      cppcheck(2.22.0) / openjdk@21(21.0.12.1, keg-only) / semgrep(1.181.0, link failed)
-uv pip:    UV_CACHE_DIR=/tmp/uv-cache uv pip install -p ~/re-skill/tools-env/.venv/bin/python flawfinder|checksec.py|angr
-CodeQL:    https://github.com/github/codeql-cli-binaries/releases/latest/download/codeql-osx64.zip (982MB!) → ~/re-skill/tools-env/codeql/
-Joern:     bash joern-install.sh --install-dir=~/re-skill/tools-env/joern --without-plugins (JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home)
+uv pip:    UV_CACHE_DIR=/tmp/uv-cache uv pip install -p tools-env/.venv/bin/python flawfinder|checksec.py|angr
+CodeQL:    https://github.com/github/codeql-cli-binaries/releases/latest/download/codeql-osx64.zip (982MB!) → tools-env/codeql/
+Joern:     bash joern-install.sh --install-dir=tools-env/joern --without-plugins (JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home)
 semgrep:   HOME=/tmp/semgrep-cache /opt/homebrew/Cellar/semgrep/1.181.0/bin/semgrep --config p/security <target>
 smoke:     /tmp/smoke_vuln.c | /tmp/angr_smoke.py | /tmp/joern_query.sc | /tmp/semgrep_c_rule.yml | /tmp/smoke-db
 ```

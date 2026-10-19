@@ -186,4 +186,4 @@ Essentials: run the framework's built-in query set first (security-extended), th
 - Deserialization/JNDI -> `~/.zcode/skills/skill/知识库/deserialization-*.md`, `jndi-injection-test.md`
 - Injection/upload/XSS white-box counterparts -> `injection-test.md`, `file-upload-test.md`, `xss-test.md`
 - Business-logic white box -> `../08-business/business-security.md`
-- Mobile (the Java/Android layer) -> `~/.zcode/skills/re/techniques/`
+- Mobile (the Java/Android layer) -> `techniques/`

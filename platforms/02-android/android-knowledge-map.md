@@ -1,6 +1,6 @@
 # Android Security Knowledge Map (tree node 1000943, 252 nodes, 23 second-level categories)
 
-> Division of labor: **frida/hook/unpacking/packer confrontation/capture/risk control/kernel** are already covered in depth by the local `~/.zcode/skills/re/techniques/` library (12 areas, 63 files); this area only gives 3-5 line summaries + cross-links, no duplication; **programming development/compilers/file formats/system internals/viruses and trojans/CTF** are gaps not covered by the techniques library and are dug into depth here as full articles.
+> Division of labor: **frida/hook/unpacking/packer confrontation/capture/risk control/kernel** are already covered in depth by the local `techniques/` library (12 areas, 63 files); this area only gives 3-5 line summaries + cross-links, no duplication; **programming development/compilers/file formats/system internals/viruses and trojans/CTF** are gaps not covered by the techniques library and are dug into depth here as full articles.
 
 ## 1. Programming & Development [1000953] — techniques-library gap, brief here
 

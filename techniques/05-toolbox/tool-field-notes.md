@@ -3,12 +3,12 @@
 > Positioning: command-level practical memo. All commands and outputs were **actually executed on a local macOS arm64 machine** (2026-10-16), not cribbed from documentation.
 > Version baseline: jadx 1.5.6 / apktool 3.0.3 / radare2 6.2.4 / frida 17.23.3 / androguard 4.1.4 / capstone 5.0.7 / unicorn (venv).
 > Samples: the F-Droid client APK (org.fdroid.fdroid 2.0.1, 3 dex + 4 abi so) + JustTrustMe.apk (small unobfuscated sample).
-> venv path: `~/.zcode/skills/re/tools-env/.venv/bin/` (referred to below as `$VENV`).
+> venv path: `tools-env/.venv/bin/` (referred to below as `$VENV`).
 
 ## 0. The Opening Triple (do this in every fresh terminal)
 
 ```bash
-export VENV=~/.zcode/skills/re/tools-env/.venv/bin
+export VENV=tools-env/.venv/bin
 export XDG_CACHE_HOME=/tmp/frida_cache   # MUST set! See frida section, pitfall 1
 ```
 

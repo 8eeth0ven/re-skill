@@ -35,7 +35,7 @@ The version decides the tool choice: **hbctool supports only the 76/84/85/86/89/
 ### 1.2 The Full hbctool Workflow (disassemble → edit → reassemble)
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv pip install -p ~/.zcode/skills/re/tools-env/.venv/bin/python hbctool
+UV_CACHE_DIR=/tmp/uv-cache uv pip install -p tools-env/.venv/bin/python hbctool
 # 拆:
 hbc-disasm ext/assets/index.android.bundle hbc_out
 # 产出 hbc_out/:

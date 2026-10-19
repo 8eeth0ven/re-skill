@@ -30,5 +30,5 @@ Rule: never duplicate technique-library knowledge in this branch.
 ## Environment baseline (as actually measured by env_check.sh)
 
 - Available: jadx 1.5.6 / apktool 3.0.3 / adb+SDK (~/Library/Android/sdk) / radare2 / 7z / java 24 / node / uv / timeout (coreutils 9.9) / aapt2 (inside SDK build-tools 36.0.0)
-- Installing (probed dynamically, degrade on absence): the frida suite and python libs (unicorn/capstone/androguard/apkid/apkleaks) → venv `~/.zcode/skills/re/tools-env/.venv`
+- Installing (probed dynamically, degrade on absence): the frida suite and python libs (unicorn/capstone/androguard/apkid/apkleaks) → venv `tools-env/.venv`
 - MCP: android-emulator ✓ (AVD `Medium_Phone_API_36.0` ready), node_repl ✓, WebSearch/WebFetch ✓, ida-pro-mcp (needs IDA with the plugin started manually; skipped if not running), fofa (skipped without a key)

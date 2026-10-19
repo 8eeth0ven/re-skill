@@ -173,9 +173,9 @@ The 4.4-era `dexopt` output: ODEX header + dependency list + optimized dex (quic
 
 - dex vmp restoration (incl. ART bytecode replacement, involving dex structures in practice):
 - Techniques library (same skill, re/techniques) cross-links (absolute paths):
-  - dex dump and repair (cdex/signature checksums): `~/.zcode/skills/re/techniques/03-unpacking/ebpf-unpacking-deep.md` §5
-  - so dump repair (soinfo/segment backfill): `~/.zcode/skills/re/techniques/03-unpacking/so-repair-dump.md`
-  - GOT hook, two implementations (landing §3.2 of this file): `~/.zcode/skills/re/techniques/02-frida/advanced/gothook.md`
-  - linker/soinfo load sequence: `~/.zcode/skills/re/techniques/11-syscall-chain/process-memory-chain.md`
-  - the five chains of dex load-and-execute: `~/.zcode/skills/re/techniques/11-syscall-chain/dex-load-exec-chain.md`
+  - dex dump and repair (cdex/signature checksums): `techniques/03-unpacking/ebpf-unpacking-deep.md` §5
+  - so dump repair (soinfo/segment backfill): `techniques/03-unpacking/so-repair-dump.md`
+  - GOT hook, two implementations (landing §3.2 of this file): `techniques/02-frida/advanced/gothook.md`
+  - linker/soinfo load sequence: `techniques/11-syscall-chain/process-memory-chain.md`
+  - the five chains of dex load-and-execute: `techniques/11-syscall-chain/dex-load-exec-chain.md`
 - Official structure sources: AOSP `libdexfile/dex/dex_file.h` (dex structure and map type constants), `frameworks/base/libs/androidfw/ResourceTypes.h` (arsc/axml), the `bionic linker` (so). Source is authoritative; the numbers in this file should be compared against the current source.

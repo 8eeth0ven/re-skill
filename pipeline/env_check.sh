@@ -104,11 +104,11 @@ fi
 
 # ---------- 2. tools-env venv and python libs ----------
 echo
-echo "## 2. tools-env venv (~/.zcode/skills/re/tools-env/.venv)"
+echo "## 2. tools-env venv (<skill-root>/tools-env/.venv)"
 echo "| item | state | detail |"
 echo "|----|------|------|"
 
-VENV_PY="~/.zcode/skills/re/tools-env/.venv/bin/python"
+VENV_PY="$(cd "$(dirname "$0")/.." && pwd)/tools-env/.venv/bin/python"
 if [ -x "$VENV_PY" ]; then
   ok "venv python" "$("$VENV_PY" --version 2>&1 | head -1)"
   for m in frida androguard unicorn capstone apkid apkleaks; do

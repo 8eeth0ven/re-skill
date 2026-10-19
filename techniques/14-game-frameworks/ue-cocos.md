@@ -123,7 +123,7 @@ Interceptor.attach(Module.findExportByName("libcocos2djs.so", "xxtea_decrypt"), 
 ### 3.3 Decryption Commands (once you have the key)
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv pip install -p ~/.zcode/skills/re/tools-env/.venv/bin/python xxtea-py
+UV_CACHE_DIR=/tmp/uv-cache uv pip install -p tools-env/.venv/bin/python xxtea-py
 python - <<'EOF'
 import xxtea, pathlib
 KEY, SIGN = b"THEKEY_YOU_FOUND", b"XXTEA"      # 按实际改
