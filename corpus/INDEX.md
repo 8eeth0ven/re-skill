@@ -36,6 +36,20 @@
 
 03-iOS-macos / 04-linux-others / 07-binary-vulns-ctf / 08-smart-devices-hardware / 09-web-business — see the Wave2 list in [`coverage-ledger.md`](coverage-ledger.md).
 
+## western/ (7 files, 2026-10-19 — English-language sources)
+
+> Distilled from foreign forums/collections (UnknownCheats, RE StackExchange, crackmes.de archive, Project Zero, Diaphora/BinDiff, hasherezade/MalwareTech, pwn.college/ir0nstone/GuyInATuxedo, mrexodia/Hex-Rays/x64dbg docs). Same dedup discipline: each agent read the overlapping Kanxue file first and kept only novel ground. Every file ends with a `## Sources` appendix (title — URL) as the re-find anchor; that appendix is the one place URLs live.
+
+| File | When to open |
+|------|-----------|
+| [western/game-hacking.md](western/game-hacking.md) | Windows game hacking we lacked: D3D11/D3D12 Present hooks & VMT detours / imgui overlays / HVCI-era kernel driver mapping (kdmapper lineage) / mapper detection vectors / userspace kernel emulators / mouse-injection classification / overlay hijack. Authorized-research framing inherited from techniques/15-anti-cheat |
+| [western/patch-diffing-1day.md](western/patch-diffing-1day.md) | The craft cve-hunter lacks: obtaining patch pairs (MSU/dyld_shared_cache/OTA) / BinDiff & Diaphora workflows and noise triage / P0 variant-analysis methodology / in-the-wild 0day root-cause patterns |
+| [western/forums-qa.md](western/forums-qa.md) | Top-voted RE StackExchange answers + Reddit-legendary VMProtect writeups (_xeroxz devirt, Salwan Triton/LLVM): ELF dynamic linking / generic unpacking taxonomy / obfuscation terms / compiler & odd-format identification / Unix anti-analysis |
+| [western/windows-re-tutorials.md](western/windows-re-tutorials.md) | Distinctive lessons from the big free English books (mytechnotalent RE4E, Yurichev RE4B) + crackmes.de solution archive: compiler patterns (switch/div-magic/SSO string) / locating code tricks / crackme solution patterns |
+| [western/malware-western.md](western/malware-western.md) | Western defensive craft: unpacking variants (pe-sieve/MalUnpack/tiny_tracer) / stego loaders (IcedID PNG, Hidden Bee) / loader anatomy (TxFs, BITS) / triage ladders / curated tool map |
+| [western/linux-pwn-coursework.md](western/linux-pwn-coursework.md) | Recipe-driven pwn coursework: ret2libc/csu/one_gadget/SROP/pivot selection / format-string arithmetic / glibc 2.26→2.34 era applicability matrix / GEF workflow commands |
+| [western/debugger-craft.md](western/debugger-craft.md) | Maintainer-side craft: x64dbg breakpoint/trace engine & .trace format / TitanHide & ScyllaHide state / IDA 8-9 microcode·idalib·MCP server / Ghidra PCode scripting / WinDbg TTD dx-LINQ |
+
 ## 90-legacy (not opened by default)
 
 > **LEGACY — reduced use**: knowledge in this area is outdated; skip it when looking up techniques. Open it only when the task itself is "analyzing legacy samples / historical research / maintaining inherited environments". The "LEGACY ARCHIVE" sections at the end of the main-area files note which entries were moved here.

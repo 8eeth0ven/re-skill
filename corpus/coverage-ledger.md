@@ -45,3 +45,7 @@ User ruling: "too much data; reduce data but keep functional semantics": 17 file
 
 - Essentials vol 26 (651 articles from 2025): not officially released; the directory is prepared (`../data/精华26索引.md`); once released, re-run digest_crawl.py to backfill, then distill the same way
 - Clusters in each file's "skip ledger": on continuation, re-check first whether they should be promoted to formal entries
+
+## Western sources wave (2026-10-19)
+
+User directive: mine foreign RE forums/collections. 7 parallel agents, ~2116 lines, 193 entries, all deduped against the overlapping Kanxue-corpus files before writing. Files under `western/` (see INDEX). Notable source states discovered: wiki.unknowncheats.me dead (NXDOMAIN); UC forum Cloudflare-gated (mineable via reader-service + printthread.php); crackmes.de dead (crackmes.one inherits the archive); Woodmann parked; malwaretech.com via Wayback only. Blocked-source notes live in each file's Sources appendix for later retry.
