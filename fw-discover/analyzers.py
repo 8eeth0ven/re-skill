@@ -1,7 +1,8 @@
 # Autonomous firmware vulnerability discovery rules (not CVE version matching — every entry is a candidate "discovered by us" through local static analysis)
 # Input: an unpacked rootfs tree; output: [(class, evidence dict, priority 0-4, description)]
 # Priority: 4 = verified weak credential / private key; 3 = command-injection flow candidate (network-facing); 2 = telnetd / default password; 1 = hardcoded account; 0 = informational
-import os, re, stat
+import os
+import re
 from pathlib import Path
 
 NET_MARKERS = (b"QUERY_STRING", b"REQUEST_METHOD", b"websGetVar", b"nvram_get", b"REQUEST_URI")
@@ -12,6 +13,8 @@ WORDLIST = ["admin", "password", "root", "toor", "123456", "12345", "admin123", 
 
 def is_elf(p):
     try:
+        if p.is_symlink() or not p.is_file():
+            return False
         with open(p, "rb") as f:
             return f.read(4) == b"\x7fELF"
     except OSError:
@@ -21,6 +24,8 @@ def is_elf(p):
 def scan_file(path):
     """Per-file discovery rules (byte-level, works on any readable file)"""
     try:
+        if path.is_symlink() or not path.is_file():
+            return []
         if path.stat().st_size > 12 * 1024 * 1024:
             return []
         data = path.read_bytes()
@@ -41,17 +46,18 @@ def scan_file(path):
         if len(out) > 24:
             break
 
-    # 3) Command-injection flow candidate: network parameter source markers × exec function markers co-occurring in one file (applies to ELF and scripts alike)
+    # 3) String co-occurrence observation only; no caller, flow or reachability is proven.
     net = [x for x in NET_MARKERS if x in data]
     ex = [x for x in EXEC_MARKERS if b"%s\x00" % x in data or b"%s(" % x in data or x in data]
     if net and ex:
         out.append(("cmdi-candidate", {
             "path": str(path), "evidence": f"net={net[0].decode()} × exec={ex[0].decode()}",
             "net_markers": [x.decode() for x in net], "exec_markers": [x.decode() for x in ex],
-            "elf": is_elf(path)}, 3))
+            "elf": is_elf(path), "evidence_class": "string-cooccurrence",
+            "reachability": "unknown", "status": "candidate"}, 1))
 
     # 4) Script eval/backticks consuming external parameters
-    if low.endswith((b".sh", b".cgi")) or b"#!/bin/sh" in data[:64]:
+    if path.suffix.lower() in (".sh", ".cgi") or b"#!/bin/sh" in data[:64]:
         for i, line in enumerate(data.split(b"\n")):
             if b"eval" in line and any(x in line for x in (b"QUERY_STRING", b"POST", b"$1", b"$*")):
                 out.append(("cmdi-script", {"path": str(path), "evidence": line.strip()[:160].decode("latin1", "replace")}, 3))
@@ -81,8 +87,11 @@ def scan_rootfs(root, fw_name):
     out = []
     accounts = []
     for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [name for name in dirnames if not (Path(dirpath) / name).is_symlink()]
         for fn in filenames:
             p = Path(dirpath) / fn
+            if p.is_symlink() or not p.is_file():
+                continue
             # account files
             if fn in ("passwd", "shadow", "shadow-") and p.parent.name == "etc":
                 for user, h, fp in parse_account_file(p):
@@ -101,7 +110,7 @@ def scan_rootfs(root, fw_name):
     for rc in list(root.rglob("rcS")) + list(root.rglob("inittab")) + \
               [p for p in root.rglob("*") if p.suffix in (".sh", ".rc", ".init") and p.is_file()]:
         try:
-            if rc.stat().st_size > 256 * 1024:
+            if rc.is_symlink() or not rc.is_file() or rc.stat().st_size > 256 * 1024:
                 continue
             for line in rc.read_text("utf-8", "replace").splitlines():
                 s = line.strip()

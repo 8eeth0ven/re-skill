@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "allow_urls": ["http://127.0.0.1:8765/"],
+  "exclude_urls": ["http://127.0.0.1:8765/admin/"],
+  "operations": ["read", "api-query"],
+  "budgets": {"max_requests": 12, "max_wall_seconds": 300, "max_retries": 1}
+}

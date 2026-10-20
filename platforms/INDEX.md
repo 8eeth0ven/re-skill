@@ -1,6 +1,6 @@
 # Platforms Branch Master Index (one of the re entry points · read-only router)
 
-> Usage: the entry point is the branch router in ../../SKILL.md; open 1-2 files by name per task, reading the whole library is forbidden. The entry point for the local corpus (Jinghua vols 1-24 CHM, 18,915 articles) is `../data/精华全量索引.md`; after locating an article, run `7z x pediyNN.chm "pediyNN/<tid>.html" "pediyNN/<tid>" -o<dir>` to extract the body + images (gb18030 encoding; images can be viewed directly with Read).
+> Usage: the entry point is the branch router in ../../SKILL.md; open 1-2 files by name per task, reading the whole library is forbidden. The optional local corpus (Jinghua CHM volumes, 18,915 articles) is generated on your machine by digest_crawl.py and is NOT shipped here; the CHM body-extraction flow (7z x pediyNN.chm ... -o<dir>, gb18030) applies only to machines that have it.
 > Structure: the knowledge base's ten top-level categories (chm.htm tree, 1702 nodes) + local Jinghua vols 1-24 full text + 2025 Jinghua 651-article index (Jinghua vol 26 not yet officially released)
 
 ## Sister libraries (overlapping cross-links, no duplication here)
@@ -143,15 +143,15 @@
 | [injection-logic-root-causes.md](11-root-cause/injection-logic-root-causes.md) | The essence of injection = interpreter boundary (SQL parser illustrated / why parameterization cures it), root causes of nine injection surfaces, SSRF as the network version of TOCTOU, five logic-bug classes mapped as "developer mental model vs actual semantics" (IDOR = missing row-level ownership in the architecture), three-layer failure of permission models |
 | [root-cause-to-technique-map.md](11-root-cause/root-cause-to-technique-map.md) | **Closing chapter**: 25 root causes × fault pattern / evolution into primitives / exploitation techniques (with in-library sources) / root-cause detection (grep patterns) / cure master table; audit grep checklists for seven stacks (kernel C/Java/V8/contracts/Go/IoT); history of mitigation deprecation |
 
-## data/ (corpus indexes, directly usable by subagents)
+## data/ (optional local corpus indexes — generated on your machine, not shipped in this repo)
+
+The corpus indexes (full-text index of the Jinghua CHM volumes, the annual index, and the knowledge-base tree) are built locally by `digest_crawl.py` and live in `data/`, which is intentionally not part of this repository. Subagents on a machine that has generated them can reference them by path; on a fresh machine, skip this section — every technique in this repo stands on its own without the corpus.
 
 | File | Description |
 |------|-----------|
-| `../data/精华全量索引.md` | **Full index of Jinghua vols 1-24, 18,915 articles** (2000-2023), grep by title → get pediyNN + path |
-| `../data/精华26索引.md` + `_原始.jsonl` | **2025 annual Jinghua index, 651 articles** (tid boundary 285073~289632, exact and complete; Jinghua vol 26 not officially released, expected 2026 Q4, see the acquisition report) |
-| `digest_crawl.py` | Re-runnable incremental crawler (state + rate limiting + 429 backoff); re-run once Jinghua 26 is published to get the full set |
-| `../data/完整目录树.md` / `tree.json` | Knowledge-base chm.htm tree, 1702 nodes (ten-category skeleton) |
-| `../data/精华26获取报告.md` | Results of five acquisition routes / interface parameters / chm-search usage / watch recommendations |
+| `data/精华全量索引.md` | Full index of Jinghua vols 1-24, 18,915 articles (2000-2023), grep by title → get pediyNN + path |
+| `data/精华26索引.md` + `_原始.jsonl` | 2025 annual Jinghua index, 651 articles |
+| `data/完整目录树.md` / `tree.json` | Knowledge-base chm.htm tree, 1702 nodes (ten-category skeleton) |
 
 ## Maintenance conventions
 

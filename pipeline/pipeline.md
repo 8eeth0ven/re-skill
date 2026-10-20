@@ -1,8 +1,16 @@
-# pipeline branch: the fully automated RE chain (pipeline)
+# pipeline branch: agent-executed APK analysis workflow
 
-> Zero-human DAG: input the absolute path of an APK → five stages advance automatically → the report lands on disk.
-> Iron rule: **a stage's artifacts must land on disk and its acceptance gate must pass before the next stage; any failure takes the degradation path and continues — never ask the user, never interrupt**.
-> Executor: the main agent orchestrates. S1's A/B/C slices can be dispatched in the same round to 3 subagents (their artifacts never write the same files); S2–S4 run serially on the main agent.
+> Input an APK path and an authorized analysis scope. An agent executes the five
+> stages using the available tools and writes a report. This document defines
+> the deeper workflow. The unified `re-run analyze --type android` CLI handles
+> bounded static APK/AAB analysis; the complete S0–S4 dynamic chain is not yet
+> wired into that runner. See [current matrix](../docs/runner.zh-CN.md) and
+> [execution handoff](../docs/agent-completion-prompt.zh-CN.md).
+> Write and check stage artifacts before continuing. Tool failures follow the
+> documented fallback and remain visible in the report. Required authorization,
+> missing input, cancellation, and host permission limits still apply.
+> Executor: the main agent orchestrates. Use serial execution by default;
+> delegate S1 slices only when the user or applicable instructions request it.
 > Command baseline: identical across the three platforms (macOS/Linux/Windows) — jadx/apktool/adb etc. are always invoked by their PATH command names; installation and per-platform paths are in `../setup.md` §1–§2, the venv in §3; the check runs `pipeline/env_check.py` (cross-platform; the older `env_check.sh` is macOS-only).
 > Command interpreter: bash syntax (native on macOS/Linux; Windows goes through Git-Bash/WSL).
 
@@ -41,7 +49,7 @@ Every step's degradation exit feeds into section 7 of S4; no branch can block th
 
 | pipeline step | MCP tool and key parameters | bash-side equivalent degradation |
 |---|---|---|
-| S3-1 readiness / start emulator | `android_preflight` / `android_list_devices` / `android_start_emulator(avd="Medium_Phone_API_36.0", timeoutMs=180000)` | `$ADB_BIN start-server` + background `"$SDK_DIR/emulator/emulator" -avd Medium_Phone_API_36.0` (on win the executable is `emulator.exe`) |
+| S3-1 readiness / start emulator | `android_preflight` / `android_list_devices` / `android_start_emulator(avd=<configured AVD>, timeoutMs=180000)` | Select an existing suitable AVD with `emulator -list-avds`; start it with `-avd "$RE_AVD"` (Windows: `emulator.exe`) |
 | S3-2 install | `android_install_app(apkPath, timeoutMs=180000)` (note: apkPath does not allow paths outside the project root, e.g. /tmp → raises `Path escapes project root`; go straight to the right-hand degradation) | `adb install -r -t "$APK"` |
 | S3-3 launch | `android_launch_app(applicationId="$PKG", timeoutMs=60000)` | `adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1` |
 | S3-4 screenshots / UI tree | `android_screenshot` (same restriction: path confined to the project root; called without a path it returns MCP image content for the agent to view directly — persist artifacts with the right-hand command) / `android_ui_describe` | `adb exec-out screencap -p > x.png` / `adb shell uiautomator dump` |
@@ -55,7 +63,7 @@ Every step's degradation exit feeds into section 7 of S4; no branch can block th
 
 ```bash
 APK="<absolute APK path given by the user>"                # the only hard-stop condition: if [ -f "$APK" ] fails, terminate
-SKILL_ROOT="$(cd "$(dirname "$0")/.." && pwd)"   # this skill's root, derived from the script location (works both locally and after cloning)
+SKILL_ROOT="$(pwd)"   # run this block from the checked-out skill root containing SKILL.md
 # SDK root per platform: mac=~/Library/Android/sdk linux=~/Android/Sdk win=%LOCALAPPDATA%\Android\Sdk
 case "$(uname -s)" in
   Darwin)                    SDK_DIR="$HOME/Library/Android/sdk";;
@@ -68,6 +76,7 @@ AAPT2=$(ls "$SDK_DIR"/build-tools/*/aapt2* 2>/dev/null | sort -V | tail -1)   # 
 VENV_BIN="$SKILL_ROOT/tools-env/.venv/bin"
 [ -x "$SKILL_ROOT/tools-env/.venv/Scripts/python.exe" ] && VENV_BIN="$SKILL_ROOT/tools-env/.venv/Scripts"
 VENV_PY="$VENV_BIN/python"; [ -x "$VENV_PY" ] || VENV_PY="$VENV_BIN/python.exe"
+RE_AVD="${RE_AVD:-}"   # select a matching existing AVD; no historical default
 # Cross-platform timeout wrapper (replaces GNU timeout: native on linux / mac needs gtimeout / often absent in win git-bash): usage run_to <seconds> <cmd...>, timeout rc=124
 run_to() { local s=$1; shift; python3 -c 'import subprocess,sys
 try: sys.exit(subprocess.call(sys.argv[2:],timeout=float(sys.argv[1])))
@@ -77,7 +86,7 @@ PKG=$("$AAPT2" dump badging "$APK" 2>/dev/null | grep -m1 "^package: name=" | se
 OUT="$(dirname "$APK")/输出/${PKG}-$(date +%Y%m%d)"    # output root: <next to the APK>/输出/<package>-<date>/
 mkdir -p "$OUT"/{00-环境,01-静态,02-动态}
 cat > "$OUT/env.sh" <<EOF
-APK='$APK'; AAPT2='$AAPT2'; SDK_DIR='$SDK_DIR'; VENV_BIN='$VENV_BIN'; VENV_PY='$VENV_PY'; PKG='$PKG'; OUT='$OUT'
+APK='$APK'; AAPT2='$AAPT2'; SDK_DIR='$SDK_DIR'; VENV_BIN='$VENV_BIN'; VENV_PY='$VENV_PY'; PKG='$PKG'; OUT='$OUT'; RE_AVD='$RE_AVD'
 EOF
 echo "[$(date +%F\ %T)] pipeline start APK=$APK OUT=$OUT" > "$OUT/00-环境/run.log"
 ```
@@ -113,7 +122,7 @@ Every later Bash starts with `source "$(dirname <this artifact root>)/env.sh"` o
 | step | command | artifact | acceptance gate | failure degradation |
 |---|---|---|---|---|
 | S0-1 full check | `python3 "$SKILL_ROOT/pipeline/env_check.py" > "$OUT/00-环境/env_report.txt" 2>&1; echo "EXIT_CODE=$?" >> "$OUT/00-环境/env_report.txt"` (SKILL_ROOT from 0.1; on macOS only, the older `bash env_check.sh` also works) | `00-环境/env_report.txt` | exists, non-empty, contains an `EXIT_CODE=` line | script won't run (python3 missing) → run `which jadx apktool adb` + `java -version` by hand and write the four lines into env_report.txt |
-| S0-2 interpret and mark | the main agent reads env_report.txt and writes one line per tool into `00-环境/status.md`, format: `jadx=OK` / `frida=MISSING→S3-7 degrade` / `AVD=OK(Medium_Phone_API_36.0)` / `apkid=MISSING→S1-B goes signature matching` | `00-环境/status.md` | exists, non-empty, ≥5 lines | no degradation, mandatory — every later stage's degradation switches depend on it |
+| S0-2 interpret and mark | the main agent reads env_report.txt and writes one line per tool into `00-环境/status.md`, including the actual selected AVD and unavailable capabilities | `00-环境/status.md` | tool status and selected-device evidence recorded | mandatory; later degradation follows actual capabilities |
 | S0-3 blackboard init | write `$OUT/黑板.md`: F00 target APK path/package/size (`ls -lh "$APK"`); F01 the environment-check conclusion line; placeholder blocks for S1/S2/S3 | `黑板.md` | exists and contains the APK path | none (purely local writes) |
 
 **S0 exit decision**: EXIT_CODE=0 = full capability; =1 (has yellows) degrade the matching steps per status.md; =2 (jadx+apktool both critical-red) → S1-A doubly degrades to "unzip + aapt2 direct read", and the chain still continues.
@@ -209,7 +218,7 @@ Return: a ≤200-word summary (list of new artifacts + degraded items)
 
 | step | tool (MCP call, not Bash) | artifact | acceptance gate | failure degradation |
 |---|---|---|---|---|
-| S3-1 readiness check | `android_preflight` + `android_list_devices`; 0 devices → `android_start_emulator(avd="Medium_Phone_API_36.0", timeoutMs=180000)` | write the result summary to `02-动态/preflight.md` (device list / AVD name) | contains a `device` or `AVD` line | won't start → S3 wholesale `DEGRADED: emulator cannot start`, skip to S4, reason goes into report section 7 |
+| S3-1 readiness check | `android_preflight` + `android_list_devices`; no device → select a configured compatible AVD and start it using the available tool's actual schema | write device/AVD/version/readiness evidence to `02-动态/preflight.md` | actual identity and readiness recorded | unavailable → S3 `DEGRADED`, reason and prerequisites in report section 7 |
 | S3-2 install | `android_install_app(apkPath=<absolute APK path>, timeoutMs=180000)`; **an APK outside the project root raises `Path escapes project root` → drop straight to `adb install -r -t "$APK"` and record install.md** | `02-动态/install.md` (on success, the package name; on failure, the INSTALL_FAILED_ code) | contains a success line or a failure code | UPDATE_INCOMPATIBLE → `adb uninstall "$PKG"` then retry once; on a second failure record D and skip the rest |
 | S3-3 launch | `android_launch_app(applicationId="$PKG", timeoutMs=60000)` | append the result to install.md | returned launched | crashes at launch → do not retry; still run S3-5 to capture the crash log |
 | S3-4 screenshots ×2 + UI tree | ~10s after launch: `android_screenshot(path="$OUT/02-动态/screenshot_1.png")`; at 30s: `screenshot_2.png`; after each screenshot store the `android_ui_describe` result in `02-动态/ui_tree.txt` (append the second time). **Note: a path outside the project root raises `Path escapes project root` → persist screenshots uniformly with `adb exec-out screencap -p > "$OUT/02-动态/screenshot_N.png"`; an extra no-path MCP screenshot may be called for the agent to view directly** | 2 png + ui_tree.txt | pngs exist and >10KB; ui_tree non-empty | black screen / empty tree: keep them anyway and annotate (that is itself an observation) |
@@ -226,7 +235,7 @@ Return: a ≤200-word summary (list of new artifacts + degraded items)
 | step | action | artifact | acceptance gate | failure degradation |
 |---|---|---|---|---|
 | S4-1 aggregate | the main agent reads the blackboard + the head of each stage's artifacts and writes `03-report.md` (template below); SHA256 via `shasum -a 256 "$APK"` (mac; linux uses `sha256sum "$APK"`; win uses `certutil -hashfile "$APK" SHA256`) | `03-report.md` | all seven section titles present + section 7 non-empty | none: even if unfinished, first write in the known facts and the skipped items |
-| S4-2 wrap-up | append `full chain complete: $(date +%T)` to status.md; add a Hints section to the blackboard (suggested next steps for a human) | incremental | a timestamped line exists | none |
+| S4-2 wrap-up | append actual completed/degraded/blocked stage states with timestamp; add evidence-based next steps to the blackboard | incremental | recorded states match artifacts | a finished report does not imply every stage passed |
 
 ### 03-report.md fixed template (seven sections; a missing section gets N/A + reason)
 

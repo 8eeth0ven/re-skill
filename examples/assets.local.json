@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "assets": [
+    {"id": "api", "locator": "openapi.json", "type": "api"},
+    {"id": "agent", "locator": "agent.json", "type": "ai"},
+    {"id": "device-record", "locator": "device.json", "type": "device"},
+    {"id": "contract", "locator": "contract.json", "type": "contract"},
+    {"id": "sbom", "locator": "sbom.json", "type": "container"}
+  ]
+}

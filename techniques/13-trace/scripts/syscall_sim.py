@@ -9,7 +9,6 @@ Interceptor 挂该模块的 BSD syscall 包装函数 = 用户态 syscall trace �
   ./syscall_sim.py <目标程序> [参数...]          # Popen 后 attach,跟 20 秒
   ./syscall_sim.py --attach <pid> [--seconds 20]
 """
-import json
 import subprocess
 import sys
 import time

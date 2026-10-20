@@ -1,48 +1,49 @@
-# fw-discover · Autonomous Firmware Vulnerability Discovery (0day candidates, not CVE matching)
+# fw-discover · 固件静态候选筛选
 
-**Division of labor with ../cve-hunter**: cve-hunter is the "known CVE × version matching" N-day ledger; this side **discovers on its own** — download public router firmware → unpack the filesystem → mine candidates with the rules in this directory (`analyzers.py`). Every entry comes from local static analysis, not from a lookup table.
+此模块维护DD-WRT/OpenWrt公开固件种子队列与本地候选台账。规则命中需要继续验证；
+[CVE流程](cve-pipeline.md)分别处理真实性、新颖性和披露。
 
-**To land a real CVE, read [`cve-pipeline.md`](cve-pipeline.md) first**: candidates → four kill-gates (dual evidence / novelty / reachability / PoC) → disclosure-ready → manual reporting; the tally ledger lives in there too. For the static-scan battery's installation and dual-lane usage see `static-scan-tool-matrix.md`.
-
-## Pipeline
-
-```
-Seed queue (DD-WRT betas, real router firmware + OpenWrt factory images as the unpack-chain validation channel)
-  → download (curl; DD-WRT sits behind the Anubis anti-bot, must go through curl's default UA — urllib gets blocked by the challenge page)
-  → magic-number scan (TRX HDR0 / uImage / squashfs four byte-orders / gzip, strip at most 3 layers)
-  → unsquashfs 4.7.5 unpack (old modified lzma variants won't unpack → flagged and skipped; sasquatch no longer builds on macOS, dropped)
-  → six analyzer rule classes → findings.jsonl + ledger
-```
-
-## Discovery rules (all local rules; a hit is a candidate)
-
-| Class | Priority | Meaning |
-|---|---|---|
-| verified-weak-cred | 4 | DES hash in passwd/shadow cracked locally by a small wordlist (verified with `openssl passwd -crypt`) |
-| shipped-private-key | 4 | PEM private key shipped in the firmware |
-| cmdi-candidate | 3 | Network parameter sources (QUERY_STRING/websGetVar/nvram_get, etc.) × system/popen/exec family within the same binary |
-| cmdi-script | 3 | CGI/shell script eval consuming external parameters |
-| telnetd-enabled | 2 | Boot script launches telnetd by default |
-| default-cred | 2 | Non-empty default password literal in nvram/config |
-| hardcoded-account | 1 | Account with an active hash in passwd/shadow |
-
-## Usage
+通用本地资产入口已经在统一执行器中实现：
 
 ```bash
-cd fw-discover
-python3 fw.py --seed     # build the seed queue (dedup + incremental)
-python3 fw.py --once     # process a small batch: download → unpack → discover (repeatable; single-instance lock)
-python3 fw.py --status   # progress
+re-run analyze --asset /absolute/path/to/rootfs --type firmware --output re-runs
+re-run analyze --asset /absolute/path/to/firmware.tar --type firmware --output re-runs
 ```
 
-Data lives in `../data/fw-discover/` (queue / findings / ledger / firmware and unpack trees). Target is 100 entries, **half-hour keepalive**: `keepalive-fw.sh` (runs `--once` while below 100; once the target is hit it announces the move to the manual/subagent screening stage and wraps up).
+支持rootfs和受限TAR/ZIP/gzip；opaque squashfs/UBI/TRX等仅有界扫描，不能称解包成功。
+深度提取需隔离provider。见[支持矩阵](../docs/runner.zh-CN.md)与[交接](../docs/agent-completion-prompt.zh-CN.md)。
 
-## Screening stage (mandatory after hitting the target; human or subagent)
+## 旧队列脚本
 
-The ledger holds candidates, not conclusions. Pull the top-20 by priority: ① for cmdi-candidate, use r2 `axt @ sym.imp.system` to check whether the caller function actually takes parameters (false-lead pattern: boot-time-only calls); ② validate private keys with `openssl rsa -in <f> -check -noout`; ③ for weak credentials, write out the reproduction command. Write output to `../data/fw-discover/screening/`; an entry only moves on to disclosure after passing the three questions (security-policy violation + proof of exploitability + impact scope).
+```bash
+python3 fw-discover/fw.py --seed
+python3 fw-discover/fw.py --once
+python3 fw-discover/fw.py --status
+```
 
-## Red lines
+数据在 `data/fw-discover/`，不随仓库发布。脚本使用核文件锁、原子写入、限定下载
+host和大小、有界gzip；保留原始样本。成功才done，下载/分析错误有限重试，
+缺提取器或范围不符记blocked，具体原因持久化。
 
-- Everything in the ledger is an **autonomously discovered candidate**; auto-submitting to any external platform is forbidden; external reporting goes through a human + `../disclosure-cve.md`
-- Dynamic emulation (FirmAE / qemu system-mode running the firmware live) is the next stage — not done on this macOS machine
-- Only test publicly released firmware images; never touch live devices
+**行为变更：旧脚本不会在host自动执行unsquashfs/sasquatch。**
+未经隔离适配的不透明文件系统提取返回blocked；不要把队列结束写成全部分析成功。
+已提取rootfs可交统一CLI分析。
+
+## 规则含义
+
+| 规则 | 可支持的证据 | 仍需核实 |
+| --- | --- | --- |
+| cmdi-candidate | 同文件网络参数与system/popen/exec字符串共现；已降优先级 | 参数传播、调用点、配置与可达性 |
+| cmdi-script | shell/CGI文本可疑使用 | 实际输入控制和触发行为 |
+| shipped-private-key | 文件含私钥块 | 可用性、部署trust及影响 |
+| verified-weak-cred | 实际本地hash对照命中时的密码匹配 | 账号启用/登录入口；不等于产品漏洞确认 |
+| telnetd-enabled/default-cred/hardcoded-account | 启动/config/账号文本 | 实际默认配置与暴露范围 |
+
+旧台账分类名不对应统一runner的verified级别。100条是候选展示目标，不是漏洞数。
+版本、字符串、私钥与NVD零命中不能自动赋漏洞确认。
+
+## 可选有限循环
+
+`keepalive-fw.sh` 包装 `python -m re_runner.keepalive --profile firmware`，需先准备
+runner环境；最多40轮，默认间隔1800秒，停止于无可重试队列。没有自动安装计划任务。
+本轮keepalive最新代码未执行，安装与复验交执行Agent。

@@ -1,34 +1,76 @@
-# pipeline branch: fully automated APK reverse-engineering executor
+# APK Analysis Workflow
 
-**One line**: given an APK path, run the five stages "environment check → information gathering → static → dynamic → report" with zero human effort, automatic degradation on failure, and a fixed directory structure for the output. **This branch is an executor, not a knowledge base.**
+Given an APK path and an authorized scope, an agent follows the five stages in
+[pipeline.md](pipeline.md), uses the available analysis tools, and writes a
+report with evidence and limitations.
 
-## Usage (agent entry)
+**This directory contains the deeper APK workflow and environment helpers.**
+For bounded static APK/AAB analysis, use the shared CLI:
 
-When asked to run the full chain on `<apk>` (in the re skill entry: "fully automated RE / run the pipeline / run the full chain on `<apk path>`"):
+```bash
+re-run analyze --asset /absolute/path/to/sample.apk --type android --output re-runs
+```
 
-1. Read `pipeline.md` in this directory (the single workflow definition; execute stages in order);
-2. Run the full chain on the APK path: `S0 check → S1 parallel information gathering → S2 static → S3 dynamic → S4 report`;
-3. Artifacts land under `输出/<package>-<date>/` (next to the APK, or in a user-specified directory);
-4. A stage's acceptance gate (files exist and are non-empty) must pass before entering the next stage; on failure take the degradation path — **never ask the user, never halt**;
-5. At the end, return the `03-report.md` path to the user, together with a list of "skipped items and reasons".
+See the [runner guide](../docs/runner.zh-CN.md). The CLI does not yet execute
+the full S0–S4 dynamic chain; this document guides its separate integration.
 
-All commands are real commands a subagent can run directly via Bash (baseline environment: macOS arm64).
+## Start a task
 
-## Position and hand-off
+```text
+Use the re skill to analyze /absolute/path/to/sample.apk in my authorized lab.
+Follow the APK workflow, save the artifacts, and return the report path,
+supported conclusions, and the steps that could not be completed.
+```
 
-This branch = **executor** (a fixed DAG that runs automatically to a report); the report is the **starting point**: to expand its "risks and next steps" or "unpacking route advice", go to the matching article under `../techniques/` (03-unpacking/, 02-frida/java-layer/, etc., via INDEX) and open it by name; for historical articles / technical corroboration use the corpus indexes under `../data/`.
+1. Read [pipeline.md](pipeline.md) for the stage commands, artifact contracts,
+   acceptance gates, and fallback paths.
+2. Run S0 environment → S1 collection → S2 static → S3 dynamic → S4 report.
+3. Write to `输出/<package>-<date>/` next to the APK, or the requested output path.
+4. Verify stage artifacts before proceeding. Record tool failures and skipped
+   capabilities, then use the applicable fallback. Respect the user's scope,
+   cancellation, and host permissions.
+5. Return `03-report.md` and the remaining unknowns.
 
-Rule: never duplicate technique-library knowledge in this branch.
+Dynamic analysis requires a suitable emulator or device. Missing dynamic tools
+do not establish that the app is safe; the report must describe the static-only
+coverage and skipped checks.
 
-## File list
+## Files and environment
 
 | File | Purpose |
-| -------------- | ---------------------------------- |
-| `pipeline.md` | Core: the five-stage DAG, commands / artifacts / acceptance gates / degradations in four-column tables |
-| `env_check.sh` | Standalone environment-check script (exit 0 = all green / 1 = has yellows / 2 = critical red) |
+| --- | --- |
+| [pipeline.md](pipeline.md) | Five-stage workflow, commands, outputs, gates, and fallbacks |
+| [env_check.py](env_check.py) | Python environment checker with macOS/Linux/Windows paths |
+| [env_scan.py](env_scan.py) | Portable version probes and serial-port descriptors; no live-device collection |
+| [env_check.sh](env_check.sh) | Older macOS Bash environment checker |
 
-## Environment baseline (as actually measured by env_check.sh)
+From the repository root, run `python3 pipeline/env_check.py` on macOS/Linux or
+`python pipeline/env_check.py` on Windows. Return codes are `0` for all checks
+passing, `1` for missing optional capabilities, and `2` for critical tool gaps.
+The checker can create a temporary sample for tool smoke tests when the SDK is
+available; missing SDK components leave those tests unperformed.
 
-- Available: jadx 1.5.6 / apktool 3.0.3 / adb+SDK (~/Library/Android/sdk) / radare2 / 7z / java 24 / node / uv / timeout (coreutils 9.9) / aapt2 (inside SDK build-tools 36.0.0)
-- Installing (probed dynamically, degrade on absence): the frida suite and python libs (unicorn/capstone/androguard/apkid/apkleaks) → venv `tools-env/.venv`
-- MCP: android-emulator ✓ (AVD `Medium_Phone_API_36.0` ready), node_repl ✓, WebSearch/WebFetch ✓, ida-pro-mcp (needs IDA with the plugin started manually; skipped if not running), fofa (skipped without a key)
+Prepare the required tools using [setup.md](../setup.md). The stage command
+examples use Bash; Windows execution requires adapting them or using Git Bash
+or WSL. Actual compatibility depends on each tool and device configuration.
+Historical tool versions, AVD names, and MCP results in the workflow are reference
+observations and must be rechecked on the current host.
+
+## Expected artifacts
+
+```text
+输出/<package>-<date>/
+├── 00-环境/       environment checks and run logs
+├── 01-静态/       decoded files, manifest, strings, symbols
+├── 02-动态/       device observations, screenshots, logs if available
+├── 黑板.md        stage findings and progress
+└── 03-report.md   conclusions, evidence, limitations, next steps
+```
+
+This is an output contract, not a bundled example run. For deeper methods, use
+the [technique index](../techniques/INDEX.md); historical cases are in the
+[corpus index](../corpus/INDEX.md). Original archives and the private `data/`
+indexes are not included in the public repository.
+
+Remaining tool integration and acceptance use the
+[handoff prompt](../docs/agent-completion-prompt.zh-CN.md).
