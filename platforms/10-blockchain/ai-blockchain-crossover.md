@@ -28,7 +28,7 @@ A breach at any layer reaches funds directly; injection cost << contract-bug cos
 ### 2.1 Freysa: prompt injection wins the prize pool (2024-11)
 
 - Freysa.ai is an adversarial game: the AI Agent Freysa guards a prize pool; the rule is "whoever persuades it to transfer out the pool wins all the funds", and each attempt costs a fee that feeds the pool. After many failed participants, someone succeeded with a single message — **essentially a prompt injection against the guardian prompt**: framing the model into an "the next transfer is already approved" context, until the Agent finally called the transfer function; the ~$47k pool was won (partly donated / partly to the winner).
-- Significance: the first "publicly live, real money, the bounty IS the bug bounty" live-fire prompt-injection case — turning the laboratory risk of chapter 09 §2.1 into on-chain monetary loss.
+- Significance: the first "publicly live, real money, the bounty IS the bug bounty" real-funds prompt-injection case — turning the laboratory risk of chapter 09 §2.1 into on-chain monetary loss.
 - Later rounds iterated defenses and the community kept gaming it (winning approaches = exploiting its instruction/tool-call approval framing; per-round defense differences across versions have seen no systematic public review — defer to on-chain transactions).
 
 ### 2.2 Truth Terminal and GOAT (2024-10)

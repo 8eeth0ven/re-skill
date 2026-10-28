@@ -9,7 +9,7 @@
 When to use: some request headers are added this way, possibly added directly through okhttp.
 
 ```javascript
-//由于有些请求头会使用这个添加，可能通过okhttp直接增加
+// Some request headers are assembled here; inspect direct additions through okhttp as well
 var hashMap = Java.use("java.util.HashMap");
 hashMap.put.implementation = function (a, b) {
     console.log("hashMap.put: ", a, b);
@@ -47,7 +47,7 @@ LinkedHashMapClass.put.implementation = function (key, value) {
 ### 3.1 StringFactory (where strings are created, new String)
 
 ```javascript
-// hook string的构造函数  字符串生成的地方例子，new String
+// Hook the String constructor at the point where new String creates the value
 var stringFactory = Java.use("java.lang.StringFactory");
 stringFactory.newStringFromString.implementation = function (a) {
     var retval = this.newStringFromString(a);
@@ -64,7 +64,7 @@ stringFactory.newStringFromChars.overload('[C').implementation = function (a) {
 ### 3.2 String concatenation, StringBuilder.toString
 
 ```javascript
-// 字符串拼接
+// String concatenation
 var sb = Java.use("java.lang.StringBuilder");
 sb.toString.implementation = function () {
     var retval = this.toString();
@@ -76,7 +76,7 @@ sb.toString.implementation = function () {
 ### 3.3 StringBuffer.toString (supports multi-threading)
 
 ```javascript
-// 支持多线程 字符串拼接
+// String concatenation with multithreaded support
 var sb = Java.use("java.lang.StringBuffer");
 sb.toString.implementation = function () {
     var retval = this.toString();
@@ -92,7 +92,7 @@ Generally JSON is handled by the gson library; stock Android goes through org.js
 ### 4.1 org.json.JSONObject
 
 ```javascript
-// JSON处理
+// JSON handling
 var jSONObject = Java.use("org.json.JSONObject");
 jSONObject.put.overload('java.lang.String', 'java.lang.Object').implementation = function (a, b) {
     console.log("jSONObject.put: ", a, b);
@@ -125,20 +125,20 @@ JSONObject['optString'].overload('java.lang.String').implementation = function (
 ```javascript
 function hookApp() {
     Java.enumerateClassLoadersSync().forEach(classLoader => {
-        // 寻找com.alibaba.fastjson.JSON类
+        // Locate com.alibaba.fastjson.JSON
         try {
             if (classLoader.loadClass("com.alibaba.fastjson.JSON")) {
                 Java.classFactory.loader = classLoader
                 var fastJson = Java.use("com.alibaba.fastjson.JSON");
                 console.log("found com.alibaba.fastjson.JSON");
-                // 序列化监控
+                // Observe serialization
                 fastJson.toJSONString.overload('java.lang.Object').implementation = function (obj) {
                     var jsonStr = this.toJSONString(obj);
                     console.log("\n=== 序列化监控 ===");
                     console.log("JSON 结果 =>", jsonStr);
                     return jsonStr;
                 };
-                // 反序列化监控
+                // Observe deserialization
                 fastJson.parseObject.overload('java.lang.String').implementation = function (jsonStr) {
                     console.log("\n=== 反序列化监控 ===");
                     console.log("输入 JSON =>", jsonStr);

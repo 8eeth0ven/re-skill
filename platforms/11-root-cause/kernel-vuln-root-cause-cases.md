@@ -41,7 +41,7 @@ if (chars && !was_empty) {
     int offset = buf->offset + buf->len;
 
     if ((buf->flags & PIPE_BUF_FLAG_CAN_MERGE) &&
-        offset + chars <= PAGE_SIZE) {      // 只查"能不能装下",没查"这页是谁的"
+        offset + chars <= PAGE_SIZE) {      // Checks whether the bytes fit, but not who owns the page
         ret = pipe_buf_confirm(pipe, buf);
         ...
         ret = copy_page_from_iter(buf->page, offset, chars, from);
@@ -82,11 +82,11 @@ What gets written is the page cache; what is bypassed is not memory protection b
 
 ```diff
 // commit 9d2231c5d74e13b2a0546fee6737ee4446017903
-// copy_page_to_iter_pipe() 中给新 pipe_buffer 补上 flags 初始化
+// Initialize flags for the new pipe_buffer in copy_page_to_iter_pipe()
   buf->page = page;
   buf->offset = 0;
   buf->len = PAGE_SIZE;
-+ buf->flags = 0;          // 新挂进来的页缓存引用,一律不可合并
++ buf->flags = 0;          // Newly attached page-cache references must not be mergeable
 ```
 
 Fix philosophy: **patch the source of dirty state, not the check logic** — pipe_write's merge fast path isn't wrong; what was wrong was letting an external page enter carrying a stale flag. Shipped simultaneously in 5.16.11/5.15.25/5.10.102. Successor lineage (Dirty Frag/Copy Fail/Fragnesia, the 2025–2026 same-family in-place page-cache writes) → `../../techniques/07-kernel/kernel-exploit-fuzzing.md` §2.
@@ -108,12 +108,12 @@ void xt_compat_target_from_user(struct xt_entry_target *t, void **dstptr,
     const struct xt_target *target = t->u.kernel.target;
     int pad, off = xt_compat_target_offset(target);
     ...
-    t = *dstptr;                                   // 转换后的目标位置(用户可控相对偏移)
+    t = *dstptr;                                   // Converted destination position (user-controlled relative offset)
     memcpy(t, ct, sizeof(*ct));
     ...
-    pad = XT_ALIGN(target->targetsize) - target->targetsize;  // 8 字节对齐差
+    pad = XT_ALIGN(target->targetsize) - target->targetsize;  // Padding for 8-byte alignment
     if (pad > 0)
-        memset(t->data + target->targetsize, 0, pad);         // ★ 越界点
+        memset(t->data + target->targetsize, 0, pad);         // Out-of-bounds write
 }
 ```
 (The isomorphic `xt_compat_match_from_user` has the same disease.)
@@ -168,10 +168,10 @@ Effect: an unprivileged process's ordinary `struct file` for an opened file is l
         th = to_hash(fold->handle);
         h = from_hash(fold->handle >> 16);
         b = rtnl_dereference(head->table[th]);
-        ... /* 从哈希表摘除旧 filter fold */
+        ... /* Remove old filter fold from the hash table */
     }
     ...
-    /* 随后 fold 被 kfree */
+    /* fold is subsequently kfree'd */
 ```
 
 **The broken assumption**: **"the to-be-freed old filter can always be found by handle and unlinked from the hash table"** — when the old filter's handle is 0, the condition short-circuits, the unlink is skipped, but kfree runs anyway → the hash table holds a permanently dangling pointer; the next traversal is a UAF.
@@ -212,7 +212,7 @@ DirtyCred cases are often transcribed as "CVE-2021-4145 (unix_gc)" — verified:
 static void binder_free_thread(struct binder_thread *thread)
 {
     ...
-    kfree(thread);          // ★ thread->wait 随之消失,但没人通知 epoll
+    kfree(thread);          // thread->wait disappears with it, but epoll is not notified
 }
 ```
 Call chain: `ioctl(BINDER_THREAD_EXIT)` → `binder_thread_release` → `binder_thread_dec_tmpref` → `binder_free_thread` → kfree. Working backward from P0's KASAN report: the crash is in process-exit `ep_free → ep_remove_wait_queue → remove_wait_queue` doing `spin_lock_irqsave(&wq_head->lock)` on the already-freed waitqueue_head.
@@ -222,9 +222,9 @@ Call chain: `ioctl(BINDER_THREAD_EXIT)` → `binder_thread_release` → `binder_
 **Trigger sequence** (fully reachable from userspace):
 ```c
 epoll_fd = epoll_create(1000);
-epoll_ctl(epoll_fd, EPOLL_CTL_ADD, binder_fd, &event);  // ① 挂监听
+epoll_ctl(epoll_fd, EPOLL_CTL_ADD, binder_fd, &event);  // ① Register the listener
 ioctl(binder_fd, BINDER_THREAD_EXIT, NULL);             // ② kfree(thread+wait)
-exit(0);                                                // ③ ep_free 踩悬空 waitqueue
+exit(0);                                                // ③ ep_free accesses the dangling waitqueue
 ```
 No race, deterministic crash (exploitation requires reclaim takeover). Exploited in the wild since 2017 (P0: reported 2019-11; many OEM kernels never merged the 2018 fix).
 
@@ -237,12 +237,12 @@ No race, deterministic crash (exploitation requires reclaim takeover). Exploited
 **Fix** (three-layer evolution):
 ```c
 // android-common f5cb779ba163 (2018-01) "ANDROID: binder: remove waitqueue when thread exits."
-//   → BINDER_THREAD_EXIT 时 wake_up_poll(&thread->wait, EPOLLHUP | POLLFREE)
-//     POLLFREE 语义:ep_poll_callback 收到后自行把 epitem 摘出 waitqueue
+//   → At BINDER_THREAD_EXIT: wake_up_poll(&thread->wait, EPOLLHUP | POLLFREE)
+//     POLLFREE tells ep_poll_callback to remove the epitem from the waitqueue
 // android-common 5eeb2ca02a2f (2018-02) "binder: synchronize_rcu() when using POLLFREE."
-//   → 补 RCU 宽限期,防止 callback 还在跑就 kfree
+//   → Add an RCU grace period so kfree cannot run while callbacks remain active
 // torvalds/linux a880b28a71e3 (2021-12) "binder: use wake_up_pollfree()"
-//   → 上游统一改用 wake_up_pollfree()(POLLFREE 忘调会 WARN)
+//   → Upstream consolidated this as wake_up_pollfree() (WARN if POLLFREE was omitted)
 ```
 Fix philosophy: **whoever owns the waitqueue is responsible for broadcasting "I'm dying"**; and the first fix (adding POLLFREE only) still left an RCU window, closed by a follow-up — "a fix that opens a new window" is itself a pattern (see §8 pattern 8).
 
@@ -303,14 +303,14 @@ cldflt.sys (Windows Cloud Files Mini Filter Driver) powers the **placeholder** m
 ```
 HsmFltPreFILE_SYSTEM_CONTROL → HsmFltProcessHSMControl → HsmFltProcessUpdatePlaceholder
   → HsmiOpUpdatePlaceholderDirectory → HsmpRpCommitNoLock
-      → HsmpRpReadBuffer → HsmpRpiDecompressBuffer   // 解压 Reparse Point
+      → HsmpRpReadBuffer → HsmpRpiDecompressBuffer // Decompress the Reparse Point
 ```
 
 **The bug**: in HsmpRpCommitNoLock's do-while loop:
 ```c
-dst = ExAllocatePoolWithTag(..., 0x4000, ...);          // 固定 0x4000
-len = ElementInfos[10].Length;                          // 来自解压后的 reparse 数据
-memmove(dst, src /* 解压后 ElementInfos[10] 数据 */, len);  // ★ len 无上界校验
+dst = ExAllocatePoolWithTag(..., 0x4000, ...);          // Fixed size 0x4000
+len = ElementInfos[10].Length;                          // From decompressed reparse data
+memmove(dst, src /* decompressed ElementInfos[10] data */, len); // len has no upper-bound check
 ```
 Fix diff (bindiff in the post): add a `> 0x4000` check on `*(_WORD *)(a1 + 10)` inside `HsmpRpiDecompressBuffer` — **truncate at the decompression exit, not at the consumption point**.
 
@@ -337,15 +337,15 @@ Learning path: master cldflt's attack surface through 36036 (the local post publ
 
 `watch_queue_set_filter()` (kernel/watch_queue.c) loops twice:
 ```c
-// 第一遍:数数(决定分配多大)
-if (tf[i].type >= sizeof(wfilter->type_filter) * 8) continue;   // 边界 A
+// First pass: count entries to determine allocation size
+if (tf[i].type >= sizeof(wfilter->type_filter) * 8) continue;   // Boundary A
 nr_filter++;
 ...
-wfilter = kzalloc(struct_size(wfilter, filters, nr_filter), ...);  // 按 A 分配
-// 第二遍:写入
-if (tf[i].type >= sizeof(wfilter->type_filter) * BITS_PER_LONG) continue;  // 边界 B(更宽!)
+wfilter = kzalloc(struct_size(wfilter, filters, nr_filter), ...);  // Allocate according to A
+// Second pass: write entries
+if (tf[i].type >= sizeof(wfilter->type_filter) * BITS_PER_LONG) continue;  // Boundary B (wider)
 q->type = tf[i].type; ...
-__set_bit(q->type, wfilter->type_filter);                        // ★ type 落在 B 内即写
+__set_bit(q->type, wfilter->type_filter);                        // Writes when type falls within B
 ```
 With sizeof=16, A=128 and B=1024: the allocation counts "type<128" while the write pass admits "type<1024" → `__set_bit` sets bits out of bounds on the `type_filter` bitmap (writing 0x30a goes OOB by 20 bytes). The exploitation is the exact same shape as CVE-2021-22555 (OOB followed by the msg_msg chain; the post says outright it "creates the same situation as the CVE-2021-22555 write-up"). Fix: the `WATCH_TYPE__NR` constant unifies both bounds (+ bitmap_free added on the free path).
 **Pattern**: the same constraint expressed with different expressions at the "counting" and "using" sites — **a constant inconsistency is by itself sufficient for a bug**; when reviewing code, diff the two loops first.

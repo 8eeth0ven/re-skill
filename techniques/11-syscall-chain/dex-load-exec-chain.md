@@ -7,17 +7,17 @@
 ## 0. Overview timeline (build the panorama first)
 
 ```text
-[安装期]  apk 安装 → pm/installd → dex2oat → /data/app/*/oat/<arch>/base.{odex,vdex}(链5)
-[加载期]  ClassLoader 构造(链1 上半)
-            └→ DexFile.loadDex/构造 → native openDexFileNative → OatFileAssistant 查 odex/vdex
-                 └→ 都没有 → DexFileLoader/MapRootContainer → MemMap::MapFile → mmap(svc,链1 内核段)
-                      └→ DexFile 对象(begin_/size_)→ ClassLinker::RegisterDexFile → DexCache 互链
-[类期]    Class.forName/loadClass → DexFile.loadClass → DefineClass(链2)
-            └→ class_def 解析 → mirror::Class → ArtMethod 数组 → Link/Verify → clinit
-[执行期]  invoke → entry_point_from_quick_compiled_code_(链3)
-            ├→ nterp 解释(A12+) / mterp(A7-A11) / switch 兜底
+[Installation] apk install → pm/installd → dex2oat → /data/app/*/oat/<arch>/base.{odex,vdex}(chain 5)
+[Loading]      Construct ClassLoader(upper half of chain 1)
+                 └→ DexFile.loadDex/constructor → native openDexFileNative → OatFileAssistant checks odex/vdex
+                      └→ Neither exists → DexFileLoader/MapRootContainer → MemMap::MapFile → mmap(svc, kernel part of chain 1)
+                           └→ DexFile object(begin_/size_)→ ClassLinker::RegisterDexFile → link DexCache
+[Class phase]  Class.forName/loadClass → DexFile.loadClass → DefineClass(chain 2)
+                 └→ Parse class_def → mirror::Class → ArtMethod array → Link/Verify → clinit
+[Execution]    invoke → entry_point_from_quick_compiled_code_(chain 3)
+                 ├→ nterp interpreter(A12+) / mterp(A7-A11) / switch fallback
             ├→ JIT/AOT quick code
-            └→ JNI(链4:System.loadLibrary→dlopen→JNI_OnLoad→RegisterNatives→entry_point_from_jni_)
+                 └→ JNI(chain 4: System.loadLibrary→dlopen→JNI_OnLoad→RegisterNatives→entry_point_from_jni_)
 ```
 
 ## Chain 1: the full chain of APK -> DEX entering memory
@@ -48,15 +48,15 @@
 File-path dex (classes.dex inside the APK / standalone .dex) all eventually reach:
 
 ```text
-ArtDexFileLoader(dex_location).Open(...)            [源码·main runtime/oat/oat_file_manager.cc]
-  └→ DexFileLoader::MapRootContainer()              [源码·main libdexfile/dex/dex_file_loader.cc:324]
-       └→ fstat(fd) 取 size
+ArtDexFileLoader(dex_location).Open(...)            [source: main runtime/oat/oat_file_manager.cc]
+  └→ DexFileLoader::MapRootContainer()              [source: main libdexfile/dex/dex_file_loader.cc:324]
+       └→ fstat(fd) obtains size
        └→ MemMap::MapFile(size, PROT_READ, MAP_PRIVATE, fd, 0, ...)
-            └→ bionic mmap(纯 syscall 包装,无用户态加工)
-                 └→ svc #0, x8=__NR_mmap(arm64=222;arm32 走 mmap2=192)
+            └→ bionic mmap(pure syscall wrapper, no user-space processing)
+                 └→ svc #0, x8=__NR_mmap(arm64=222; arm32 uses mmap2=192)
                       └→ sys_mmap → ksys_mmap_pgoff → vm_mmap_pgoff → mmap_region
-                           ├→ call_mmap(f_op->mmap:ext4/generic_file_mmap、f2fs_file_mmap)→ 建页缓存映射
-                           └→ 真实数据读在**缺页时**:filemap_fault → readahead(内核细节以 GKI 5.x/6.x 为准)
+                           ├→ call_mmap(f_op->mmap: ext4/generic_file_mmap, f2fs_file_mmap)→ establish page-cache mapping
+                           └→ Actual reads occur **on page faults**: filemap_fault → readahead(kernel details depend on GKI 5.x/6.x)
 ```
 - The key meaning of `MAP_PRIVATE`: copy-on-write. The packer mmaps the encrypted dex in, then mprotect+w decrypts it in memory - the on-disk APK never changes - **a memory dump gets the decrypted state**; this is the kernel-level basis for the observable plaintext window between "after mmap, before constructing the DexFile".
 - bionic has no intermediate layer here: mmap goes straight to `__NR_mmap`, no libc buffering (unlike the fread/fopen family), so syscall-layer observation never misses.
@@ -107,8 +107,8 @@ Corollary: when the whole packer goes through InMemoryDexClassLoader, **there is
 Class.forName(name, initialize, loader)
   └→ loader.loadClass → BaseDexClassLoader.findClass
        └→ DexPathList.findClass → Element→DexFile.loadClass
-            └→ DexFile.defineClass(native: DexFile_defineClassNative,自 cookie 取 DexFile*)
-                 └→ ClassLinker::DefineClass(...)          ← 脱壳经典挂点
+            └→ DexFile.defineClass(native: DexFile_defineClassNative; obtain DexFile* from cookie)
+                 └→ ClassLinker::DefineClass(...)          ← standard unpacking hook point
 ```
 
 ### 2.2 DefineClass's signature and argument position (version table)
@@ -195,7 +195,7 @@ Dispatch details: at invoke time, unresolved quick entries go through the resolu
 | `ExecuteNterpImpl` | eBPF uprobe | x0=ArtMethod | A13 has no separate WithClinit variant; A15+ Execute inlining doesn't affect this point |
 | all `nterp_op_invoke_*` sites | eBPF uprobe | PARM1=ArtMethod | covers the invoke blind spots inside nterp (the eBPF Go technique) |
 | quick code entries | inline hook (frida Interceptor/Dobby) | hook the JIT/AOT code head | JIT code lives in anonymous regions whose addresses shift on reclamation - **a saved hook target may expire at any time** |
-| Stalker following JIT code | frida | translate the compiled code | big pitfall: the JIT region has no symbols and blocks get moved - `Stalker.exclude` the irrelevant regions + unfollow/GC promptly (02 区advanced/stalker.md) |
+| Stalker following JIT code | frida | translate the compiled code | big pitfall: the JIT region has no symbols and blocks get moved - `Stalker.exclude` irrelevant regions + unfollow/GC promptly (see ../02-frida/advanced/stalker.md) |
 | `ArtMethod::Invoke` | frida/eBPF | args: x0=this, x1=self, x2=args, x3=args_size, x4=result, x5=shorty | covers only the reflection/bridge paths - **incomplete** |
 
 ### 3.5 The unpacking view: the optimal interception layer for the three packer types (summary table)
@@ -213,20 +213,20 @@ Dispatch details: at invoke time, unresolved quick entries go through the resolu
 ```text
 System.loadLibrary("foo")
   └→ Runtime.loadLibrary0(name, classLoader)                    [libcore]
-       └→ ClassLoader.findLibrary → nativeLibraryDirectories 拼 libfoo.so 路径
+       └→ ClassLoader.findLibrary → nativeLibraryDirectories constructs libfoo.so path
        └→ Runtime.nativeLoad(filename, loader, caller)          [libcore Runtime.java]
-            └→ Runtime_nativeLoad → JVM_NativeLoad              [源码·A13 libcore/ojluni/src/main/native/Runtime.c:77
-                                                                 仅薄桥;A8 老版在 art/runtime/native/java_lang_Runtime.cc]
+            └→ Runtime_nativeLoad → JVM_NativeLoad              [source: A13 libcore/ojluni/src/main/native/Runtime.c:77;
+                                                                 thin bridge only; A8 used art/runtime/native/java_lang_Runtime.cc]
                  └→ JavaVMExt::LoadNativeLibrary(env, path, class_loader, caller_class, error_msg)
-                                                                 [源码·A13 runtime/jni/java_vm_ext.cc:921;
-                                                                  ≤A11 在 runtime/java_vm_ext.cc,目录差异注意]
-                      ├→ libraries_ 表查重(同 loader 直接复用)
+                                                                 [source: A13 runtime/jni/java_vm_ext.cc:921;
+                                                                  ≤A11 used runtime/java_vm_ext.cc; note directory differences]
+                      ├→ Deduplicate in libraries_ table(reuse directly for same loader)
                       └→ android::OpenNativeLibrary(env, targetSdk, path, class_loader, caller_location, library_path, ...)
-                           [libnativeloader:按 ClassLoader namespace 隔离做可见性管控]
-                           └→ linker dlopen/android_dlopen_ext → soinfo 链接重定位
-                                └→ call_constructors(init_array/DT_INIT)      ← 反调试常埋这里(语料:call_constructors 时机帖)
+                           [libnativeloader: ClassLoader namespace isolation controls visibility]
+                           └→ linker dlopen/android_dlopen_ext → soinfo linking/relocation
+                                └→ call_constructors(init_array/DT_INIT) ← anti-debug logic often starts here(corpus: call_constructors timing case)
                                      └→ dlsym("JNI_OnLoad") → JNI_OnLoad(vm, reserved)
-                                          └→(壳/正常代码)env->RegisterNatives(clazz, methods, n)
+                                          └→(packer/ordinary code)env->RegisterNatives(clazz, methods, n)
 ```
 
 The so file's own path into memory (openat->read->mmap PROT_EXEC) is referenced from `../09-function-map/android-function-layers.md` L3-L5; the linker-side full timeline (dlopen->relocation->call_constructors->the JNI_OnLoad injection race) already has a dedicated piece in the same area - see process-memory-chain.md chain 2; not repeated here; soinfo structures/dumping referenced from `../03-unpacking/so-repair-dump.md`.
@@ -245,11 +245,11 @@ The so file's own path into memory (openat->read->mmap PROT_EXEC) is referenced 
 
 | Observation point | Tool | Shape | Notes |
 |---|---|---|---|
-| `art::JNI::RegisterNatives` | frida (02 区 native层hook速查 sec.1.14 full code) | args[2]=methods, args[3]=count; walk reading name/sig/fnPtr | the main point for symbol recovery of dynamic registrations |
+| `art::JNI::RegisterNatives` | frida (../02-frida/native-hook-cheatsheet.md §1.14 has full code) | args[2]=methods, args[3]=count; walk reading name/sig/fnPtr | the main point for symbol recovery of dynamic registrations |
 | the same, eBPF edition | uprobe | x2/x3 same shape; use TGID for after-the-fact maps resolution | the eBPF piece sec.3.3 three-tier offset identification |
 | `JavaVMExt::LoadNativeLibrary` | frida | x2=the path string | catches the path of a self-decrypting so before it lands |
-| linker `dlopen`/`android_dlopen_ext` | frida/inline | returns soinfo* | pairs with soListRemove/unlinking confrontation (02 区) |
-| `call_constructors`/init_array | inline | per constructor | anti-debug init timing (06 区 corpus) |
+| linker `dlopen`/`android_dlopen_ext` | frida/inline | returns soinfo* | pairs with soListRemove/unlinking analysis (area 02) |
+| `call_constructors`/init_array | inline | per constructor | anti-debug initialization timing (corpus cases) |
 | the `JniDlsymLookup` stub | uprobe | the lazy-registration backstop | the supplementary catch point for statically-registered packers |
 
 ## Chain 5: the OAT/VDEX/ART service chain (condensed)
@@ -266,12 +266,12 @@ The so file's own path into memory (openat->read->mmap PROT_EXEC) is referenced 
 Inside `OatFileManager::OpenDexFilesFromOat` via OatFileAssistant:
 
 ```text
-尝试 odex(oat/<arch>/base.odex,含 quickened/compiled 代码)
-  ↓ 不匹配/缺失
-尝试 vdex(base.vdex:装着 dex(常为 cdex)+校验信息)
-  ↓ 不匹配/缺失
-fallback:ArtDexFileLoader(dex_location).Open(...)   ← 直接从 APK mmap 原始 dex(链1.3 的 mmap 点)
-最后:Jit->RegisterDexFiles(...) + Runtime::NotifyDexFileLoaded()   [源码·main oat_file_manager.cc:466-494]
+Try odex(oat/<arch>/base.odex; contains quickened/compiled code)
+  ↓ Mismatch/missing
+Try vdex(base.vdex: contains dex, often cdex, plus validation information)
+  ↓ Mismatch/missing
+fallback: ArtDexFileLoader(dex_location).Open(...) ← mmap original DEX directly from APK(chain 1.3 mmap point)
+Finally: Jit->RegisterDexFiles(...) + Runtime::NotifyDexFileLoaded() [source: main oat_file_manager.cc:466-494]
 ```
 - Anonymous-memory dex can also come with an **anonymous vdex**: `AnonymousDexVdexLocation` + `VdexFile::Open` + `MatchesDexFileChecksums` (reused only when checksums match, skipping structural validation) [source:main oat_file_:533-600] - the AOT cache channel for InMemory dex;
 - Corollary: whether the same APK "has odex/vdex" changes the first plaintext location the process sees (mmap of the APK directly vs mapping from vdex) - before dumping, check `--clean-oat` (the principle behind eBPFDexDumper deleting the oat directory by default to prevent cdex/empty results).

@@ -20,22 +20,22 @@ Three leitmotifs run through the whole text:
 V8 executes in two tiers: `Parser→AST→Ignition interpreter` generates bytecode and runs it while background threads collect **type feedback**; once a function gets hot, TurboFan optimizes the bytecode into machine code based on that feedback. Pipeline:
 
 ```
-BytecodeGraphBuilder   字节码 → sea-of-nodes 图
-InliningPhase          函数内联展开
-TyperPhase             遍历全图,给每个节点标注类型/Range
-TypedLoweringPhase     按 Typer 结果把 JS 节点降为 Simplified 节点(删检查从这里开始)
-LoadEliminationPhase   消除"冗余"Load
-EscapeAnalysisPhase    逃逸分析
-SimplifiedLoweringPhase 表示选择(int32/float64/tagged)+ 最终降级
-GenericLoweringPhase   剩余 JS 运算降为 Runtime/Builtin/IC 调用
+BytecodeGraphBuilder   Bytecode → sea-of-nodes graph
+InliningPhase          Expand function inlining
+TyperPhase             Walk the graph and annotate each node with a type/Range
+TypedLoweringPhase     Lower JS nodes to Simplified nodes using Typer results (check elimination begins here)
+LoadEliminationPhase   Eliminate redundant loads
+EscapeAnalysisPhase    Escape analysis
+SimplifiedLoweringPhase Representation selection (int32/float64/tagged) + final lowering
+GenericLoweringPhase   Lower remaining JS operations to Runtime/Builtin/IC calls
 ```
 
 Only two mechanisms actually provide safety: **CheckXxx nodes at the entries** (CheckBounds/CheckMaps/CheckNumber…) and **runtime deopt** — the `wrong map` bail out in `--trace-deopt` is it. The safety of the entire system rides on one assumption:
 
 ```
-编译期假设 = 运行期事实
-反馈说参数恒为 int32 → 砍掉类型检查,加法直接编译成 add 指令
-运行时发现类型变了  → deopt 回解释器,恢复完整检查
+Compile-time assumptions = runtime facts
+Feedback says parameters are always int32 → remove type checks and compile addition to an add instruction
+If types change at runtime → deopt to the interpreter and restore full checks
 ```
 
 If the optimized code, upon meeting an illegal input, **fails to deopt correctly, or never scheduled a deopt at all**, that code gets used wrongly. The deopt safety net itself fails in three ways, each mapping to a class of real precedents:
@@ -60,9 +60,9 @@ V8 gives every object a hidden class **Map** (i.e., its shape): it describes "wh
 Fast, because **one Map comparison replaces one full lookup**; dangerous, because **after the comparison the engine unconditionally trusts the offset semantics**:
 
 ```
-// IC handler 伪代码(本质)
-if (obj->map == cached_map)          // 唯一的检查
-    return load(obj, cached_offset); // 之后零校验
+// IC handler pseudocode (essential behavior)
+if (obj->map == cached_map)          // The only check
+    return load(obj, cached_offset); // No further validation afterward
 ```
 
 Issue 1203122 (LoadSuperIC type confusion) is precisely this check being misplaced: in a super property access, the IC hit validates the Map of `lookup_start_object`, while the value-fetch offset applies to a differently laid-out object — `B.__proto__` is rewritable from the JS layer, decoupling `receiver`'s memory layout from `lookup_start_object`'s. The author's own words are clearest: **offset +10 in object A is a number, offset +10 in object B is an object address; expect A but actually get B, and the pointer at B+10 is returned as a number (info leak); the other way around, a number gets returned as an object pointer (fake object)**. Hence:
@@ -76,13 +76,13 @@ Issue 1203122 (LoadSuperIC type confusion) is precisely this check being misplac
 CheckBounds is the gatekeeper of array accesses. Once Typer computes a Range for the index node and `Range ⊆ [0, length)`, TypedLowering/SimplifiedLowering will outright **delete the check node**. Using the GoogleCTF2018 JIT problem (DuplicateAdditionReducer) to demonstrate the canonical shape of this class:
 
 ```
-源码层:  double_array[t + 1 + 1]
-Typer :  CheckBounds(index: Range(2,3), length=4)   → 判定恒安全 → 删除检查
-TypedLowering: (t+1)+1 被重写为 t+2                   ← 未重算 Range!
-运行期: t = MAX_SAFE_INTEGER+1 时,(t+1)+1 ≠ t+2
-        (IEEE754:9007199254740991+1 = ...992,再+1 仍是 ...992;
-         而一次 +2 会得到不同的最近可表示数)
-结果 :  索引实际为 4/5,检查已不存在 → OOB 读写
+Source: double_array[t + 1 + 1]
+Typer: CheckBounds(index: Range(2,3), length=4) → considered always safe → check removed
+TypedLowering: (t+1)+1 is rewritten to t+2 ← Range was not recalculated
+Runtime: when t = MAX_SAFE_INTEGER+1, (t+1)+1 ≠ t+2
+        (IEEE754: 9007199254740991+1 = ...992; adding 1 again still yields ...992;
+         adding 2 in a single operation selects a different nearest representable number)
+Result: actual index is 4/5, but the check no longer exists → OOB read/write
 ```
 
 Root cause in one line: **the check was based on "the old expression's Range"; a later pass rewrote the expression without owning the responsibility of recomputing every affected safety predicate**. The more optimization passes (TurboFan has 30+), the larger the combinatorial space of "rewrite–check desynchronization". CVE-2021-30632 belongs to the same class: StoreStoreElimination judged a store carrying a **Map-migration side effect** as a redundant store and deleted it — what was deleted was not just "the write" but "the shape change" itself; later code writes the old Map's array per the new Map's layout (elements-kind mismatch), a direct OOB write. Local CTF precedent: starctf2019 oob (an artificially added builtin OOB; the practice target for exactly this exploitation template).
@@ -94,12 +94,12 @@ The range analysis itself computes wrong — no need to even fool the check. Two
 **CVE-2021-21224 (issue 1195777)**:
 
 ```
-源码:  let x = -1; if (b) x = 0xFFFFFFFF;
+Source: let x = -1; if (b) x = 0xFFFFFFFF;
        return -1 < Math.max(0, x, -1);
-Phi 节点 Range(-1, 4294967295)
+Phi node Range(-1, 4294967295)
 SimplifiedLowering: Float64 → ChangeFloat64ToInt64 → TruncateInt64ToInt32
-    4294967295 (0xFFFFFFFF) 截断成 int32 = -1
-比较被选为 Int32LessThan:-1 < -1 → false(正确语义应为 unsigned: 4294967295 > -1 → true)
+    4294967295 (0xFFFFFFFF) truncates to int32 = -1
+Int32LessThan is selected: -1 < -1 → false (the intended comparison has 4294967295 > -1 → true)
 ```
 
 Root cause: 0xFFFFFFFF is **Unsigned32** under JS semantics, but the truncation node interprets it as signed — **truncation and comparison (signedness) are two dimensions out of sync**. The exploit amplifies it in one line: `new Array(Math.sign(0 - Math.max(0,x,-1)))`; Typer believes the length is always 0 (a dead array), so `arr.shift()` is optimized into "decrement the length field directly", writing 0xFFFFFFFE; at runtime Math.sign returns 1, the array lives, and you get **an array of length 0xFFFFFFFF**.
@@ -107,13 +107,13 @@ Root cause: 0xFFFFFFFF is **Unsigned32** under JS semantics, but the truncation 
 **CVE-2020-16040 (issue 1150649)** — deeper down the same leitmotif: SimplifiedLowering's three phases (`Propagate→Retype→Lower`) communicate via `restriction_type`:
 
 ```
-Propagate: SpeculativeSafeIntegerAdd 被标记 truncate-to-word32
+Propagate: SpeculativeSafeIntegerAdd is marked truncate-to-word32
            → VisitBinop(..., kWord32, Type::Signed32())  // restriction = Signed32
-Retype   : feedback_type = Intersect(静态 Range(0, 0x80000000), Signed32)
-                                = Range(0, 0x7fffffff)      // 上界被"交集"砍掉
-Lower    : NumberLessThan 看到 Range(0,0x7fffffff) ⊆ Unsigned32
-           → 选择 Uint32LessThan(无符号比较)
-运行期  : y=0x7fffffff, (y+1)|0 = -0x80000000,按无符号比 0x80000000 < 0 = false
+Retype: feedback_type = Intersect(static Range(0, 0x80000000), Signed32)
+                              = Range(0, 0x7fffffff) // Intersection removes the upper bound
+Lower: NumberLessThan sees Range(0,0x7fffffff) ⊆ Unsigned32
+       → Selects Uint32LessThan (unsigned comparison)
+Runtime: y=0x7fffffff, (y+1)|0 = -0x80000000; unsigned comparison gives 0x80000000 < 0 = false
 ```
 
 The patch comment confesses the root cause itself: *"Using Signed32 as restriction type amounts to promising there won't be signed overflow. This is incompatible with relying on a Word32 truncation in order to skip the overflow check."* — **promising no overflow on one hand while relying on truncation to skip the overflow check on the other**: two mutually contradictory assumptions. This is the form "optimization and checks out of sync" takes inside the type system: for one and the same value, the truncation dimension thinks it is a word32, the range dimension thinks it is non-negative, and the comparison dimension picks unsigned.
@@ -129,8 +129,8 @@ Issue 1307610 is the cleanest specimen — a GC bug rather than a JIT bug, but t
 The JS engine object model: **a reference is a pointer; the engine decides how to interpret the bytes after the pointer by its Map — and checks nothing beyond that**. A JSArray in memory is four slots:
 
 ```
-[ map | properties | elements | length ]   // 16B(指针压缩后)
-   ↑ 类型解释权        ↑ 数据指针      ↑ 引擎读它做隐式边界
+[ map | properties | elements | length ]   // 16B after pointer compression
+   ↑ type interpretation   ↑ data pointer  ↑ implicit engine bounds
 ```
 
 So once an OOB read/write is in hand, the upgrade path is **deterministic** and needs no new bug:
@@ -138,14 +138,14 @@ So once an OOB read/write is in hand, the upgrade path is **deterministic** and 
 1. **Rewrite a neighboring array's length field** → the relative read/write expands to the entire heap page;
 2. **addrof / fakeobj primitives**: the template from the CVE-2021-38001 analysis post — flip an array's Map back and forth between "object-array Map" and "double-array Map":
    ```js
-   function addressOf(o){   // 期待对象数组:存的是指针
+   function addressOf(o){   // Expects an object array containing pointers
        setMap(evil, obj_array_map);  evil[0] = o;
-       setMap(evil, double_array_map);          // 同一块内存按 double 读
-       return ftoi(evil[0]); }                  // 指针 ← 当数字读出
-   function fakeobj(addr){ // 反向:数字被当指针
+       setMap(evil, double_array_map);          // Interpret the same memory as doubles
+       return ftoi(evil[0]); }                  // Read a pointer as a number
+   function fakeobj(addr){ // Reverse direction: interpret a number as a pointer
        setMap(evil, double_array_map); evil[0] = itof(addr);
        setMap(evil, obj_array_map);
-       return evil[0]; }                        // 引擎把它当对象用
+       return evil[0]; }                        // The engine uses it as an object
    ```
    Expecting layout A while given B = addrof; expecting B while given A = fakeobj — exactly the two directions of the §1.2 sentence.
 3. **Pointer compression helps skip the leak**: V8 reserves a 4GB cage and references store only the low 32 bits; with a fixed object-creation order → **the low-32-bit addresses of built-in Maps are constant within the same V8 build** (the map of `var array=[1.1]` is still 0x08203af9 after a restart). An attacker debugs once offline and hardcodes every Map address; ASLR's high 32 bits are eaten by the cage.
@@ -162,9 +162,9 @@ In one sentence: **the object model = unchecked pointers, so there is no moat be
 Plain data protocols (JSON without @type) transfer "values"; serialization protocols transfer "**instructions to instantiate types**" — that is the essential difference:
 
 ```
-Java 序列化流: AC ED 00 05 ... [类描述符(全限定名+字段表+ serialVersionUID)] [字段值]...
-               └── 反序列化端: 按描述符 Class.forName → newInstance → 反射逐字段赋值
-               └── Serializable 类还有自定义入口: readObject() —— 对象自己写的恢复逻辑
+Java serialized stream: AC ED 00 05 ... [class descriptor (fully qualified name+fields+serialVersionUID)] [field values]...
+               └── Deserializer: Class.forName from descriptor → newInstance → assign fields via reflection
+               └── Serializable classes may define readObject(), their own restoration entry
 ```
 
 So the equation holds: **the inbound byte stream = specifying "which classes to instantiate + which fields to feed"**. This is not an implementation bug; it is the protocol's design goal (faithfully reconstruct the object graph); the security boundary can only be retrofitted (allowlists/blocklists/look-ahead). The definition of a gadget follows from this: **a class on the classpath that happens to combine "controllable fields + concatenatable behavior in a lifecycle method"; chain several such classes head-to-tail into a call chain**.
@@ -172,10 +172,10 @@ So the equation holds: **the inbound byte stream = specifying "which classes to 
 The "type tag → execution" paths of three ecosystems side by side (three entrances of one root cause):
 
 ```
-Java 原生流 : 类描述符(全限定名) → Class.forName → newInstance → readObject(自定义入口)
-Fastjson    : {"@type":"类名"}    → autoType 反射 → setter/getter 链
-pickle      : REDUCE opcode       → 协议级指令   → 直接 callable(*args)
-              ↑ 三者都是"输入指定 callable + 参数",差别只在协议语法糖
+Native Java stream: class descriptor (fully qualified name) → Class.forName → newInstance → custom readObject
+Fastjson: {"@type":"类名"} → autoType reflection → setter/getter chain
+pickle: REDUCE opcode → protocol-level instructions → direct callable(*args)
+        ↑ All three allow input to select a callable and arguments; protocol syntax differs
 ```
 
 ### 2.2 The CC1 Chain: A Code-Level Root-Cause Dissection
@@ -183,17 +183,17 @@ pickle      : REDUCE opcode       → 协议级指令   → 直接 callable(*arg
 The Commons Collections 1 study notes dissect the chain down to method level — perfect for watching "how data becomes calls":
 
 ```
-入口(反序列化端自动触发,无需攻击者调用任何方法):
+Entry (automatically invoked by the deserializer, with no attacker method call required):
   AnnotationInvocationHandler.readObject()
-    → memberValues.entrySet() 遍历 → memberValue.setValue( mismatchProxy )
-      → AbstractInputCheckedMapDecorator.setValue()        // TransformedMap 的父类
+    → Walk memberValues.entrySet() → memberValue.setValue(mismatchProxy)
+      → AbstractInputCheckedMapDecorator.setValue() // Parent class of TransformedMap
         → checkSetValue(value)
-          → valueTransformer.transform(value)              // valueTransformer 是字段!
+          → valueTransformer.transform(value) // valueTransformer is a field
             → ChainedTransformer.transform(): for (i) object = transformers[i].transform(object)
-                ① ConstantTransformer(Runtime.class)        // 无视输入,固定返回 Runtime.class
-                ② InvokerTransformer("getMethod",…).transform(①) // 反射: getMethod("getRuntime")
-                ③ InvokerTransformer("invoke",…).transform(②)   // 反射: invoke(null) → Runtime 实例
-                ④ InvokerTransformer("exec",…).transform(③)     // 反射: exec("calc")
+                ① ConstantTransformer(Runtime.class) // Ignores input and always returns Runtime.class
+                ② InvokerTransformer("getMethod",…).transform(①) // Reflection: getMethod("getRuntime")
+                ③ InvokerTransformer("invoke",…).transform(②) // Reflection: invoke(null) → Runtime instance
+                ④ InvokerTransformer("exec",…).transform(③) // Reflection: exec("calc")
 ```
 
 Look at the root cause, not the chain: **every link is "legitimate code written by library authors"** — InvokerTransformer's transform is precisely a public "configurable reflective call" API; calling setValue inside AnnotationInvocationHandler.readObject is normal recovery logic. The bug lives in no single line; it lives in **deserialization handing the right to "choose these classes, configure these fields" to the remote end**. This also explains the methodology of chain hunting: from a dangerous sink's `transform()`, Find Usages backward, specifically hunting callers with **different method names**, all the way to some class's `readObject()` — essentially a reachability search over the classpath.
@@ -220,8 +220,8 @@ malloc's three design goals: throughput (O(1) allocation), low fragmentation, lo
 The heap chunk's memory layout is the root cause itself:
 
 ```
-chunk 头: [ prev_size | size | fd | bk | ... ]   ← 分配器赖以工作的元数据
-用户区:   [ attacker 可完全控制的数据 ....... ]   ← 紧贴着元数据
+Chunk header: [ prev_size | size | fd | bk | ... ] ← Metadata consumed by the allocator
+User area:    [ fully attacker-controlled data .... ] ← Adjacent to allocator metadata
 ```
 
 **Metadata and user data share the heap and share trust**: any overflow/off-by-one/UAF lands first on the neighbor's metadata. DWORD SHOOT: after the old-style unlink check passes, it executes `FD->bk = BK; BK->fd = FD` — **the allocator places "the write address of a pointer field" inside a pointer that can itself be tampered with**; one overflow equals one "write arbitrary address ← semi-controlled value" primitive. Modern checks sealed this road, but the pattern didn't change — it just moved to tcache.
@@ -232,12 +232,12 @@ glibc 2.26 introduced tcache (structure and CTF problem analysis posts):
 
 ```c
 typedef struct tcache_entry {
-    struct tcache_entry *next;   // 指向下一个空闲 chunk 的用户区
-    void *key;                   // 2.29+: double-free 检测
+    struct tcache_entry *next;   // Points to the user area of the next free chunk
+    void *key;                   // 2.29+: double-free detection
 } tcache_entry;
-// 每 thread 64 条单链(按 size class),每链最多 7 个
-// free: 命中尺寸 → 头插;tcache 满 → 走 fastbin/unsorted
-// malloc: 优先 tcache → 头弹
+// Each thread: 64 singly linked size-class lists, at most 7 entries each
+// free: matching size → insert at head; full tcache → fastbin/unsorted
+// malloc: prefer tcache → remove from head
 ```
 
 Why LIFO is the "blessing":
@@ -265,14 +265,14 @@ Since glibc 2.32, `next` is no longer stored in plaintext: `PROTECT_PTR(pos, ptr
 - **The GC's own correctness is the new attack surface**: Issue 1307610's root-cause chain —
   ```
   RegExpUtils::SetLastIndex():
-      NewNumberFromInt64(last_index)          // > SMI 上限 → 分配 HeapNumber(new space)
+      NewNumberFromInt64(last_index) // Above the SMI limit → allocate HeapNumber in new space
       JSRegExp::cast(recv).set_last_index(v, SKIP_WRITE_BARRIER)
-                                             // ↑ BUG:old→new 引用未记录 write barrier
-  后续:regexp 对象进 old space;minor GC(scavenge)移动/回收 new space 的 HeapNumber
-       —— GC 的 remembered set 里没有这条边 → 不会更新 re.lastIndex → 悬垂指针
-  利用:UAF 后用浮点数组回填原地址,内容 = [map|properties|elements|length] 十六字节
-       (低 32 位地址因指针压缩+固定分配顺序而可预知,§1.4)
-       再引用 re.lastIndex → 引擎按 map 解释为 JSArray → 任意读写
+                                             // BUG: the old→new reference lacks a write barrier
+  Later: regexp moves to old space; minor GC (scavenge) moves/reclaims the HeapNumber in new space
+         The remembered set lacks this edge → re.lastIndex is not updated → dangling pointer
+  Exploitation: after UAF, reclaim the address with a double array containing the 16-byte [map|properties|elements|length] layout
+         (Low 32 address bits are predictable from pointer compression and deterministic allocation order, §1.4)
+         Reference re.lastIndex again → the engine interprets it as a JSArray using map → arbitrary read/write
   ```
   The patch is one line: `SKIP_WRITE_BARRIER` → `UPDATE_WRITE_BARRIER`. **The GC-bug template: decouple the "reachability graph" from the "real reference graph" (a missed barrier / weak refs / finalizer timing), and the GC frees a still-living object for you** — the cause of the UAF shifts from "forgot to free" to "the GC's graph was polluted"; CVE-2021-37975 is the same family.
 - **Heap-layout determinism backfires**: generational GC/compaction makes object addresses "predictable" (rerun the same script, the object's compressed address is unchanged), saving the attacker even the leak.

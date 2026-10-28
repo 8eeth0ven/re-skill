@@ -4,11 +4,11 @@
 ## 1. MQTT protocol security
 
 ```
-Publisher ──PUBLISH(topic)──► Broker(1883/8883) ──推送──► Subscriber
+Publisher ──PUBLISH(topic)──► Broker(1883/8883) ──push──► Subscriber
                                  │
-                                 ├─ 认证:匿名/弱口令/anyclean 常见默认
-                                 ├─ ACL:topic 级权限,`#` 通配订阅=全量窃听
-                                 └─ topic 本身即路由:无需预创建,谁都能 pub/sub
+                                 ├─ Authentication: anonymous/weak passwords/anyclean as a common default
+                                 ├─ ACL: topic-level authorization; `#` wildcard subscriptions receive all topics
+                                 └─ Topics provide routing without pre-creation; any client may pub/sub if access is unrestricted
 ```
 
 - "The Cornerstone of the IoT: a First Look at the mqtt Protocol" (the protocol's three roles / the topic mechanism)
@@ -26,10 +26,10 @@ The REST protocol for constrained devices (UDP 5683); `.well-known/core` open by
 ### 3.1 Family mechanics
 
 ```
-扫描器(telnet 23/2323 弱口令表+CVE 表) → 感染 → 下载对应架构 payload
-(busybox wget/tftp) → 运行 → 上报 C2(域名硬编码) → 加入 DDoS/挖矿/代理
-架构表:x86 x64 ARM ARM5 ARM6 ARM7 MIPS MIPSel PPC SPARC SH4 M68K
-反调试:watchdog 喂狗线程 + ptrace(PTRACE_TRACEME) 自挂
+Scanner (telnet 23/2323 weak-password list + CVE list) → infection → download architecture-specific payload
+(busybox wget/tftp) → execute → report to C2 (hardcoded domain) → join DDoS/mining/proxy operations
+Architectures: x86 x64 ARM ARM5 ARM6 ARM7 MIPS MIPSel PPC SPARC SH4 M68K
+Anti-debugging: watchdog-feeding thread + self-attach with ptrace(PTRACE_TRACEME)
 ```
 
 (flow reconstructed from the Mirai source structure)

@@ -194,13 +194,13 @@ Other weaponization material (from user materials, not item-verified): BTR Refor
 Typical Token Stealing flow (once you have arbitrary read):
 
 ```
-1. NtQuerySystemInformation(SystemProcessorInformation 无关,用
-   SystemProcessInformation 或注册表/句柄) → 拿 SYSTEM 进程 PID
-2. PsInitialSystemProcess(内核导出) → SYSTEM _EPROCESS 基址
-3. 读 SYSTEM 进程 EPROCESS + Token 偏移 → Token 指针
-4. 定位自身 _EPROCESS(_KPROCESS/ApcState 或遍历 ActiveProcessLinks)
-5. 写 SYSTEM Token 指针到自身 EPROCESS.Token → 完成
-（WinDbg 验证：!process 0 0 对比 Token 值）
+1. NtQuerySystemInformation: use SystemProcessInformation, not SystemProcessorInformation;
+   alternatively inspect registry/handle data -> obtain the SYSTEM process PID
+2. PsInitialSystemProcess (kernel export) -> SYSTEM _EPROCESS base
+3. Read SYSTEM EPROCESS + Token offset -> token pointer
+4. Locate the current process's _EPROCESS through _KPROCESS/ApcState or ActiveProcessLinks
+5. Write the SYSTEM token pointer to the current EPROCESS.Token
+   Validate with WinDbg: compare token values through !process 0 0
 ```
 
 ### 4.5 What to look at first when migrating from Android reversing
@@ -223,9 +223,9 @@ Debugger cheat commands:
 ```
 Linux   : target: kgdboc=ttyS0,115200 nokaslr    host: gdb vmlinux → target remote /dev/ttyS0
 Windows : target: bcdedit /debug on; bcdedit /dbgsettings serial debugport:1 baudrate:115200
-          host: windbg -k com:port=\\.\pipe\com_1,baud=115200,pipe （Hyper-V/VMware 管道）
-          符号: set _NT_SYMBOL_PATH=srv*C:\symbols*https://msdl.microsoft.com/download/symbols
-macOS/iOS: lldb → kdp-remote udp://192.168.x.x:41139 （目标 boot-args 含 debug=0x144/kdpi=1）
+          host: windbg -k com:port=\\.\pipe\com_1,baud=115200,pipe (Hyper-V/VMware pipe)
+          symbols: set _NT_SYMBOL_PATH=srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+macOS/iOS: lldb -> kdp-remote udp://192.168.x.x:41139 (target boot-args include debug=0x144/kdpi=1)
 ```
 
 ## 6. Kernel toolchain panorama
@@ -248,14 +248,14 @@ Main line: **build the foundation on Linux first (the reference frame for every 
 
 ```
 Linux                Android              iOS                  Windows
-syzkaller+KASAN  →   GKI 符号 +       →   IPSW 提取 +      →   WinDbg 双机 +
-找 crash/复现        Binder/Futex         ipsw 符号恢复        EPROCESS 结构
-    ↓                适配已公开 CVE        vm_map/IOKit/XPC     Token Stealing
-slab/UAF 原语                             PAC/KTRR 对抗        BYOVD + IOCTL
-    ↓                主战场：逆向          (Mach IPC 嗅觉       METHOD_NEITHER
-futex/io_uring 竞态  对抗 + 提权          来自 Binder)         任意读写
+syzkaller+KASAN  ->  GKI symbols +       -> IPSW extraction +  -> two-machine WinDbg +
+crash/reproduce     Binder/Futex           ipsw symbol recovery  EPROCESS structure
+    |               adapt public CVEs     vm_map/IOKit/XPC       Token Stealing
+slab/UAF primitives                        PAC/KTRR bypass       BYOVD + IOCTL
+    |               primary focus:        (Mach IPC insight     METHOD_NEITHER
+futex/io_uring races RE + privilege gain    transfers from Binder) arbitrary read/write
     ↓
-任意读写 → cred
+arbitrary read/write -> cred
 (commit_creds)
 ```
 - **First stop, Linux**: syzkaller + KASAN grinds out crashes -> stable reproduction -> understand slab and UAF primitives via -> futex/io_uring races -> arbitrary read/write -> finish with `commit_creds`. This route walks the full concept chain of "memory error -> privilege escalation".

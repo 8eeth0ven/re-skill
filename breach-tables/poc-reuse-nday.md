@@ -1,8 +1,8 @@
-# Breach Table: PoC Reuse & N-day Playbooks (Distilled from PoC-in-GitHub)
+# Vulnerability Validation Table: PoC Reuse & N-day Playbooks (Distilled from PoC-in-GitHub)
 
-> The master index is at `../breach-tables-cve.md`; this piece takes over the "reference already-weaponized bugs" step after target selection. Ammunition source: nomi-sec/PoC-in-GitHub (GitHub PoC repos aggregated per CVE number, yearly volumes 1999-2026, one json per CVE = the GitHub search results). In 2026-10, a full pass filtered 873 RE-relevant CVEs/1403 repos for 2023-2026, verified repo by repo and distilled; purely web/CMS/logic surfaces excluded. Usage: **before attacking a new surface, check for existing PoCs on the same surface as templates; when tracking new patches, hunt bypasses per §1.3; copy the §3 standard parts for the report's reproduction environment**.
+> The master index is at `../breach-tables-cve.md`; this piece takes over the "reuse existing vulnerability PoCs" step after target selection. PoC source: nomi-sec/PoC-in-GitHub (GitHub PoC repos aggregated per CVE number, yearly volumes 1999-2026, one json per CVE = the GitHub search results). In 2026-10, a full pass filtered 873 RE-relevant CVEs/1403 repos for 2023-2026, verified repo by repo and distilled; purely web/CMS/logic surfaces excluded. Usage: **before testing a new surface, check for existing PoCs on the same surface as templates; when tracking new patches, hunt bypasses per §1.3; copy the §3 standard parts for the report's reproduction environment**.
 
-## 0. Using the Ammunition Source and Real-vs-Fake
+## 0. Using the PoC Source and Assessing Evidence
 
 | Step | How | Key points |
 | --- | --- | --- |
@@ -47,7 +47,7 @@
 
 | Bucket | Hotspots | One-line playbook |
 | --- | --- | --- |
-| linux-kernel (168) | io_uring > nf_tables transactions/refcounts > the page-cache family > legacy protocols (DECnet/SCTP/vsock/kTLS, zero fuzzing) > futex/binder | After `unshare -rUn`, nftables is the unprivileged entrance; 44% are same-year new bugs — the weaponization window is razor thin |
+| linux-kernel (168) | io_uring > nf_tables transactions/refcounts > the page-cache family > legacy protocols (DECnet/SCTP/vsock/kTLS, zero fuzzing) > futex/binder | After `unshare -rUn`, nftables is the unprivileged entrance; 44% are same-year new bugs — the interval before public exploit availability is very short |
 | iot-firmware (243) | Cisco 28 > Ivanti 26 > Fortinet 23 > TP-Link 21 > F5 19; shapes: injection 58 > auth bypass 28 > unauthenticated 26 > overflow 19 | **1/4 only count post-authentication**: the three escalation paths = pair with an auth-bypass/default credentials/WAN-side surface |
 | binary-pwn (146) | nginx double-evaluation > Windows services > Apple drivers > kernels > language-runtime native layers (PHP/CPython/jq/OCaml) | Interpreter/JIT intermediate-code OOB = the new generation of high-level-language heap overflows |
 | browser-v8 (96) | Genuine-engine class ~46% (V8 19/WebKit 13/Blink 13/Firefox 11); only 3 fullchains, concentrated in two author lineages | In-cage ARW is only half the journey; three exits: leftover wasm RWX / an SBX-bypass chain / deopt non-compressed pointers |

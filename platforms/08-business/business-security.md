@@ -1,6 +1,6 @@
 # Business Security Knowledge System (tree node 1001236)
 
-> Division of labor: this machine already holds two canonical references on business security — `~/.zcode/skills/skill/知识库/cn-business-security.md` (Wooyun's ten-category taxonomy + China-specific scenarios) and `race-condition-test.md` (race/logic actions) plus `h1-高危害专项-业务逻辑与竞态资损.md` (international-platform perspective). This document acts as the **system-level overview**: it chains them into a complete map from the knowledge-base perspective, fills in the four blank areas — black/gray industry, risk control, data compliance, and the SRC ecosystem — and does not re-copy testing details.
+> Division of labor: this machine already holds two canonical references on business security — `~/.zcode/skills/skill/知识库/cn-business-security.md` (Wooyun's ten-category taxonomy + China-specific scenarios) and `~/.zcode/skills/skill/知识库/race-condition-test.md` (race/logic actions) plus `~/.zcode/skills/skill/知识库/h1-高危害专项-业务逻辑与竞态资损.md` (international-platform perspective). This document acts as the **system-level overview**: it chains them into a complete map from the knowledge-base perspective, fills in the four blank areas — black/gray industry, risk control, data compliance, and the SRC ecosystem — and does not re-copy testing details.
 > The business security node [1000973] in the WEB security tree covers the same topic and is absorbed into this document.
 
 ---
@@ -13,22 +13,22 @@
 
 | Subcategory | High-frequency scenarios | Cross-links |
 |------|---------|------|
-| Broken access control (horizontal/vertical/IDOR) | Object IDs queried directly without owner checks; missing endpoint authorization | `~/.zcode/skills/skill/知识库/idor-test.md` + `idor-supplement.md`; escalate to ATO → `h1-高危害专项-IDOR升ATO.md` |
+| Broken access control (horizontal/vertical/IDOR) | Object IDs queried directly without owner checks; missing endpoint authorization | `~/.zcode/skills/skill/知识库/idor-test.md` + `~/.zcode/skills/skill/知识库/idor-supplement.md`; escalate to ATO → `~/.zcode/skills/skill/知识库/h1-高危害专项-IDOR升ATO.md` |
 | Payments / monetary loss | Amount tampering, negative quantities, stacking discounts, refund abuse | This doc §3 + `race-condition-test.md business-logic chapter` |
-| CAPTCHA | SMS bombing, universal codes / echo in response body, CAPTCHA reuse/bypass | "CAPTCHA" chapter of the ten categories in `cn-business-security.md` + `authbypass-test.md` |
+| CAPTCHA | SMS bombing, universal codes / echo in response body, CAPTCHA reuse/bypass | "CAPTCHA" chapter of the ten categories in `~/.zcode/skills/skill/知识库/cn-business-security.md` + `~/.zcode/skills/skill/知识库/authbypass-test.md` |
 | Password recovery | Predictable credentials, Host header poisoning, enumerable reset links | `cn-business-security.md recovery-flow taxonomy` |
-| Race conditions | Concurrent coupon claiming, concurrent balance spending, vote manipulation | `race-condition-test.md` + `h1-高危害专项-业务逻辑与竞态资损.md` |
-| Authentication / session | Session fixation, cookie spoofing, weak client-side crypto | `authbypass-test.md`, `oauth-jwt-test.md` |
-| Out-of-order flows | Step-skipping (shipping before payment), state machine rollback | Ten categories in `cn-business-security.md` |
+| Race conditions | Concurrent coupon claiming, concurrent balance spending, vote manipulation | `~/.zcode/skills/skill/知识库/race-condition-test.md` + `~/.zcode/skills/skill/知识库/h1-高危害专项-业务逻辑与竞态资损.md` |
+| Authentication / session | Session fixation, cookie spoofing, weak client-side crypto | `~/.zcode/skills/skill/知识库/authbypass-test.md`, `~/.zcode/skills/skill/知识库/oauth-jwt-test.md` |
+| Out-of-order flows | Step-skipping (shipping before payment), state machine rollback | Ten categories in `~/.zcode/skills/skill/知识库/cn-business-security.md` |
 | Endpoint replay | Payment callback replay, missing signatures | `~/.zcode/skills/api-pentest/知识库/fuzz与业务逻辑.md` |
 
 ### 1.2 Granular decomposition (Wooyun methodology)
 
-Take the interface documentation (if unavailable, hand-decompose with an xmind) and break the business functions out one by one; for each function list "possible risk × detection time cost". While decomposing 100+ functional modules, overlooked holes surface naturally. Detect anomalies by contrasting user flows: normal is "register → login → query → place order → pay → receive goods"; a flow of "register → login → claim coupon" that then stops is anomalous (log dimensions: URL depth / access dispersion / 200-response ratio). Full version → Section 1 of `cn-business-security.md`.
+Take the interface documentation (if unavailable, hand-decompose with an xmind) and break the business functions out one by one; for each function list "possible risk × detection time cost". While decomposing 100+ functional modules, overlooked holes surface naturally. Detect anomalies by contrasting user flows: normal is "register → login → query → place order → pay → receive goods"; a flow of "register → login → claim coupon" that then stops is anomalous (log dimensions: URL depth / access dispersion / 200-response ratio). Full version → Section 1 of `~/.zcode/skills/skill/知识库/cn-business-security.md`.
 
 ### 1.3 Chain composition perspective
 
-A single logic flaw is usually medium severity; chained together it becomes lethal (read via broken access control → modify → transfer/takeover). Entry table → `h1-组合攻击链短表.md` (check it first, top priority).
+A single logic flaw is usually medium severity; chaining can substantially increase its impact (read via broken access control → modify → transfer/takeover). Entry table → `~/.zcode/skills/skill/知识库/h1-组合攻击链短表.md` (check it first, top priority).
 
 ## 2. Account Security
 
@@ -37,8 +37,8 @@ A single logic flaw is usually medium severity; chained together it becomes leth
 - **Credential stuffing**: leaked-credential databases + proxy pools + automated login; telltale signs = login without rate limiting / without device fingerprinting / error messages that reveal whether the user exists.
 - **Bulk registration (account farming)**: SMS-receiving platforms (SIM merchants / SIM banks / MVNO number ranges) + CAPTCHA-solving services (AI solvers have replaced humans) to bypass CAPTCHA and mass-produce promo-abuse accounts; SMS-receiving platforms exposed as APIs (billed per code) are black-market infrastructure.
 - **Account enumeration**: login/recovery endpoints answering differently to "user does not exist" vs "wrong password", registration endpoints echoing that an identifier is taken — attackers can map the valid-account surface before any database dump.
-- **SMS/phone bombing**: endpoint without rate limiting, or a swappable uid parameter to bomb someone else's phone; frequent but low-severity in SRC programs — any claim about scale must pass the quantitative gate of `闸门矩阵方法论.md` (local machine rule).
-- **Account takeover combos**: re-binding phone/email without verifying the old credential, re-registering deleted accounts to take them over → belongs to `h1-高危害专项-认证绕过与ATO.md`.
+- **SMS/phone bombing**: endpoint without rate limiting, or a swappable uid parameter to bomb someone else's phone; frequent but low-severity in SRC programs — any claim about scale must pass the quantitative gate of `~/.zcode/skills/skill/知识库/闸门矩阵方法论.md` (local machine rule).
+- **Account takeover combos**: re-binding phone/email without verifying the old credential, re-registering deleted accounts to take them over → belongs to `~/.zcode/skills/skill/知识库/h1-高危害专项-认证绕过与ATO.md`.
 
 ### 2.2 Defense design (attack/defense pairs; usable in both audit and blue-team directions)
 
@@ -60,7 +60,7 @@ A single logic flaw is usually medium severity; chained together it becomes leth
 | 2 | Quantity/precision | Negative quantities, fractional stock, integer overflow, precision loss on huge numbers (backend language differences) | Order total deviates from expectation |
 | 3 | Forged payment callback | Missing/weak signature verification (md5 concatenation), amount not bound to the order, async-notification replay | Whether a locally forged callback can flip the order to paid |
 | 4 | Promotion abuse | Coupons claimed concurrently beyond limits, stacked threshold discounts mis-computed, self-referral rebate loops | Total credited after N repeated requests |
-| 5 | Race-condition loss | Concurrent balance spending, concurrent withdrawals, flash-sale overselling | Double spend under concurrent bursts; details → `race-condition-test.md` |
+| 5 | Race-condition loss | Concurrent balance spending, concurrent withdrawals, flash-sale overselling | Double spend under concurrent bursts; details → `~/.zcode/skills/skill/知识库/race-condition-test.md` |
 | 6 | Refund abuse | Refund-to-original-channel + rebound payout account, refund amount unchecked against the original order, duplicate refunds | Identity consistency along the refund chain |
 | 7 | Order skipping | Calling shipping/pickup endpoints directly without paying (state machine out of order) | Order state replay |
 
@@ -74,7 +74,7 @@ A single logic flaw is usually medium severity; chained together it becomes leth
 
 - CAPTCHA types: graphical (broken by solvers), SMS (SMS-receiving platforms / bombing), slider-behavior (trajectory simulation), semantic (weak).
 - Defect patterns: the code echoed in the CAPTCHA response body (code in response), one verification reused across multiple places, verification done on the client, deleting the CAPTCHA parameter to skip validation (empty/0 `after`), predictable timestamps (SMS token).
-- Token/key systems: JWT weak keys / none algorithm → `oauth-jwt-test.md`; encrypted-endpoint relay (breaking app API signatures) → `cn-business-security.md encrypted interface relay`.
+- Token/key systems: JWT weak keys / none algorithm → `~/.zcode/skills/skill/知识库/oauth-jwt-test.md`; encrypted-endpoint relay (breaking app API signatures) → `cn-business-security.md encrypted interface relay`.
 
 ## 5. Data Security (compliance / masking)
 
@@ -99,9 +99,9 @@ The Cybersecurity Law, Data Security Law, and Personal Information Protection La
 
 ### 5.4 Common data vulnerabilities in SRC
 
-- Endpoints returning ID numbers/phone numbers as full plaintext without masking (combined with broken access control = bulk extraction of personal information; high severity and legally actionable) → the object-graph batch playbook in `idor-test.md`.
-- Sensitive fields printed into logs, export endpoints without access control, GraphQL deep queries for bulk pulls (→ `graphql-test.md`), search autocomplete echoing other users' data.
-- Key surface: hardcoded AK/SK (white-box grep), configuration committed to git (→ `insecure-scm-test.md`), public object-storage buckets.
+- Endpoints returning ID numbers/phone numbers as full plaintext without masking (combined with broken access control = bulk extraction of personal information; high severity and legally actionable) → the object-graph batch playbook in `~/.zcode/skills/skill/知识库/idor-test.md`.
+- Sensitive fields printed into logs, export endpoints without access control, GraphQL deep queries for bulk pulls (→ `~/.zcode/skills/skill/知识库/graphql-test.md`), search autocomplete echoing other users' data.
+- Key surface: hardcoded AK/SK (white-box grep), configuration committed to git (→ `~/.zcode/skills/skill/知识库/insecure-scm-test.md`), public object-storage buckets.
 - Reports involving personal information must cite compliance clauses for grading → `~/.zcode/rules/vuln-report-format.md` (local machine rule).
 
 ## 6. Risk-Control Adversarial Operations (cross-linked with the techniques library)
@@ -136,10 +136,10 @@ randomization), device farms, cloud phones, fingerprint browsers
 | Harm substance | Monetary-loss scale? Data sensitivity? Takeover scope? |
 | Exploitability | Preconditions required (accounts / interaction / internal parameters)? |
 | Impact scope | Single user / all users / a specific high-value population |
-| Chain escalation | Single medium flaw → chained into ATO/RCE/bulk database dumps → high (`h1-组合攻击链短表.md`) |
+| Chain escalation | Single medium flaw → chained into ATO/RCE/bulk database dumps → high (`~/.zcode/skills/skill/知识库/h1-组合攻击链短表.md`) |
 | Quantitative closure | Scale claims like "batchable/unlimited" must carry a hard numeric floor (local gate-matrix rule) |
 
-Official format → `~/.zcode/rules/vuln-report-format.md`. Vulnerability distribution and cases in the China business context → the entirety of `cn-business-security.md` (distilled from 1,269 Wooyun write-ups).
+Official format → `~/.zcode/rules/vuln-report-format.md`. Vulnerability distribution and cases in the China business context → the entirety of `~/.zcode/skills/skill/知识库/cn-business-security.md` (distilled from 1,269 Wooyun write-ups).
 
 ## 8. Black/Gray Industry Adversarial Chain Map
 

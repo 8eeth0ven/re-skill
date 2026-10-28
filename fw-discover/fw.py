@@ -268,7 +268,7 @@ def write_ledger():
     L = ["# Autonomous Firmware Vulnerability Discovery Ledger (0day candidates)\n",
          f"> generated {time.strftime('%F %T')} | cumulative **{len(rows)}/{TARGET}** | firmware: {len(by_fw)} | "
          f"rules: analyzers.py (account files / private keys / command-injection flows / telnetd / default passwords) — **every entry is autonomously discovered on this machine, not matched against a CVE database**",
-         "> Red lines: candidates are for local research prioritization only; external reporting goes through a human + `../disclosure-cve.md`; dynamic emulation (FirmAE/qemu) is next stage.\n"]
+         "> Red lines: candidates are for local research prioritization only; external reporting goes through a human + `../../disclosure-cve.md`; dynamic emulation (FirmAE/qemu) is next stage.\n"]
     L.append("| Class | Count | Description |")
     L.append("|---|---|---|")
     desc = {"verified-weak-cred": "factory weak password hit by wordlist (verified locally)", "shipped-private-key": "private key shipped in firmware",
@@ -286,7 +286,8 @@ def write_ledger():
     L.append("|---|---|---|---|---|---|")
     for i, r in enumerate(rows[:400], 1):
         ev = r["evidence"].replace("|", "\\|")[:120]
-        L.append(f"| {i} | {r['pri']} | {r['fw']} | {r['cls']} | {r['path'].replace('|', '\\|')} | {ev} |")
+        escaped_path = r["path"].replace("|", "\\|")
+        L.append(f"| {i} | {r['pri']} | {r['fw']} | {r['cls']} | {escaped_path} | {ev} |")
     LEDGER.write_text("\n".join(L) + "\n", encoding="utf-8")
 
 
@@ -406,7 +407,7 @@ def main():
     if a.seed:
         cmd_seed()
         return
-    if not (a.once or a.status):
+    if a.status or not a.once:
         show_status()
         return
     if a.once:

@@ -80,7 +80,7 @@ Dynamic signatures (statistics after frida/unidbg tracing):
 Flipping through tables manually in IDA is inefficient; scan rodata for constant fingerprints directly:
 
 ```python
-# IDAPython: 在当前 so 里扫算法指纹常量
+# IDAPython: scan the current shared object for algorithm fingerprint constants
 import idautils, idc, ida_bytes
 
 SIGS = {
@@ -92,7 +92,7 @@ SIGS = {
 def scan_sigs():
     for seg_ea in idautils.Segments():
         seg_end = idc.get_segm_end(seg_ea)
-        if idc.get_segm_attr(seg_ea, idc.SEGPROP_TYPE) != 0x3:  # 只扫数据段
+        if idc.get_segm_attr(seg_ea, idc.SEGPROP_TYPE) != 0x3:  # Scan data segments only
             continue
         ea = seg_ea
         while ea < seg_end:
@@ -153,28 +153,28 @@ Deadpool's `deadpool_dfa.py` takes faulty outputs by "statically patching data/t
 ### 3.6 DFA pseudocode sketch (a runnable skeleton)
 
 ```python
-# 白盒 AES DFA 还原骨架(unidbg/frida 侧只负责产 (c, c') 对,本脚本离线恢复 key)
-# 依赖 phoenixAES / JeanGrey(SideChannelMarvels) 或手写求解
+# White-box AES DFA skeleton: unidbg/Frida produces (c, c') pairs; this script recovers the key offline
+# Use phoenixAES / JeanGrey (SideChannelMarvels), or implement the solver directly
 import phoenixAES
 
-# 1) 采集:同明文,1 次正常密文 c,若干次注入故障后的密文 c'
-#    注入点 = 倒数第二轮状态(第 9 轮 MixColumns 后)任意单字节翻位
-#    unidbg 侧:CodeHook 命中第 9 轮查表序列时 mem_write(state_addr, fault_byte)
+# 1. Collect one correct ciphertext c and several faulted ciphertexts c' for the same plaintext
+# Fault injection point: flip one byte of the penultimate-round state, after round 9 MixColumns
+# unidbg: when CodeHook reaches the round-9 table-lookup sequence, mem_write(state_addr, fault_byte)
 fault_pairs = [
     (bytes.fromhex(c_hex),  bytes.fromhex(cp_hex))
     for c_hex, cp_hex in collect_from_tracer()
 ]
 
-# 2) 单字节故障默认模型:phoenixAES 的标准 last-round DFA
-#    crack_bytes(faults, ref):ref=正确密文,faults=故障密文列表(均为 bytes),
-#    返回最后一轮轮密钥大写 hex 串 / None;hex 中含 ".." 表示部分分组未解出
+# 2. Default single-byte fault model: phoenixAES standard last-round DFA
+# crack_bytes(faults, ref): ref is the correct ciphertext; faults is a list of faulted ciphertext bytes
+# Returns the last-round key as uppercase hexadecimal, or None; '..' marks unresolved groups
 for c, faulty in fault_pairs:
     r = phoenixAES.crack_bytes([fp for _, fp in fault_pairs], c)
     if r and ".." not in r:
         k10 = bytes.fromhex(r)
         break
 
-# 3) K10 --AES-128 密钥扩展逆推--> 原始 key(等价密钥)
+# 3. Reverse the AES-128 key schedule from K10 to recover the original or equivalent key
 def inv_key_expand(k10):
     w = [k10[i*4:i*4+4] for i in range(4)]
     for i in range(9, -1, -1):
@@ -182,9 +182,9 @@ def inv_key_expand(k10):
         w = [bytes(a ^ b for a, b in zip(w_prev, w_next)) for ...]
     return b"".join(w)[:16]
 
-# 4) 验证:用还原 key 跑标准 AES 加密固定明文,与白盒输出对拍
-#    注意白盒可能有外部编码:若差一层固定映射,收集 256 个单字节差分建置换表
-assert aes_ecb(key, pt) == c  # 或 == ext_encode(aes_ecb(key, decode(pt)))
+# 4. Verify by encrypting fixed plaintext with the recovered key and comparing against the white-box output
+# White boxes may use external encodings; for a fixed extra mapping, collect 256 single-byte differences and reconstruct the permutation table
+assert aes_ecb(key, pt) == c  # Or compare against ext_encode(aes_ecb(key, decode(pt)))
 ```
 
 Key point: after recovering K10 you **must do an equivalence verification** — when an external encoding exists, the equivalent-key encryption differs from the white-box output by one fixed permutation; sweep 256 values with a fixed plaintext to extract the permutation table too (the x-zse-96 series' final step, "DFA recovers the key but the result is wrong; add the determined IV/external encoding", hit exactly this pit — see §3.2/§5).
@@ -218,21 +218,21 @@ The value of the three-step method: it compresses "reversing the whole algorithm
 ### 4.3 Customized base64 identification skeleton (the generic play for sig/sp parameters)
 
 ```python
-# 魔改 base64 探测:扫输出字符集 + 反推 alphabet
+# Detect modified Base64 by examining the output character set and recovering the alphabet
 import string, collections
 
 def probe_b64(samples: list[bytes]):
     charset = set().union(*[set(s) for s in samples])
     std = set(string.ascii_letters + string.digits + "+/=")
-    print("非标准字符:", charset - std)          # 出现 '*-&_#' 等 → 自定义 alphabet
-    # 长度特征: len % 4 余数、padding 有无、尾部是否定长盐
+    print("非标准字符:", charset - std)          # Characters such as '*-&_#' indicate a custom alphabet
+    # Length features: len % 4 distribution, padding presence, and a fixed-length trailing salt
     print("长度 mod 4 分布:", collections.Counter(len(s) % 4 for s in samples))
-    # 已知明文攻击:拿一个已知内容的字段(如 device_id)入参,对拍输出,
-    # 6bit 分组边界对不齐 → 前置有异或/移位;对得齐但字符不同 → 纯换表
+    # Known-plaintext approach: supply a field with known content, such as device_id, and compare outputs
+    # Misaligned 6-bit boundaries suggest an earlier XOR/shift; aligned groups with changed characters suggest an alphabet permutation
 
 ALPHA_CUSTOM = "nopqrstuvwxyzabcdefghijklmABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/"
-# 自定义表直接喂 python base64: base64.b64encode(data, altchars=...) 只换 2 字符,
-# 整表重排要自写: 重组 6bit 分组后按 ALPHA_CUSTOM.index 映射
+# Python base64.b64encode(data, altchars=...) only replaces two characters
+# A full alphabet permutation requires a custom mapping of the reconstructed 6-bit groups through ALPHA_CUSTOM.index
 ```
 
 The recruitment-app sig/sp parameter follows exactly the three steps "scan the alphabet → back-derive the index table → restore the concatenation".

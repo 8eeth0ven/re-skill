@@ -4,9 +4,9 @@
 ### OllyDbg 1.x Plugin Development (the Callback Framework) (orig: OllyDbg 1.x 插件开发(回调框架))
 Author: bughouse. OD talks to plugins via callbacks (170+ SDK functions): at startup it walks the plugin directory LoadLibrary → GetProcAddress fetches `_ODBG_Plugindata/_ODBG_Plugininit`; on version compatibility it mounts.
 ```
-必选导出: _ODBG_Plugindata(shortname[32]) 设名 return PLUGIN_VERSION; _ODBG_Plugininit(ver,hw,features) ver<PLUGIN_VERSION 返回 -1
-可选导出: _ODBG_Pluginmenu(菜单项'|'分隔) / _ODBG_Pluginaction(响应点击)
-工程: VC DLL 命令行加 /J(char 默认 unsigned),链 OLLYDBG.LIB; 调试: 属性-调试-命令填 OD 目录,以 OD 为宿主起调试
+Required exports: _ODBG_Plugindata(shortname[32]) sets the name and returns PLUGIN_VERSION; _ODBG_Plugininit(ver,hw,features) returns -1 for ver<PLUGIN_VERSION
+Optional exports: _ODBG_Pluginmenu (menu items separated by '|') / _ODBG_Pluginaction (handle clicks)
+Project: add /J to the VC DLL command line (char defaults to unsigned), link OLLYDBG.LIB; debug by setting Properties → Debugging → Command to OD and using OD as the DLL host
 ```
 origin window codes `PM_MAIN/PM_DISASM(31)/PM_CPUDUMP/PM_CPUSTACK/PM_MEMORY/PM_MODULES/PM_THREADS/PM_BREAKPOINTS/PM_WATCHES`; cast dump/disasm-window items to `t_dump*`, where `sel0/sel1` are the selected range's start/end — the entry point for export-selected-code / memory-style plugins.
 > Same approach: BinGzL "A Popular-Science Piece on Writing ollydbg Plugins" (menu-callback template explained), willianCC "Implementing an OD Monitor Plugin" (self-annotated source).
@@ -37,12 +37,12 @@ Author: icow. The conditional logging breakpoint (Shift+F4) "pass command to plu
 ### Practical OllyDbg Tricks (Old but Effective) (orig: OllyDbg 实用技巧(老而有效))
 Author: doskey
 ```
-跳转路径可视化: Options-Debugging Options-CPU 勾 Show jump path(花指令/乱序时强)
-序号导入变函数名: Debug-Select import libraries 加 MFC42.LIB,call <&MFC42.#1576> 显 AfxWinMain 等真名
-过启动反调试: 程序先跑起来再 Attach(检查只在启动时做的一类)
-MessageBox 拦截: F9 弹框后 F12 暂停,F8 走过 CALL MessageBoxA,Information 栏 "JUMP FROM" 右键 Go to jump from 直接回比较点
-Track: 先调大 buffer;Ctrl+F11/F12 trace into/over;小键盘 + - * 翻 trace
-花指令: OD 自动标灰无效指令;没识别的 Ctrl+↑/↓ 逐字节挪
+Jump-path visualization: Options → Debugging Options → CPU → Show jump path; useful for junk instructions/out-of-order code
+Resolve ordinal imports: Debug → Select import libraries → add MFC42.LIB; call <&MFC42.#1576> then displays AfxWinMain and other real names
+Bypass startup-only anti-debugging: let the program start before attaching
+Intercept MessageBox: F9 until the dialog, F12 to pause, F8 past CALL MessageBoxA, then Information → JUMP FROM → Go to jump from returns to the comparison
+Trace: enlarge the buffer first; Ctrl+F11/F12 for trace into/over; keypad + - * navigates the trace
+Junk instructions: OD grays out recognized invalid instructions; use Ctrl+↑/↓ to move byte by byte through unrecognized regions
 ```
 ## II. The OllyScript / ODbgScript Scripting System
 ### Lessons from Writing OllyScript Scripts (orig: 写 OllyScript 脚本的经验)
@@ -62,11 +62,11 @@ Author: xingjunjie. Under ASLR the IDA base never matches x64dbg, disabling ASLR
 ### One-Click Export of All Function Pseudocode (orig: 一键导出全部函数伪代码)
 Author: 逆向涉略
 ```
-for seg in idautils.Segments():            # 取 .text 范围 min(start)/max(end)
+for seg in idautils.Segments():            # Get the .text bounds: min(start)/max(end)
   for func in idautils.Functions(ea, ed):
-    if len(list(idautils.FuncItems(func))) > 10:    # 过滤小函数
-      if idc.get_sreg(func, "T"): func += 1          # thumb 模式地址+1
-      F.write(str(idaapi.decompile(func))); F.flush() # 边导边 flush 防中途崩
+    if len(list(idautils.FuncItems(func))) > 10:    # Filter out small functions
+      if idc.get_sreg(func, "T"): func += 1          # Add 1 for Thumb-mode addresses
+      F.write(str(idaapi.decompile(func))); F.flush() # Flush during export to preserve progress if the process crashes
 ```
 The product is one big .cc text — grep-searching strings/constants beats F5-ing one by one. Pitfall: IDA under wine/pd can't find relative paths — use an absolute path for the output file.
 > Same approach: 王麻子本人 "A Small Self-Made Generic TraceArgs IDA Script" (same template filters functions → feeds addresses to frida Interceptor.attach printing args before/after).
@@ -111,11 +111,11 @@ Author: anonymous. The bottom-up code-reading method: put the cursor in a functi
 ### IDAPython Common API Cheat Sheet (old names before 7.x) (orig: IDAPython 常用 API 速查(7.x 前旧名))
 Author: anonymous
 ```
-地址/段: MinEA/MaxEA, SegStart/SegEnd, Segname, Segments()
-指令: GetMnem, GetDisasm, GetOpnd(addr,i), GetOperandValue, next_head, next_not_tail, ua_mnem, Assemble(head,line)
-建型: MakeCode, MakeFunction, MakeUnkn, MakeDword/Qword, MakeName(addr,''), AddStrucEx/AddStrucMember(IDC 建结构)
-查询: GetFlags+isCode, get_name_ea(min,name), get_dword, LocByName
-栈: GetSpd(addr)(SP 相对 BP 差); SetSpDiff 平衡堆栈修复 sp 分析
+Addresses/segments: MinEA/MaxEA, SegStart/SegEnd, Segname, Segments()
+Instructions: GetMnem, GetDisasm, GetOpnd(addr,i), GetOperandValue, next_head, next_not_tail, ua_mnem, Assemble(head,line)
+Types: MakeCode, MakeFunction, MakeUnkn, MakeDword/Qword, MakeName(addr,''), AddStrucEx/AddStrucMember (IDC structure creation)
+Queries: GetFlags+isCode, get_name_ea(min,name), get_dword, LocByName
+Stack: GetSpd(addr) gives SP relative to BP; SetSpDiff balances the stack to repair SP analysis
 ```
 ### IDAPython Batch-Processing a Decryption Routine (orig: IDAPython 批量处理解密程序)
 Author: anonymous. The sample's decryption function is called 105 times with mixed argument passing (push of a string address / pushed after mov). Routine: (1) reverse the algorithm into a python `decrypt(data)`; (2) `CodeRefsTo(decrypt function, 0)` for all call sites; (3) at each, walk up with `PreHead` a few instructions to find the argument instructions, GetMnem/GetOpnd/GetOperandValue for the string address (hand-reading bytes to \0 is steadier than getString); (4) decrypt and `MakeComm` a comment at the call site. Same idea with flare_emu executing on your behalf.
@@ -147,11 +147,11 @@ Author: qmemcpy (translation of 梦野间). (1) A constant in pseudocode misread
 ### IDA Tips — Structures (orig: IDA 技巧——结构体)
 Author: 独钓者OW
 ```
-IDB 快照: Ctrl+Shift+W 存 / Ctrl+Shift+T 取(改坏可回滚,动结构前必备)
-标记: Alt+M 设 / Ctrl+M 跳(Jump->Make position)
-C 语法快速建结构: Shift+F1 本地类型窗口 → Insert 贴 C 定义 → Ctrl+F5 搜名 →
-  双击导入 → F5 参数上右键 Convert to Struct * 选型
-结构体数组: 首元素 Alt+Q 挂结构 → Shift+* 展开数组
+IDB snapshots: Ctrl+Shift+W saves / Ctrl+Shift+T restores; take one before structural edits so changes can be rolled back
+Position markers: Alt+M sets / Ctrl+M jumps (Jump → Make position)
+Quickly define a structure in C syntax: Shift+F1 opens Local Types → Insert a C definition → Ctrl+F5 searches its name →
+  Double-click to import → right-click the F5 argument → Convert to Struct * and select the type
+Structure arrays: Alt+Q applies the structure to the first element → Shift+* expands the array
 ```
 ### Aligning Addresses Between IDA and x32dbg (orig: 配置 IDA 与 x32dbg 的地址对应)
 Author: anonymous. After x32dbg loads, read the main module's real load base in Symbols; in IDA `Edit→Segments→Rebase program` fill the same value — addresses now agree on both sides, breakpoints/xrefs copied across without conversion.
@@ -221,10 +221,10 @@ Author: De4dCr0w. On the gdb python API: `kbase` kernel base, `kstruct` recursiv
 ### x64dbg Usage Experience (orig: x64dbg 使用经验)
 Author: anonymous
 ```
-右键指令: 显示指令提示(右侧栏释义)/指令帮助(日志区输出用法); Ctrl+A 分析模块; Ctrl+Home/End 函数头/尾; x 键在函数头看调用方(相互引用); 看门狗: 监测特定位置数据变化
-断点日志格式(参数建议双引号包裹): {utf16@[esp+4]} {ascii@rcx} {mem;4@0032B378}(指定大小) {$breakpointcounter}:{ascii@rcx}(命中次数+串) {modname@address} {label@address} {comment@address}
-断点命令(命中后执行): set bl,dl; go | set eip,401313; go(改 eip 续跑) | log {ascii@ecx}; set $num 0; set $num,$num+1; doSleep 3e8(毫秒,16进制) 注意: 多条命令不等待——"StepOut; log ..."的 log 不等 StepOut 完成再执行
-跨模块找 API 调用点: 右键→搜索→当前模块→跨模块调用,按"反汇编"排序找到目标 api 右键"在所有对***的调用上设置断点"(替代 OD 的 bpx)
+Instruction context menu: instruction hints (right-hand explanation panel) / instruction help (usage in the log); Ctrl+A analyzes the module; Ctrl+Home/End jumps to the function start/end; x at a function start lists callers (cross-references); watchdog monitors changes at a selected location
+Breakpoint log formats (quote arguments): {utf16@[esp+4]} {ascii@rcx} {mem;4@0032B378} (specified size) {$breakpointcounter}:{ascii@rcx} (hit count+string) {modname@address} {label@address} {comment@address}
+Breakpoint commands (run on a hit): set bl,dl; go | set eip,401313; go (change eip and continue) | log {ascii@ecx}; set $num 0; set $num,$num+1; doSleep 3e8 (milliseconds, hexadecimal). Commands do not wait for earlier steps: log in "StepOut; log ..." executes without waiting for StepOut to finish
+Find cross-module API calls: right-click → Search → Current module → Intermodular calls; sort by disassembly, select the API and set breakpoints on all calls to it (alternative to OD bpx)
 ```
 ### The x64dbg Perfect Tracing Scheme (Conditional Tracing to Locate the Key CALL) (orig: x64dbg 完美追踪方案(条件跟踪定位关键 CALL))
 Author: anonymous. Finding the key CALL in a program with a nameless import table + call-esi obfuscation: use "Trace → Conditional Trace" logging only function-call arguments and returns. Log text `{modname@cip} {p:cip} {i:cip} {a:cip} {"EAX"} {a:eax} {"[ESP]"} {a:[esp]} {"[ESP+4]"} {a:[esp+4]} …`; **log condition** `dis.isbranch(cip) || dis.isret(cip)` (log only jump/ret lines); **step-over transition condition** `mod.party(dis.branchdest(cip))==1` (step over when the target is a system module, filtering system internals); to also log the instruction after call/ret: `!mod.party(cip) && (dis.isbranch(cip)||dis.isret(cip)||ReadByte(cip-1)==cc || dis.iscall(dis.prev(cip)) || dis.isret(dis.prev(cip)))`; JMP/CALL but no JCC: `dis.isbranch(cip) && !dis.iscond(cip)`; regex/substring filtering: `{dis.match(rip,"text.+,0x1")}`, `{strstr(dis.text(cip),"call esi")}`. You get a function-granularity call log for coarse locating, then generate a trace file to follow finely. Regret: constant IAT addresses in the log aren't auto-resolved to function names.
@@ -237,10 +237,10 @@ Author: anonymous. The standard demo: Spy++ x64 reads the popup class name RarRe
 ### x64dbg Plugin-Writing Basics (orig: x64dbg 插件编写基础)
 Author: anonymous. Three extension ways: scripts / script DLLs (exporting AsyncStart()/Start(), loaded with the scriptdll command) / plugins (suffix dp32/dp64). The SDK lives in the x64dbg root's pluginsdk (with TitanEngine/XEDParse etc.); VS project: copy the whole pluginsdk in, add include/lib directories, link x32bridge.lib+x32dbg.lib.
 ```
-必须导出: bool pluginit(PLUG_INITSTRUCT*)  // 填 sdkVersion=PLUG_SDKVERSION, pluginVersion, pluginName
-可选导出: bool plugstop()(移除时清回调/命令/资源); void plugsetup(PLUG_SETUPSTRUCT*)(初始化后 UI, // _plugin_menuaddentry(setupStruct->hMenu, 0, "enable UEH") 加子菜单)
-事件回调: 导出 CB 开头函数自动注册——CBINITDEBUG/CBSTOPDEBUG/CBEXCEPTION/CBDEBUGEVENT/CBMENUENTRY(点击子菜单)…函数名不能带上划线
-库函数: _plugin_logprintf(打日志)、_plugin_registercommand 等;实例: 对 UnhandledExceptionFilter 打补丁插件(enable/disable UEH 两菜单项)
+Required export: bool pluginit(PLUG_INITSTRUCT*) // Set sdkVersion=PLUG_SDKVERSION, pluginVersion, pluginName
+Optional exports: bool plugstop() cleans callbacks/commands/resources on removal; void plugsetup(PLUG_SETUPSTRUCT*) initializes the UI afterward; _plugin_menuaddentry(setupStruct->hMenu, 0, "enable UEH") adds a submenu
+Event callbacks: exported CB-prefixed functions register automatically — CBINITDEBUG/CBSTOPDEBUG/CBEXCEPTION/CBDEBUGEVENT/CBMENUENTRY (submenu click); names must not contain underscores
+Library functions: _plugin_logprintf for logs, _plugin_registercommand, etc.; example: an UnhandledExceptionFilter patching plugin with enable/disable UEH menu items
 ```
 ### The x64dbg Quick-Find-Call Plugin (CE-Style Differential Locating) (orig: x64dbg 快速找 call 插件(CE 式差分定位))
 Author: Kwansy98. Borrowing CE's differential "find what" idea: scan all functions of the user modules (exe+dll), setting `breakif(0)` conditional breakpoints on each (no stop, count only); trigger the target function once → in the plugin, search functions with hit count == 1 → the candidate pool collapses; confirm by hand and you have the key CALL. Button-event locating in a minute, replacing the mental labor of "API breakpoint + stack backtrace".

@@ -40,13 +40,13 @@ Hooking a so function in user space: open it in IDA, offset + module base, done.
 **Principle: nearly all kernels ship an embedded kallsyms symbol table** (CONFIG_KALLSYMS on by default since 2.6.10; even with the ELF header stripped, the compressed symbol table still sits in the data section). kallsyms-finder's parse chain (principle from the README):
 
 ```
-kallsyms_token_table   ← 256 个 null 结尾字符串片段(压缩字典,先启发式找它)
-kallsyms_token_index   ← 256 个偏移,指向 token_table 各片段
-kallsyms_markers       ← 每 256 个符号一个偏移的二级索引
-kallsyms_names         ← 压缩符号名(每字节是 token 索引)
-kallsyms_num_syms      ← 符号总数(用来反向校验解码正确)
-kallsyms_offsets + kallsyms_relative_base   ← 相对地址表 + 基址(新版)
-kallsyms_addresses     ← 绝对地址表(老版)
+kallsyms_token_table   <- 256 null-terminated string fragments: compression dictionary, located heuristically first
+kallsyms_token_index   <- 256 offsets into the token_table fragments
+kallsyms_markers       <- secondary index, one offset per 256 symbols
+kallsyms_names         <- compressed symbol names; each byte indexes a token
+kallsyms_num_syms      <- total symbol count, used to validate decoding
+kallsyms_offsets + kallsyms_relative_base   <- relative-address table and base, newer format
+kallsyms_addresses     <- absolute-address table, older format
 ```
 
 The tool starts from token_table and back-derives every field level by level (trial-and-error on alignment/length), then emits an ELF with full symbols -> use directly in IDA/Ghidra. KernelPatch's symbol extraction follows the same idea and additionally handles GKI layouts on arm64; `tools/extra_symbol` can import extra symbols.
@@ -63,8 +63,8 @@ The tool starts from token_table and back-derives every field level by level (tr
 The kprobes subsystem can still resolve by symbol name internally; `register_kprobe` writes the resolved result into `kp.addr`:
 
 ```c
-// 5.7 起 kallsyms_lookup_name 被 unexport(commit cf240d59,背景 https://lwn.net/Articles/813350 )
-// 标准恢复法:用 kprobe 挂它自己,取 kp.addr 拿到函数指针
+// kallsyms_lookup_name was unexported in 5.7 (commit cf240d59; background: https://lwn.net/Articles/813350)
+// Standard recovery: kprobe the function itself and read kp.addr as the function pointer
 static struct kprobe kp = { .symbol_name = "kallsyms_lookup_name" };
 typedef unsigned long (*kln_t)(const char *name);
 kln_t kallsyms_lookup_name;
@@ -73,7 +73,7 @@ register_kprobe(&kp);
 kallsyms_lookup_name = (kln_t)kp.addr;
 unregister_kprobe(&kp);
 
-// 之后任意未导出符号(含 sys_call_table)一个名字一个地址:
+// Resolve each unexported symbol, including sys_call_table, by name:
 unsigned long addr = kallsyms_lookup_name("binder_transaction");
 ```
 
@@ -85,8 +85,8 @@ unsigned long addr = kallsyms_lookup_name("binder_transaction");
 `extern` an **exported** symbol in the LKM; the linker resolves its address automatically (runtime truth); add the `target - anchor` offset obtained from static analysis (the official vmlinux, or the symbol table recovered via Route B) and you get the target's runtime address:
 
 ```c
-extern unsigned long *_stext;            // 已导出锚点(或 printk、init_task 等)
-// 静态:在 vmlinux/System.map 里查 target_addr - anchor_addr = OFFSET(编译期常量)
+extern unsigned long *_stext;            // Exported anchor; printk or init_task can serve as alternatives
+// Static offset: target_addr - anchor_addr from vmlinux/System.map, fixed at build time
 unsigned long target = (unsigned long)_stext + OFFSET;
 ```
 
@@ -108,18 +108,18 @@ Reference frame: multiple Stack Overflow questions concentrate on this problem; 
 
 ```bash
 cat /sys/kernel/tracing/available_filter_functions | grep binder
-# 或老路径 /sys/kernel/debug/tracing/available_filter_functions
-grep -w binder_ioctl /sys/kernel/tracing/available_filter_functions   # 在=可挂 fentry/kprobe
-cat /sys/kernel/debug/kprobes/blacklist     # kprobe 禁挂清单(entry 函数等)
+# Or the older path: /sys/kernel/debug/tracing/available_filter_functions
+grep -w binder_ioctl /sys/kernel/tracing/available_filter_functions   # Presence means the function is available for fentry/kprobe
+cat /sys/kernel/debug/kprobes/blacklist     # kprobe blacklist, including entry functions
 ```
 
 2. **Build your own lookup after recovering kallsyms_lookup_name**: the Route C method-one code, done at LKM/KPM init; afterwards resolve everything by name;
 3. **BPF kfunc (fentry/fexit)**: bpftrace's `kfunc:`/`kretfunc:` probes are aliases of fentry/fexit; function argument types come from BTF (GKI 5.15+ `CONFIG_DEBUG_INFO_BTF=y`); limits: entry/exit only, no arbitrary offsets, and inlined targets cannot be attached. The BTF file itself: `/sys/kernel/btf/vmlinux` - it doubles as a free struct-layout dictionary (pahole reads it directly), so locating struct member offsets needs no source digging.
 
 ```bash
-ls -la /sys/kernel/btf/vmlinux          # root 第一眼(另一篇 §9 同结论)
-bpftrace -l 'kfunc:*binder*'            # 列可挂 kfunc
-bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h   # 全量结构体
+ls -la /sys/kernel/btf/vmlinux          # Check this first with root; the companion article reaches the same conclusion in Section 9
+bpftrace -l 'kfunc:*binder*'            # List attachable kfunc probes
+bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h   # Dump all structure definitions
 ```
 
 **Pitfalls**: targets missing from available_filter_functions (notrace/inline) do not mean nonexistent - fall back to Route E static search; debugfs/tracefs mount points vary by ROM (check with `mount -t tracefs`).
@@ -176,13 +176,13 @@ A static address (Routes A/B/E) is a "link-time address"; the runtime truth = st
 **Principle (counter-intuitive: the kernel is untouched)**:
 
 ```
-LD_PRELOAD 注入 libsvchook.so
-  → 扫描目标进程代码段,记录每条 svc #0 指令地址
-  → 为每条 svc 生成定制 trampoline(嵌入原地址)
-  → 把 svc 指令改写为 b trampoline(±128MB 范围内直接 b)
-运行时:执行到原 svc 处 → b 进 trampoline → 保存全部 CPU 上下文
-  → 调用 LIBSVCHOOK 指定的 hook 函数(可看/改 x8 nr 与 x0-x5 参数)
-  → 恢复上下文 → 执行真实 svc(或改写后语义)→ 返回原流程
+Inject libsvchook.so through LD_PRELOAD
+  -> scan the target process's code and record each svc #0 address
+  -> generate a per-svc trampoline embedding its original address
+  -> replace svc with b trampoline; direct b reaches within +/-128 MB
+Runtime: reach the original svc site -> branch to trampoline -> save the full CPU context
+  -> call the hook specified by LIBSVCHOOK; inspect/modify syscall number x8 and arguments x0-x5
+  -> restore context -> execute the actual svc or replacement semantics -> return to the original flow
 ```
 
 Performance: the README claims ~1000x faster than ptrace; other accounts say ~2000x vs ptrace and ~140x vs seccomp BPF. Supports ARM64 Linux/Android/FreeBSD/NetBSD.
@@ -209,14 +209,14 @@ Related reading: "SVC的TraceHook沙箱的实现 & 无痕Hook实现思路", the 
 struct perf_event_attr attr = {};
 attr.type          = PERF_TYPE_BREAKPOINT;
 attr.size          = sizeof(attr);
-attr.config        = HW_BREAKPOINT_X;        // 执行断点(R/W/RW 为 watchpoint)
-attr.bp_addr       = (uint64_t)target_addr;  // 路A-E 定位出的运行时地址
-attr.bp_len        = 4;                      // ARM64 执行断点长度 4(或 8,实现对齐要求)
-attr.sample_period = 1;                      // 每次命中出事件
+attr.config        = HW_BREAKPOINT_X;        // Execution breakpoint; R/W/RW modes are watchpoints
+attr.bp_addr       = (uint64_t)target_addr;  // Runtime address recovered through routes A-E
+attr.bp_len        = 4;                      // ARM64 execution breakpoint length: 4, or 8 if required by the implementation's alignment rules
+attr.sample_period = 1;                      // Generate an event on every hit
 attr.disabled      = 0;
 
 int fd = sys_perf_event_open(&attr, target_pid, -1, -1, 0);
-// 命中通知三选:read() 计数 / mmap ring buffer / fasync+SIGIO(signal_handler 里 siginfo->si_addr 等)
+// Choose hit notification through read() counters, an mmap ring buffer, or fasync+SIGIO; inspect siginfo->si_addr in signal_handler where applicable
 ```
 
 The kernel-module-side equivalent interface: `register_wide_hw_breakpoint` (exported by hw_breakpoint.c) - an LKM attaching kernel-address breakpoints on any CPU goes through it too. A reference walkthrough: Martin Uy, "Hardware breakpoints in the Linux kernel through perf_events"; the ptrace-side equivalent is `PTRACE_GETREGSET(NT_ARM_HW_BREAK)`.
@@ -233,28 +233,28 @@ The kernel-module-side equivalent interface: `register_wide_hw_breakpoint` (expo
 ## 7. The locate -> hook closed loop (prose flowchart)
 
 ```
-[目标函数确认] 名字?行为/字符串?在哪个子系统(binder/syscall/futex…)?
+[Identify target function] Name? Behavior/strings? Subsystem: binder/syscall/futex...?
    │
-   ├─ 知道名字、有 root ──────────► 路D:available_filter_functions/kallsyms(先 kptr_restrict=0)
-   │                                 └─ 名字在 kallsyms 但 LKM 链接不到 → 路C 方法一(kprobe 代查)
-   ├─ 知道名字、无 root ──────────► GKI? ─是─► 路A:ci.android.com 官方 vmlinux 直接查偏移
-   │                                 └─否─► 路B:vmlinux-to-elf 恢复目标机镜像符号
-   ├─ 不知道名字 ────────────────► 路E:printk 串 xref / ops 表成员 / 常量特征 / BinDiff 官方镜像
+   |- Name known, root available -----> route D: available_filter_functions/kallsyms; set kptr_restrict=0 first
+   |                                    `- In kallsyms but unavailable to LKM linking -> route C method 1: kprobe resolution
+   |- Name known, no root ------------> GKI? yes -> route A: official vmlinux from ci.android.com
+   |                                    `- no -> route B: recover target-image symbols with vmlinux-to-elf
+   |- Name unknown -------------------> route E: printk-string xrefs / ops members / constants / official-image BinDiff
    │
-   ├─ [拿到静态地址] ──► 解 KASLR(§3):root 直接 kallsyms 真值 / 单符号反推 slide / 泄漏点
-   │                      └─ 无 root exploit 场景:EntryBleed/prefetch/内存读原语
-   │
-   ▼
-[hook 机制选择] ── 见《kernel-hook-stealth.md》§1/§9,摘:
-   ├─ 只看参数/返回值、零侵入 ──► kprobe(兼容最好)/ fentry·kfunc(有 BTF,快+带类型)
-   ├─ 改执行流/改参 ──────────► ftrace IP_MODIFY / KernelPatch inline hook / svc_hook(纯用户态 syscall 面)
-   ├─ 用户态目标函数且怕注入痕迹 ► uprobe(零注入)或 perf_event 硬断点(§6,零字节修改)
-   └─ 要对 app 无痕断点 ────────► wxshadow(KPM 影子页,《kernel-hook-stealth.md》§2.3)
+   |- [Static address found] ---------> resolve KASLR (Section 3): root kallsyms values / one-symbol slide / information leak
+   |                                    `- No-root exploit: EntryBleed/prefetch/memory-read primitive
    │
    ▼
-[验证] tracefs 输出或 bpftrace printf 实测命中 / 行为 diff(改参后目标逻辑变化)
-       / dmesg 无 WARN / 性能无异常(时序侧信道自查,同篇 §8)
-       └─ 失败回滚检查:符号版本对不对(路A 坑)、inline(路C 坑)、CFI、槽位冲突(§6)
+[Choose hook mechanism] See kernel-hook-stealth.md Sections 1/9:
+   |- Observe arguments/results, no code modification -> kprobe for compatibility; fentry/kfunc with BTF for typed, faster access
+   |- Modify control flow/arguments -> ftrace IP_MODIFY / KernelPatch inline hook / svc_hook for userspace syscalls
+   |- Userspace function, avoid injected artifacts -> uprobe, or perf_event hardware breakpoints (Section 6, no byte modification)
+   `- App-invisible breakpoints -> wxshadow KPM shadow pages, kernel-hook-stealth.md Section 2.3
+   │
+   ▼
+[Verify] Observe tracefs/bpftrace hits or a behavioral diff after argument changes
+       / no dmesg WARN / no abnormal overhead; inspect timing side channels as in Section 8
+       `- On failure, roll back and check symbol version (route A), inlining (route C), CFI, and slot conflicts (Section 6)
 ```
 
 For an engineering reference of this closed loop within the APatch ecosystem: the APatch source covers KP's symbol extraction (extra_symbol) and KPM loading; capability mapping in kernel-hook-stealth.md sec.2.1.

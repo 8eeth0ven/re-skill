@@ -29,23 +29,23 @@ Function-granularity `FunctionPass`; `toObfuscate(flag, tmp, "fla")` checks `__a
 ```cpp
 char scrambling_key[16];
 llvm::cryptoutils->get_bytes(scrambling_key, 16);
-createLowerSwitchPass()->runOnFunction(*f);   // 已有 switch 消成 if/else,统一按分发块处理
-// 收集全部 BB 进 origBB;移出首块;首块终结符条件跳转或后继>1 时 splitBasicBlock(i,"first") 再分割
+createLowerSwitchPass()->runOnFunction(*f);   // Lower existing switches to if/else so all blocks follow the dispatcher transformation
+// Collect all basic blocks in origBB and remove the entry block; splitBasicBlock(i,"first") if its terminator is conditional or it has multiple successors
 ```
 
 **③ Build the skeleton** (CFG: first block writes the state initial value → loopEntry (load+switch) → each case block ↔ loopEnd ← swDefault):
 ```cpp
 switchVar = new AllocaInst(Int32Ty, 0, "switchVar", insert);
-new StoreInst(ConstantInt::get(Int32Ty, cryptoutils->scramble32(0, key)), switchVar, insert);  // state 初值
-load = new LoadInst(switchVar, "switchVar", loopEntry);    // loopEntry 内 load state
-insert->moveBefore(loopEntry);  BranchInst::Create(loopEntry, insert);   // 首块→loopEntry
+new StoreInst(ConstantInt::get(Int32Ty, cryptoutils->scramble32(0, key)), switchVar, insert);  // Initial state value
+load = new LoadInst(switchVar, "switchVar", loopEntry);    // Load state inside loopEntry
+insert->moveBefore(loopEntry);  BranchInst::Create(loopEntry, insert);   // Entry block -> loopEntry
 BranchInst::Create(loopEntry, loopEnd);  BranchInst::Create(loopEnd, swDefault);
 switchI = SwitchInst::Create(&*f->begin(), swDefault, 0, loopEntry);  switchI->setCondition(load);
 ```
 
 **④ Fill the blocks into the switch** (all case values pass through `scramble32` — the reason case values look patternless across functions of the same so; `i->moveBefore(loopEnd)` is a purely visual move with no logic):
 ```cpp
-for (遍历 origBB) {   // numCase = ConstantInt::get(condTy, scramble32(getNumCases(), key))
+for (each block in origBB) {   // numCase = ConstantInt::get(condTy, scramble32(getNumCases(), key))
   switchI->addCase(numCase, i);
 }
 ```
@@ -54,7 +54,7 @@ for (遍历 origBB) {   // numCase = ConstantInt::get(condTy, scramble32(getNumC
 ```cpp
 ConstantInt *numCaseTrue  = switchI->findCaseDest(term->getSuccessor(0));
 ConstantInt *numCaseFalse = switchI->findCaseDest(term->getSuccessor(1));
-// 任一 NULL(后继是 default)时回退 scramble32(getNumCases()-1)
+// If a successor has no case and falls through to default, use scramble32(getNumCases()-1)
 SelectInst *sel = SelectInst::Create(br->getCondition(), numCaseTrue, numCaseFalse, "", term);
 new StoreInst(sel, load->getPointerOperand(), i);  BranchInst::Create(loopEnd, i);
 ```
@@ -64,7 +64,7 @@ new StoreInst(sel, load->getPointerOperand(), i);  BranchInst::Create(loopEnd, i
 ```c
 int state = 0x123456;
 while (true) switch (state) {
-  case 0x654321: /*真实逻辑B*/ state=0x...; continue;   case 0x123456: /*真实逻辑A*/ state=0x...; continue; }
+  case 0x654321: /* real logic B */ state=0x...; continue;   case 0x123456: /* real logic A */ state=0x...; continue; }
 ```
 
 ## 3. Basic-Block Splitting (SplitBasicBlocks)
@@ -75,15 +75,15 @@ Author: freakish
 Function-granularity `FunctionPass`; `runOnFunction` validates the `-mllvm -split_num=x` range **(1,10]**, then `toObfuscate(..., "split")` → `split()`:
 ```cpp
 void SplitBasicBlock::split(Function *f) {
-  std::vector<BasicBlock *> origBB;               // 收集全部 BB(省略有效性检查)
-  for (遍历 origBB) {
+  std::vector<BasicBlock *> origBB;               // Collect all basic blocks; validity checks omitted
+  for (each block in origBB) {
     std::vector<int> test;
-    for (unsigned i = 1; i < curr->size(); ++i) test.push_back(i);  // 生成 1..n-1
+    for (unsigned i = 1; i < curr->size(); ++i) test.push_back(i);  // Generate indices 1..n-1
     if (test.size() != 1) { shuffle(test); std::sort(test.begin(), test.begin()+splitN); }
     BasicBlock::iterator it = curr->begin();  BasicBlock *toSplit = curr;  int last = 0;
     for (int i = 0; i < splitN; ++i) {
-      for (int j = 0; j < test[i]-last; ++j) ++it;   last = test[i];       // 推进到切割点
-      if (toSplit->size() >= 2) toSplit = toSplit->splitBasicBlock(it, name + ".split");  // 连切
+      for (int j = 0; j < test[i]-last; ++j) ++it;   last = test[i];       // Advance to the next split point
+      if (toSplit->size() >= 2) toSplit = toSplit->splitBasicBlock(it, name + ".split");  // Split successively
     }
   }
 }
@@ -108,7 +108,7 @@ A self-written protection packer = PE handling/obfuscation virtualization/protec
 
 **Instruction bloat (equivalent replacement)**, `push 0x123456` → precompute `imm=(0x123456+0x111111)^0x22222` offline, restore at runtime:
 ```asm
-push eax;  mov eax, imm;  xor eax, 0x22222;  sub eax, 0x111111   ; 逆运算还原出 0x123456
+push eax;  mov eax, imm;  xor eax, 0x22222;  sub eax, 0x111111   ; Invert the arithmetic to recover 0x123456
 push eax;  mov eax, dword ptr [esp+0x4]
 ```
 
@@ -116,8 +116,8 @@ push eax;  mov eax, dword ptr [esp+0x4]
 ```cpp
 void CodeObfuscationEngine::_insert_flower_code(asmjit::X86Assembler *&_a) {
   if (_insert_junk_code_number % 100 > _flower_code) return;
-  switch (rand() % 3) {  // case 0/1: jmp 过 1 字节假 E8/E9 —— Label l=newLabel; jmp(l); db(0xE8/0xE9); bind(l)
-  case 2: Label l = _a->newLabel(); int addr = rand()%0x66+0x5;    // call 跳过 0x74+rand 字节再平衡栈
+  switch (rand() % 3) {  // Cases 0/1: jump over one fake E8/E9 byte using Label l=newLabel; jmp(l); db(0xE8/0xE9); bind(l)
+  case 2: Label l = _a->newLabel(); int addr = rand()%0x66+0x5;    // Call over 0x74+rand bytes, then rebalance the stack
           _a->call(l); _a->db(0x74); _a->db(addr); _a->bind(l); _a->add(esp, 4); break;
   }
 }
@@ -142,9 +142,9 @@ Reverse-engineering value: when a VMP handler stream shows only one kind of bina
 
 **OLLVM sub — three groups of equivalences**:
 ```
-a = b & c  →  a = (b ^ ~c) & b     [b^~c=(~b&~c)|(b&c),与 b 相与仍得 b&c]
+a = b & c  ->  a = (b ^ ~c) & b     [b^~c=(~b&~c)|(b&c); AND with b still yields b&c]
 a = b | c  →  a = (b & c) | (b ^ c)
-a = a ^ b  →  a = (~a & b) | (a & ~b)   [定义式]
+a = a ^ b  ->  a = (~a & b) | (a & ~b)   [definition]
 ```
 Recognition: on meeting the three IR/assembly shapes `(x^~y)&x`, `(x&y)|(x^y)`, `(~x&y)|(x&~y)`, fold them straight back to and/or/xor (d810 ships the same rules).
 
@@ -162,7 +162,7 @@ mov  ebx, [esp+n]
 ...FunctionCode
 mov  eax, [TableX+ecx*8]
 mov  edx, key2
-sub  edx, ebx          ; key2-key1 = 真实解密偏移
+sub  edx, ebx          ; key2-key1 = actual decryption offset
 add  eax, edx
 jmp  eax
 ```
@@ -203,11 +203,11 @@ Author: misskings
 
 **The algorithm** (iterative XOR, with the final round flipped-not then XORed; kstr_size controls the rounds):
 ```cpp
-int randkey = 11;                 // 演示固定,实战每字节 cryptoutils->get_uint8_t()
+int randkey = 11;                 // Fixed for this demo; use cryptoutils->get_uint8_t() per byte in the real pass
 int enclen = randkey + kstr_size;
 for (i in len) for (y = randkey; y < enclen; y++)
     enc[i] = (y==randkey) ? str[i]^y : (y==enclen-1) ? enc[i]^(~y) : enc[i]^y;
-// 解密:y 从 enclen-1 降到 randkey,y==enclen-1 时先 ^~y,其余 ^y
+// Decrypt by decreasing y from enclen-1 to randkey; XOR with ~y first when y==enclen-1, otherwise XOR with y
 ```
 
 **Pass skeleton** (kstr name registered; toObfuscate goes through the annotate/kstr flag):
@@ -215,11 +215,11 @@ for (i in len) for (y = randkey; y < enclen; y++)
 struct KStringEncode : public FunctionPass {
   static char ID;  bool flag;
   bool runOnFunction(Function &F) {
-    if (!(KStringSize > 0 && KStringSize <= 0x20)) { /* 报错返回 */ }
+    if (!(KStringSize > 0 && KStringSize <= 0x20)) { /* Report the error and return */ }
     if (toObfuscate(flag, &F, "kstr")) { kstr(F); return true; }
     return false; }   void kstr(Function *func);
 };
-// (省略:ID 初始化 / RegisterPass 注册 / createKStringEncode 工厂——与 ollvm 内置 pass 同套路)
+// Omitted: ID initialization, RegisterPass registration, and createKStringEncode factory, following the built-in OLLVM pass pattern
 ```
 
 **String locating**: a string is an instruction operand in IR (`@.str = private unnamed_addr constant [15 x i8] c"hello world!!!\00"`); triple-iterate Function→BasicBlock→Instruction→operands(), `stripPointerCasts()` then `contains(".str")` filtering; fetch the content:
@@ -235,12 +235,12 @@ std::string ConvertOpToString(Value* op) {
 ```cpp
 for (i in strdata) {
   element = GetElementPtrInst::CreateInBounds(bitInst, i_const);          // &buf[i]
-  for (y = enclen-1; y >= randkey; y--) {  // y 常数 alloca+store 再 load 回来
+  for (y = enclen-1; y >= randkey; y--) {  // Store the constant y with alloca+store, then load it again
     // y==enclen-1: CreateNot(~y)→CreateXor(enc_const,notOp)→store eor_res
-    // else: load 上轮 eor_res→CreateXor(prev,eor_load)→store;y==randkey 记尾锚点
+    // Otherwise load the previous eor_res, CreateXor(prev,eor_load), and store it; remember the final anchor when y==randkey
   }
-  new StoreInst(load(eor_res), element);   // 最终明文写入 buf[i]
-}  // 结尾:val->replaceAllUsesWith(bitInst) 改指解密缓冲;eraseFromParent() 删明文 GV
+  new StoreInst(load(eor_res), element);   // Write the final plaintext into buf[i]
+}  // Finally redirect uses to the decryption buffer with val->replaceAllUsesWith(bitInst), then remove the plaintext global with eraseFromParent()
 ```
 
 **The scope pitfall**: the same literal string used twice (two `printf("hello")`) merges into one string at the assembly layer; when decrypting at the use sites, the other branch may not be able to access the bitcast (not in the same scope). **Fix: record the function's first instruction `begin_ins` and insert all decryption instructions uniformly at the very top of the function**; when modifying the instruction stream during iteration, cache `begin_ins` before touching the IR.

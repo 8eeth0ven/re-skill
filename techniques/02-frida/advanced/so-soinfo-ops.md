@@ -17,7 +17,7 @@ function waitForModule(moduleName) {
                 clearInterval(checkInterval);
                 resolve(baseAddr);
             }
-        }, 1000); // 检查频率为每秒一次
+        }, 1000); // Check once per second
     });
 }
 ```

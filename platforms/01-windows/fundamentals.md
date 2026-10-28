@@ -253,7 +253,7 @@ Miscellaneous nodes as fallback: character encodings (Appendix 1 common characte
 | Intel Manual Three-Volume Translation | Knowledge-base native nodes 1001219/1000009/1000010 | In-tree node |
 | Iczelion's PE Tutorials | Knowledge-base native node 1000143 (child of PE Format Specification) | In-tree node |
 | How Virtualization Works / Deep Dive into Virtualization | Knowledge-base native nodes 1001203/1001263 | In-tree node |
-| Armariris (Amaryllis, LLVM obfuscation framework) | Knowledge-base node 1001373; GitHub GoSSIP-SJTU/Armariris (adds a string-obfuscation pass on top of OLLVM, now unmaintained) |
+| Armariris (Amaryllis, LLVM obfuscation framework) | Knowledge-base node 1001373; GitHub GoSSIP-SJTU/Armariris (adds a string-obfuscation pass on top of OLLVM, now unmaintained) | External project |
 | Qilin Framework | Knowledge-base node 1001392 | In-tree node |
 | Two C++ reversing posts (Learning C++ Reversing / C++ from a Reverse-Engineering Perspective) | Knowledge-base nodes 1000135/1000136 | In-tree node |
 | Learning C/C++ from the Assembly Perspective | Knowledge-base node 1001716 | In-tree node |

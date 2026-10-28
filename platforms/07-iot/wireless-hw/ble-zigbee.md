@@ -4,10 +4,10 @@
 ## 1. The BLE Stack and Attack Surface
 
 ```
-GATT(服务/特征值:数据模型,读写/Notify)
-ATT(属性协议:handle 读写)
-L2CAP / SMP(配对加密)
-LL(链路层:37 数据信道跳频+3 广播信道)
+GATT (services/characteristics: data model, read/write/Notify)
+ATT (attribute protocol: handle reads/writes)
+L2CAP / SMP (pairing encryption)
+LL (link layer: frequency hopping across 37 data channels + 3 advertising channels)
 ```
 
 Attack surface: **pairing without encryption (Just Works)** → man-in-the-middle; **unauthenticated characteristics** → arbitrary read/write (most cheap devices); **broadcast provisioning information** → sniffing.
@@ -34,12 +34,12 @@ Path: phone developer options "Bluetooth HCI snoop log" → bind/operate the wri
 
 **The recovered auth protocol** (unbound flow; already-bound = one fewer write-key step):
 ```
-APP ──写 desc 0x0100(CCCD 开 notify)──▶ 手环
-APP ──写 0x0100+key(16B)──────────────▶ 手环   ← 未绑定时先写 key
-APP ──发 0x020002(要随机数)───────────▶ 手环
-APP ◀──0x100201+rand(16B)────────────── 手环
-APP ──发 0x0300+AES_ECB(key,rand)(16B)▶ 手环
-APP ◀──0x100301(认证通过)/0x100304(失败)─ 手环
+APP ──write desc 0x0100 (CCCD: enable notify)──▶ Wristband
+APP ──write 0x0100+key(16B)───────────────────▶ Wristband ← write the key first when unbound
+APP ──send 0x020002 (request random value)─────▶ Wristband
+APP ◀──0x100201+rand(16B)────────────────────── Wristband
+APP ──send 0x0300+AES_ECB(key,rand)(16B)───────▶ Wristband
+APP ◀──0x100301 (authentication success)/0x100304 (failure)── Wristband
 ```
 (key transported in plaintext + ECB with no IV; deduced to be AES_ECB from the known key/rand/ciphertext triple)
 

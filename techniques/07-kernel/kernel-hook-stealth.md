@@ -42,12 +42,12 @@ Lead: "KernelHook: an Android ARM64/GKI kernel LKM hook framework derived from K
 Mechanism (the full life cycle of a stealth breakpoint):
 
 ```
-设断点: 分配影子物理页 = 目标页副本,在目标地址写入 BRK #0x7
-        把用户 PTE 重定向到影子页(BBM 原子 PTE 写)
-执行取指: CPU 走影子页 → 命中 BRK #0x7 → 异常进 handler
-        → 寄存器全捕获(x0–x30/sp/pc/pstate)
-        → PTE 翻回原始页 → 单步原指令 → 重装影子 PTE → 继续跑
-读取者: 始终解析到原始页 → 永远看到原始字节,BRK 不可见
+Set breakpoint: allocate a shadow physical page copied from the target; write BRK #0x7 at the target address
+        Redirect the user PTE to the shadow page using a BBM atomic PTE update
+Instruction fetch: CPU executes the shadow page -> BRK #0x7 -> exception handler
+        -> capture all registers: x0-x30/sp/pc/pstate
+        -> restore original-page PTE -> single-step original instruction -> reinstall shadow PTE -> continue
+Readers: resolve the original page and see original bytes; the BRK is absent from readback
 ```
 
 Two "read hiding" evidence chains (from the README test matrix):
@@ -133,10 +133,10 @@ The classic x86 idiom (community ftrace-hook template): register `ftrace_ops` on
 ### 7.3 Minimal KPM skeleton (understanding how a KPM differs from a .ko)
 
 ```
-KPM:KernelPatch Module,由 KP 的 kpatch 工具加载(kpm load),不走内核 module_load,
-     因此不依赖 KMI 版本、不落 /proc/modules 常规路径、无 module 签名校验环节。
-接口形态(概念):hook 原语 + 符号解析(extra_symbol)+ 事件回调;
-wxshadow 的 KPM 化 = 模块 init 时装好 BRK handler/页表工具,prctl 留用户态控制通道。
+KPM: KernelPatch Module, loaded through KP's kpatch tool (kpm load), without the standard module_load path
+     Thus it avoids a KMI-version dependency, the normal /proc/modules entry, and module-signature validation
+Conceptual interface: hook primitives + symbol resolution (extra_symbol) + event callbacks
+wxshadow as a KPM: install BRK handlers/page-table helpers during module initialization; use prctl for userspace control
 ```
 
 Compared with insmod of a .ko: a `.ko` goes through the official loader (module signature/lockdown checks; on Android GKI, loading outside the vendor_dlkm domain is restricted); a KPM is installed by KP's own patch engine - which is why APatch works on devices with a locked boot chain (provided the bootloader is unlocked or a bug allows writing the boot partition).
@@ -163,10 +163,10 @@ Positioning: APatch/KP is the foundation of the "kernel hook stack"; Magisk/KSU 
 **wxshadow client quick reference** (commands from the README):
 
 ```
-wxshadow_client -p <pid> -a <addr>                 # 设断点(寄存器全捕获)
-wxshadow_client -p <pid> -a <addr> -r x0=<val>     # 断点 + 改寄存器
-wxshadow_client -p <pid> -a <addr> --patch <hex>   # 影子页改指令
-wxshadow_client -p <pid> --release                 # 全部释放
+wxshadow_client -p <pid> -a <addr>                 # Set a breakpoint and capture all registers
+wxshadow_client -p <pid> -a <addr> -r x0=<val>     # Breakpoint plus register modification
+wxshadow_client -p <pid> -a <addr> --patch <hex>   # Patch instructions in the shadow page
+wxshadow_client -p <pid> --release                 # Release all resources
 ```
 
 Deployment chain (OnePlus Android 16 tested path, README original): push to /sdcard -> su cp to /data/local/tmp (the KernelSU redirection trap) -> `kpatch kpm load wxshadow.kpm`.

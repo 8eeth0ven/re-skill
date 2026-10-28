@@ -18,8 +18,8 @@ Hence the three leitmotifs of the whole text:
 Any program is a nest of "interpreters". Taking one web request as an example, user input passes through:
 
 ```
-HTTP body → 框架路由器 → 业务代码 → [SQL 引擎 | shell | 模板引擎 | LDAP | XPath]
-         → 浏览器 HTML parser → HTML 里的 JS parser → 又可能拼回 SQL/HTML
+HTTP body → framework router → business logic → [SQL engine | shell | template engine | LDAP | XPath]
+          → browser HTML parser → JS parser inside HTML → potentially concatenated back into SQL/HTML
 ```
 
 Every bracket is a **Turing-complete or quasi-Turing-complete language runtime**. The necessary and sufficient conditions for injection:
@@ -35,7 +35,7 @@ The common interpreter-entrance checklist (during audits, check each against "do
 | Interpreter | Entrance API/syntax | Representative metacharacters | Parameterized form |
 |-------------|--------------------|-------------------------------|--------------------|
 | SQL engine | driver query | `'` `;` `--` | PreparedStatement bind |
-| shell | system/popen/exec(String) | `;` `|` `$()` `&&` | argv array |
+| shell | system/popen/exec(String) | `;` `\|` `$()` `&&` | argv array |
 | HTML parser | innerHTML/document.write | `<` `"` | textContent/DOM API |
 | JS engine | eval/Function/setTimeout(str) | the whole language | don't eval; callbacks |
 | Template engine | evaluate/render(userStr) | `${` `#{` `<#` | pass a data model |
@@ -59,23 +59,23 @@ I.e.: **string concatenation = letting data participate in constructing the synt
 ### 1.3 The SQL Parser's View, Diagrammed
 
 ```
-输入: input = "a' OR '1'='1"
+Input: input = "a' OR '1'='1"
 
-字节流:  SELECT * FROM users WHERE name='a' OR '1'='1'
+Byte stream: SELECT * FROM users WHERE name='a' OR '1'='1'
                                       ^^ └────┬─────┘└───┬───┘
-                                      │   新谓词(攻击者的语法)│
+                                      │ New predicate (attacker-controlled syntax) │
                                       │                     │
-Lexer 状态机(简化):
-  [CODE 态] --遇 '--> [STRING 态] --遇 '--> [CODE 态] ...
+Lexer state machine (simplified):
+  [CODE] --encounter '--> [STRING] --encounter '--> [CODE] ...
 
-  name='a'      → 正常:STRING 态吃掉 a,遇 ' 回 CODE
-  a' OR ...     → 用户输入里的 ' 把状态机切回 CODE 态
-                  之后每个字节都被当 SQL 语法重新分词:
-                  OR 成为关键字,'1'='1' 成为谓词节点
+  name='a'      → Normal: STRING consumes a; the closing ' returns to CODE
+  a' OR ...     → The quote in user input returns the state machine to CODE
+                  Every subsequent byte is tokenized as SQL syntax:
+                  OR becomes a keyword and '1'='1' becomes a predicate node
 
-  结果 AST:
-  WHERE name='a'            (开发者意图的子树)
-        OR ('1'='1')        ← 攻击者追加的兄弟节点,整棵 WHERE 恒真
+  Resulting AST:
+  WHERE name='a'            (developer-intended subtree)
+        OR ('1'='1')        ← Attacker-added sibling node makes the whole WHERE clause true
 ```
 
 Wide-byte injection is this same diagram proven along the encoding dimension: under GBK, `0xbf5c` (preceding the `\`) gets consumed as one Chinese character; the `\`'s escaping power vanishes and the quote is bare again — showing that **escaping must be aware of the target interpreter's character set**; escaping schemes and interpreters are tightly coupled, and data-side patches like "filter `'`" never touch the boundary at all.
@@ -83,13 +83,13 @@ Wide-byte injection is this same diagram proven along the encoding dimension: un
 ### 1.4 Why Parameterized Queries Are the Radical Cure
 
 ```
-预编译阶段(语法树已封闭):          执行阶段:
+Preparation (AST already fixed):        Execution:
   Parse("... WHERE name = ?")        bind(1, "a' OR '1'='1")
         │                                   │
         ▼                                   ▼
-  Stmt { WHERE: { op: =,              值作为叶子挂到 PARAM(1) 槽位
-         col: name,                   —— 字节串从未进入 lexer,
-         val: PARAM(1) } }              树的形状不可能改变
+  Stmt { WHERE: { op: =,              Value attaches as a leaf to PARAM(1)
+         col: name,                   — its byte string never enters the lexer,
+         val: PARAM(1) } }              so the tree shape cannot change
 ```
 
 The mechanism of the parameterized cure is not "better filtering" but **splitting "constructing the tree" and "filling in values" into two phases, with user data appearing only in the second phase**. The generalized equivalent principle:
@@ -133,12 +133,12 @@ Audit verdict: seeing an `exec`/`system`/`popen` whose argument is a **concatena
 Root cause: **the path at the string layer and the path at the filesystem-semantics layer are not isomorphic**. `../` is a harmless character in a string; after FS parsing it is "a directory jump-up"; the concatenation `base + "/" + filename` assumes the filename contains no semantic jumps, and no mechanism enforces that assumption. The pitfalls of the fix are all in **timing**:
 
 ```
-错误1: 先 startsWith(userPath, "..") 再拼 base     → 编码绕过(%2e%2e%2f、..\\、unicode)
-错误2: canonical = File(base+name).getCanonicalPath();
-       if (canonical.startsWith(root)) 打开(canonical)  → 可,但注意 ↓
-错误3: startsWith("/var/www/uploads")               → "/var/www/uploads-secret" 也通过
-正确:   canonical.startsWith(root + File.separator)
-        且 canonicalize 之后**不再拼接任何用户输入**(否则回到 TOCTOU)
+Error 1: startsWith(userPath, "..") before joining base → encoding bypass (%2e%2e%2f, ..\\, unicode)
+Error 2: canonical = File(base+name).getCanonicalPath();
+         if (canonical.startsWith(root)) open(canonical) → usable, but note the next case
+Error 3: startsWith("/var/www/uploads") → also accepts "/var/www/uploads-secret"
+Correct: canonical.startsWith(root + File.separator)
+         Do not append any user input after canonicalization, or the check/use boundary reappears
 ```
 
 Unified principle: **validation must act on "the semantic form that will actually be used"** (post-resolve), with no further transformation between validation and use. This is the same principle as §3's pin-IP and §4.5's atomic debit: the validated object = the used object.
@@ -164,9 +164,9 @@ One-line root cause: **deserialization protocols are "instantiate a byte stream 
 Wrapping up §2 from the injection-family overview: the seven injection surfaces share one verdict line —
 
 ```
-SQL │ XSS │ 命令 │ 路径 │ SSTI/EL │ LDAP/XXE │ NoSQL │ 反序列化 │ 提示注入
- └── 用户字节获得「目标语言的语法地位」──┘
-      修复只有两型:bind 通道(参数化/argv/textContent)或关能力(禁 DTD/禁 eval/沙箱)
+SQL │ XSS │ Commands │ Paths │ SSTI/EL │ LDAP/XXE │ NoSQL │ Deserialization │ Prompt injection
+ └── User-controlled bytes gain syntactic meaning in the target language ──┘
+      Two remediation classes: binding channels (parameterization/argv/textContent) or disabling capability (DTD/eval/sandbox restrictions)
 ```
 
 ## 3. SSRF's Root Cause: Implicitly Trusted Network Position
@@ -174,9 +174,9 @@ SQL │ XSS │ 命令 │ 路径 │ SSTI/EL │ LDAP/XXE │ NoSQL │ 反序�
 ### 3.1 The Root-Cause Formula
 
 ```
-SSRF = 服务端 fetch(url) 
-     + url 含用户输入
-     + 「内网默认可信」的边界模型
+SSRF = server-side fetch(url)
+     + user input in the url
+     + a trust-boundary model that implicitly trusts internal networks
 ```
 
 The firewall's trust model is **tight outside, loose inside** (ACL at the perimeter, everything allowed inside). SSRF makes a legitimate egress located at the boundary (image fetching/webhook/import) send requests into the intranet on the attacker's behalf, **piercing the boundary model with the application's legitimate network position**. The highest-value target is cloud metadata (169.254.169.254): IMDSv1 has no authentication and returns temporary credentials — one GET for a cloud account; this is the priciest single point of the "intranet trusted by default" assumption.
@@ -232,8 +232,8 @@ In `total = price * quantity`, quantity=-1 → a negative total that offsets the
 
 ```
 read  balance = 100
-check balance >= 80     ✓        ← 两个请求都在此通过
-write balance = 100-80 = 20      ← 两次写,双花
+check balance >= 80     ✓        ← Both requests pass here
+write balance = 100-80 = 20      ← Two writes allow double spending
 ```
 
 - Mental model: "requests arrive serially"
@@ -266,11 +266,11 @@ The three models are not advances in security but **administrative compromises u
 Horizontal/vertical escalation share one root cause: **the granularity of the authorization check is coarser than the granularity of resource access**.
 
 ```
-边缘检查(网关/interceptor):  「请求者已登录吗?」——只回答认证
-每对象检查(每次 access):      「请求者对 THIS object 有 THIS 权限吗?」
+Boundary check (gateway/interceptor): "Is the requester logged in?" — answers authentication only
+Per-object check (every access):       "Does this requester have THIS permission on THIS object?"
 
-垂直提权 = 管理接口只靠「菜单里不显示」隐藏(hidden route),后端不二次验角色
-水平提权 = 业务接口只验登录,资源对象不验属主(§4.2)
+Vertical privilege escalation: hiding an admin endpoint from menus without a backend role check (hidden route)
+Horizontal privilege escalation: checking login at an endpoint without checking object ownership (§4.2)
 ```
 
 Both are "check at the edge, use on the inside" structures — the same "wrong validation location" leitmotif as SSRF's first-hop validation and path traversal's premature blocklist. The fix is always pushing the check down to **every object access** (default deny + explicit grant); what frameworks can automate (annotations + ORM filters) exists to lower the point-by-point cost of per-object checks.

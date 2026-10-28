@@ -89,7 +89,7 @@ $url = (Invoke-RestMethod https://api.github.com/repos/NationalSecurityAgency/gh
 Invoke-WebRequest $url -OutFile "$env:TEMP\ghidra.zip"
 7z x "$env:TEMP\ghidra.zip" -oC:\tools | Out-Null
 Rename-Item (Get-ChildItem C:\tools -Directory -Filter 'ghidra_*')[0].FullName C:\tools\ghidra
-# 验证: C:\tools\ghidra\ghidraRun.bat
+# Verify: C:\tools\ghidra\ghidraRun.bat
 ```
 
 - macOS side likewise, by hand: download the same zip → extract to `~/tools/ghidra/` → `~/tools/ghidra/ghidraRun` (macOS needs JDK 25: `brew install --cask temurin@25`, verify the id with `brew search temurin`; do **not** `brew install --cask ghidra` — Homebrew has no such cask; verified 2026-10-16: `No Cask with this name exists`)
@@ -103,7 +103,7 @@ $Ghidra/support/analyzeHeadless /tmp/ghidra-proj WinProj \
   -processor x86:LE:64:default \
   -postScript DecompileAllFunctions.java \
   -scriptPath ~/scripts
-# 常用: -deleteProject 一次性跑; -process 批量; 内置脚本在 $Ghidra/Ghidra/Features/Decompiler/ghidra_scripts/
+# Common options: -deleteProject for a disposable run; -process for batch processing; built-in scripts: $Ghidra/Ghidra/Features/Decompiler/ghidra_scripts/
 ```
 
 Typical AI-orchestrated flow: headless-import the driver/kernel module → `DecompilerParameterId` → run a custom postScript to batch-dump pseudo C → send it back to the macOS side for analysis.
@@ -117,8 +117,8 @@ Typical AI-orchestrated flow: headless-import the driver/kernel module → `Deco
 ### 2.4 radare2
 
 ```powershell
-winget install radare2.radare2     # 或 scoop install radare2; 或 github.com/radareorg/radare2/releases 下 zip
-r2 -v                              # 验证
+winget install radare2.radare2     # Or scoop install radare2; alternatively use the zip from github.com/radareorg/radare2/releases
+r2 -v                              # Verify
 # macOS: brew install radare2
 ```
 
@@ -133,11 +133,11 @@ Build (VS developer command line; needs the §1.4 Build Tools + CMake; the offic
 ```bat
 git clone https://github.com/googleprojectzero/winafl C:\tools\winafl
 cd C:\tools\winafl
-:: 32 位（32 位目标必需; 64 位换 build64 + -A x64 + bin64）
+:: 32-bit build (required for 32-bit targets; for 64-bit use build64 + -A x64 + bin64)
 mkdir build32 && cd build32
 cmake -G "Visual Studio 16 2019" -A Win32 .. -DDynamoRIO_DIR=C:\tools\DynamoRIO\cmake
 cmake --build . --config Release
-:: 可加速项: -DTINYINST=1（TinyInst 后端）; -DINTELPT=1（Intel PT 模式，先 git submodule update --init --recursive）
+:: Optional acceleration: -DTINYINST=1 (TinyInst backend); -DINTELPT=1 (Intel PT mode; first git submodule update --init --recursive)
 ```
 
 Run the official example to success (the source tree ships the test target `test.exe`, exporting the called function `fuzz`, two input arguments):
@@ -148,7 +148,7 @@ mkdir in && echo hello > in\test.txt
 afl-fuzz.exe -i in -o out -t 20000 -D C:\tools\DynamoRIO\bin32 ^
   -- -coverage_module test.exe -target_module test.exe -target_method fuzz -nargs 2 -fuzz_iterations 1000 ^
   -- test.exe @@
-:: 10 分钟内 coverage path 数在涨、无 DLL 注入报错 = 跑通
+:: Success: coverage-path count increases within 10 minutes and no DLL-injection errors occur
 ```
 
 Essentials: **the target's bitness must match the winafl.dll bitness** (64-bit programs use build64 + bin64); corpus minimization `winafl-cmin.py -D C:\tools\DynamoRIO\bin32 -t 100000 -i in -o minset -covtype edge -coverage_module m.dll -target_module test.exe -target_method fuzz -nargs 2 -- test.exe @@`; for DLL targets (e.g., image-decoding libraries, LMDB-class embedded libraries) use `-target_module <dll> -target_method <exported function>`, first writing a host exe that loads the DLL and hooks the method in.
@@ -187,8 +187,8 @@ Essentials: **the target's bitness must match the winafl.dll bitness** (64-bit p
 ## 5. setup.ps1 One-Click Script (Skeleton; Save as `C:\tools\setup.ps1` and Run as Administrator)
 
 ```powershell
-# Windows 漏洞挖掘工具链一键安装 · 2026-10-16 · 需管理员 PowerShell
-# 用法: powershell -ExecutionPolicy Bypass -File setup.ps1
+# One-command Windows vulnerability-research toolchain setup · 2026-10-16 · requires administrator PowerShell
+# Usage: powershell -ExecutionPolicy Bypass -File setup.ps1
 $ErrorActionPreference = 'Continue'
 $results = @()
 function Step($name, $check, $install) {
@@ -198,11 +198,11 @@ function Step($name, $check, $install) {
         else          { $script:results += [pscustomobject]@{Item=$name;Status='装后检测失败'} } }
     catch { $script:results += [pscustomobject]@{Item=$name;Status="失败:$($_.Exception.Message)"} }
 }
-# 0) 前提: winget + 管理员
+# 0) Prerequisites: winget + administrator privileges
 if (-not (Get-Command winget -EA SilentlyContinue)) { Write-Error '无 winget: 装 App Installer(商店) 后重跑'; exit 1 }
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
       ).IsInRole('Administrators')) { Write-Error '需管理员 PowerShell'; exit 1 }
-# 1) 基础(全走 winget; 版本以 winget 源为准)
+# 1) Base tools (all via winget; versions follow the winget source)
 $pkgs = @(
   @{n='WinDbg';      id='Microsoft.WinDbg'},
   @{n='Python3.12';  id='Python.Python.3.12'},
@@ -212,21 +212,21 @@ $pkgs = @(
   @{n='radare2';     id='radare2.radare2'},
   @{n='x64dbg';      id='x64dbg.x64dbg'},
   @{n='Sysinternals';id='Microsoft.Sysinternals'},
-  @{n='JDK25(Temurin)';id='EclipseAdoptium.Temurin.25.JDK'} )   # id 不确定时先 winget search temurin
+  @{n='JDK25(Temurin)';id='EclipseAdoptium.Temurin.25.JDK'} )   # If the ID is uncertain, run winget search temurin first
 foreach ($p in $pkgs) {
   Step $p.n { winget list --id $p.id -e | Select-String $p.id } `
        { winget install --id $p.id -e --silent --accept-source-agreements --accept-package-agreements }
 }
-# 2) 符号路径(系统级)
+# 2) Symbol path (system-wide)
 New-Item -ItemType Directory -Force -Path C:\Symbols | Out-Null
 [Environment]::SetEnvironmentVariable('_NT_SYMBOL_PATH',
   'srv*C:\Symbols*https://msdl.microsoft.com/download/symbols','Machine')
 $results += [pscustomobject]@{Item='_NT_SYMBOL_PATH';Status=[Environment]::GetEnvironmentVariable('_NT_SYMBOL_PATH','Machine')}
-# 3) VS Build Tools(winafl 前置; 大, 装完建议重启)
+# 3) VS Build Tools (WinAFL prerequisite; large installation; reboot afterward is recommended)
 Step 'VS2022BuildTools' { winget list Microsoft.VisualStudio.2022.BuildTools | Select-String BuildTools } `
   { winget install Microsoft.VisualStudio.2022.BuildTools --silent --override
     "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended" }
-# 4) Ghidra zip(github releases, 版本取 latest)
+# 4) Ghidra zip (GitHub releases, select latest)
 $rel = Invoke-RestMethod 'https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest'
 $zip = $rel.assets | Where-Object name -Match '\.zip$' | Select-Object -First 1
 Step 'Ghidra' { Test-Path C:\tools\ghidra\ghidraRun.bat } {
@@ -234,13 +234,13 @@ Step 'Ghidra' { Test-Path C:\tools\ghidra\ghidraRun.bat } {
   Invoke-WebRequest $zip.browser_download_url -OutFile "$env:TEMP\ghidra.zip"
   7z x "$env:TEMP\ghidra.zip" -oC:\tools | Out-Null
   Rename-Item (Get-ChildItem C:\tools -Directory -Filter 'ghidra_*' | Select-Object -First 1).FullName C:\tools\ghidra }
-# 5) DynamoRIO + winafl 源码(编译仍需手动开 VS 命令行, 见手册 §3.1)
+# 5) DynamoRIO + winafl source (compile manually in a VS developer prompt; see §3.1)
 Step 'winafl-src' { Test-Path C:\tools\winafl } { git clone https://github.com/googleprojectzero/winafl C:\tools\winafl }
 $dr = (Invoke-RestMethod 'https://api.github.com/repos/DynamoRIO/dynamorio/releases/latest').assets |
       Where-Object name -Match 'Windows.*x86_64|Windows-.*64' | Select-Object -First 1
 if ($dr) { Invoke-WebRequest $dr.browser_download_url -OutFile "$env:TEMP\drio.zip"
-           7z x "$env:TEMP\drio.zip" -oC:\tools | Out-Null }   # 解压目录名即版本号, 记录到报告
-# 6) 汇总(需要 reboot / 手动的项在这里标出)
+           7z x "$env:TEMP\drio.zip" -oC:\tools | Out-Null }   # The extracted directory name contains the version; record it in the report
+# 6) Summary (mark reboot/manual-action requirements here)
 $results += [pscustomobject]@{Item='bcdedit内核调试';Status='手动: 见 §1.2, 配完需重启'}
 $results += [pscustomobject]@{Item='winafl编译';      Status='手动: VS开发者命令行 cmake, 见 §3.1'}
 $results | Format-Table -AutoSize
@@ -267,7 +267,7 @@ for d in pe.DIRECTORY_ENTRY_DEBUG:
         g = ''.join(f'{b:02X}' for b in guid[:4][::-1]) + ''.join(f'{b:02X}' for b in guid[4:6][::-1]) \
             + ''.join(f'{b:02X}' for b in guid[6:8][::-1]) + ''.join(f'{b:02X}' for b in guid[8:])
         url = f'https://msdl.microsoft.com/download/symbols/{pdb}/{g}{age:X}/{pdb}'
-        print(url); urllib.request.urlretrieve(url, pdb)   # 装好可进 Ghidra 的 PDB 符号路径
+        print(url); urllib.request.urlretrieve(url, pdb)   # After download, add the PDB to the Ghidra symbol path
 ```
 
 - Coverage-guided fuzz source review (reading winafl/syzkaller sources), report writing, AI orchestration (everything in the VM is executed by commands dispatched from the main thread)

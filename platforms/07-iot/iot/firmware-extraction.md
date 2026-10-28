@@ -18,13 +18,13 @@ Representative posts: the two "D-Link Firmware Analysis Record" articles (the ve
 U-Boot is the de-facto standard embedded bootloader. Once the serial port (UART) is hooked up, interrupt with `Hit any key to stop autoboot` to drop into the U-Boot shell; common commands:
 
 ```
-# 看分区布局(典型 SPI NOR 布局)
-=> printenv bootargs mtdparts     # 传给内核的 MTD 分区表
+# Inspect the partition layout (typical SPI NOR layout)
+=> printenv bootargs mtdparts     # MTD partition table passed to the kernel
 => mtdparts default; mtdparts
-# 内存/Flash 搬运三板斧
-=> md.b 0x9F000000 0x100    # memory display(Flash 内存映射基址)
-=> sf probe 0; sf read <RAM> <FL_OFF> <LEN>   # SPI NOR 读到 RAM
-=> md.b <RAM> <LEN>          # 逐段倒出;或 tftp <RAM> 反向上传主机
+# Three operations for memory/Flash extraction
+=> md.b 0x9F000000 0x100    # Memory display at the Flash memory-mapped base address
+=> sf probe 0; sf read <RAM> <FL_OFF> <LEN>   # Read SPI NOR into RAM
+=> md.b <RAM> <LEN>          # Dump in chunks, or use tftp <RAM> to upload to the host
 ```
 (base addresses/offsets differ per vendor; trust `printenv` and the board schematic)
 
@@ -64,15 +64,15 @@ Pitfalls: changes living only in RAM are lost — they must hit the flash via na
 
 ```
 $ binwalk -Me fw.bin
-├── squashfs-root/          ← 99% 的情况:完整 Linux 根文件系统
-│   ├── bin/ sbin/ usr/bin  ← busybox + 厂商私有程序(httpd/goahead/cfm)
-│   ├── etc/init.d/rcS      ← 自启脚本:服务怎么起来的全在这
-│   ├── htdocs/web/         ← Web 前端 + .cgi 入口
-│   ├── etc/passwd shadow   ← 硬编码凭据高发区
-│   └── lib/                ← so 依赖(架构判定:readelf -h)
-├── *_jffs2 / *_ubifs       ← JFFS2/UBI(UBI 需 ubireader_extract_image)
-├── *_cramfs                ← 老设备
-└── yaffs/xiaomi.etc        ← 厂商私有容器(手工解析,见华为光猫帖)
+├── squashfs-root/          ← Full Linux root filesystem in 99% of cases
+│   ├── bin/ sbin/ usr/bin  ← busybox + vendor programs (httpd/goahead/cfm)
+│   ├── etc/init.d/rcS      ← Startup script: service initialization
+│   ├── htdocs/web/         ← Web frontend + .cgi entry points
+│   ├── etc/passwd shadow   ← Common locations for hardcoded credentials
+│   └── lib/                ← Shared-library dependencies (architecture: readelf -h)
+├── *_jffs2 / *_ubifs       ← JFFS2/UBI (UBI requires ubireader_extract_image)
+├── *_cramfs                ← Older devices
+└── yaffs/xiaomi.etc        ← Vendor containers requiring manual parsing; see the Huawei optical-modem case
 ```
 (for ubifs scenarios, when `binwalk -Me` fails switch to `ubireader_extract_images`)
 
@@ -90,6 +90,7 @@ Bare firmware without an FS (MCU/VxWorks/RT-Thread/RTEMS):
 - **Load address**: if the base is wrong when IDA loads the raw bin, every reference flies off. "Firmware Security: Load-Address Analysis": back-derive the base from the vector table / string cross-references (the STM32 post takes the same approach).
 - **Symbol recovery**: when the VxWorks symbol table has been cut, recover via the residual `symtab` structures: "Exploring vxworks Filename Recovery".
 - **Algorithm restoration**: for private encryption/checksum algorithms in firmware, run the function directly as a black box with Unicorn: "Analyzing the Algorithms in Firmware with unicorn".
+- **Uncommon CPUs Ghidra can't open**: **Ghidra-Rare** (github.com/aleph-void/Ghidra-Rare) ships SLEIGH processor modules for rare ISAs — TI PRU, AMD/Xilinx MicroBlaze, XMOS xCORE (XS1/XS2/XS3), TI C7x DSP, NVIDIA GPU SASS (Kepler→Blackwell), Zilog Z8, ST9 — plus community modules collected from GitHub and unmerged Ghidra PRs, tested and fixed. Drop the per-ISA extension zip into `Ghidra/Extensions/` and reboot Ghidra; release builds track the three newest Ghidra releases (v1.0.0 2026-10-25, zip structure smoked). When binwalk extracts firmware whose `readelf -h` says an architecture stock Ghidra rejects, check here before hand-rolling a loader.
 - Full cases: "An Embedded Firmware Reversing Session", "A Simple STM32 Firmware Analysis", "STM32 Firmware Reversing", "An STM32 Firmware Dump Tutorial" (STM32 dumps go over SWD, ../wireless-hw/hw-interfaces.md §1.3).
 
 ### 6.4 Automated scanners

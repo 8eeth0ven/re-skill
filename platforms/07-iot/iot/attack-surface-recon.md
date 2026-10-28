@@ -5,21 +5,21 @@
 
 ```
                         ┌─────────────────────────────────────────┐
-                        │            云端 / 手机 App              │
-                        │  云 API · 账号体系 · OTA 服务 · 推送      │
+                        │            Cloud / mobile app             │
+                        │  Cloud APIs · accounts · OTA · push       │
                         └───────▲─────────────────────▲───────────┘
-                                │ HTTPS/MQTT/私有TCP   │ BLE 配网
+                                │ HTTPS/MQTT/private TCP │ BLE provisioning
                         ┌───────┴───────┐     ┌───────┴────────┐
-   局域网攻击面          │   家庭网关/路由器 │     │  智能单品设备   │
-   ├ Web 管理界面  ◄──── │  固件/内核/驱动   │     │  MCU 固件      │
-   ├ UPnP/私有协议 ◄──── │  goahead/lighttpd│     │  Flash 裸读    │
-   ├ WAN 侧服务    ◄─── └───────┬───────┘     └───┬────┬───────┘
-   └ 邻居设备(SSDP等)            │ 802.11           │    │
+   LAN attack surface           │ Home gateway/router   │     │ Smart device │
+   ├ Web admin UI        ◄──────│ Firmware/kernel/drivers│     │ MCU firmware │
+   ├ UPnP/private protocol ◄────│ goahead/lighttpd        │     │ Raw Flash read│
+   ├ WAN services        ◄─────└─────────┬───────────────┘     └──┬────┬─────┘
+   └ Neighbor devices (SSDP etc.)        │ 802.11                  │    │
                         ┌───────▼───────┐    Zigbee│    │BLE/Zigbee/Sub-1G
-                        │   无线介质     │    lora/433│   │
+                        │ Wireless medium │         lora/433   │    │
                         └───────────────┘          ▼   ▼
-                                              射频遥控/传感器
-   物理攻击面:UART/JTAG/SPI 调试口 · Flash 芯片摘取 · 侧信道 · 故障注入
+                                               RF remotes/sensors
+   Physical attack surface: UART/JTAG/SPI debug ports · Flash-chip removal · side channels · fault injection
 ```
 (self-drawn ASCII)
 

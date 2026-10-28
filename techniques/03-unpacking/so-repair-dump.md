@@ -68,37 +68,37 @@ function parseSoInfo(soinfo_addr) {
         load_bias: soinfo_addr.add(248).readPointer(),
 
         getStrtabSize: function () {
-            // 通过ELF头部和动态段获取字符串表大小
+            // Read the string-table size from the ELF header and dynamic segment
             let currentDyn = this.dynamic;
             while (true) {
                 const d_tag = Number(currentDyn.readULong());
-                // DT_NULL (0) 标记动态段结束
+                // DT_NULL (0) terminates the dynamic segment
                 if (d_tag === 0) break;
 
-                // DT_STRSZ (10) 包含字符串表大小
+                // DT_STRSZ (10) contains the string-table size
                 if (d_tag === 10) {
                     const strSize = currentDyn.add(8).readULong();
                     console.log(`从动态段获取到字符串表大小: ${strSize}`);
                     return strSize;
                 }
 
-                // 移动到下一个动态段条目 (Elf64_Dyn 结构体大小为16字节)
+                // Advance to the next Elf64_Dyn entry (16 bytes)
                 currentDyn = currentDyn.add(16);
             }
-            return 4096;  // 默认假设至少有4KB的字符串表
+            return 4096;  // Fallback assumption: at least 4 KB of string-table data
 
         },
         next: function () {
             return parseSoInfo(this._next.readPointer())
         },
 
-        // 一般都是空的
+        // This field is usually empty
         getSoname: function () {
             return this.link_map_head.l_name.readUtf8String()
         },
 
-        // 获取std::string的字符串内容
-        // 一般都有值，可能有问题，有问题std::string，但是我还是实现了，因为爱情
+        // Read the contents of std::string
+        // Usually populated; this std::string layout interpretation may be unreliable and requires validation
         getRealpath: function () {
             const realpath_addr = soinfo_addr.add(432);
             return readStdString(realpath_addr);
@@ -110,7 +110,7 @@ function parseSoInfo(soinfo_addr) {
 ### 2.2 parseElf64_Rela: a relocation entry (0x18 bytes)
 
 ```javascript
-// 0x18大小
+// Size: 0x18
 function parseElf64_Rela(rela_addr) {
     return {
         r_offset: rela_addr.readULong(),
@@ -123,7 +123,7 @@ function parseElf64_Rela(rela_addr) {
 ### 2.3 parseElf64_Sym: a symbol entry (0x18 bytes)
 
 ```javascript
-// 0x18大小
+// Size: 0x18
 function parseElf64_Sym(sym_addr) {
     return {
         st_name: sym_addr.readU32(),
@@ -133,12 +133,12 @@ function parseElf64_Sym(sym_addr) {
         st_value: sym_addr.add(8).readPointer(),
         st_size: sym_addr.add(16).readULong(),
 
-        // 辅助方法：获取符号类型
+        // Helper: obtain the symbol type
         getType: function () {
             return this.st_info & 0xf; // ELF32_ST_TYPE(i) ((i)&0xf)
         },
 
-        // 辅助方法：获取符号绑定属性
+        // Helper: obtain the symbol binding
         getBind: function () {
             return this.st_info >> 4; // ELF32_ST_BIND(i) ((i)>>4)
         }
@@ -150,9 +150,9 @@ function parseElf64_Sym(sym_addr) {
 
 ```javascript
 function readStdString(str_addr) {
-    // 小字符串优化情况 - 通常在23字节内的字符串直接存储在对象中
+    // Small-string optimization: strings of up to 23 bytes are usually stored in the object
     try {
-        // 长字符串情况 - 第一个8字节是指向实际字符串的指针
+        // Long strings: the first 8 bytes point to the string data
         const str_ptr = str_addr.readPointer();
         return str_ptr.readUtf8String();
     } catch {
@@ -189,14 +189,14 @@ function getSoInfoHead() {
 
 ```javascript
 function readLinkMap(linkMapAddr) {
-    // 读取link_map结构体
+    // Read the link_map structure
     const l_addr = linkMapAddr.readPointer();   // ElfW(Addr) l_addr
     const l_name_ptr = linkMapAddr.add(Process.pointerSize).readPointer();  // char* l_name
     const l_ld = linkMapAddr.add(Process.pointerSize * 2).readPointer();  // ElfW(Dyn)* l_ld
     const l_next = linkMapAddr.add(Process.pointerSize * 3).readPointer();  // struct link_map* l_next
     const l_prev = linkMapAddr.add(Process.pointerSize * 4).readPointer();  // struct link_map* l_prev
 
-    // 读取l_name指向的字符串
+    // Read the string referenced by l_name
     let l_name = "";
     if (!l_name_ptr.isNull()) {
         l_name = l_name_ptr.readUtf8String();
@@ -240,57 +240,57 @@ With this function you can directly print a so's key layout info (base, init sec
 Reconstructing an SO file from soinfo: write the in-memory segments back to their correct file offsets per the program headers, then patch in the dynamic section, symbol table, string table, and relocation tables.
 
 ```javascript
-// 从soInfo重构SO文件
+// Reconstruct a shared-object file from soInfo
 function dumpSoFromSoInfo(soInfo, outputPath) {
-    // 获取内存映射信息，查找目标SO的所有段
+    // Read memory mappings and locate every target shared-object segment
     const soBase = soInfo.base;
     const soSize = soInfo.size;
 
     console.log(`开始导出SO: 基址=${soBase}, 大小=${soSize}`);
 
-    // 创建文件句柄
+    // Create the output file handle
     const file = new File(outputPath, "wb");
     if (file === null) {
         throw new Error(`无法创建输出文件: ${outputPath}`);
     }
 
-    // 遍历所有段并写入文件
+    // Visit each segment and write it to the file
     try {
-        // 读取完整ELF头
-        const elfHeader = Memory.readByteArray(soBase, 64);  // ELF头通常为64字节
+        // Read the complete ELF header
+        const elfHeader = Memory.readByteArray(soBase, 64);  // The ELF64 header is normally 64 bytes
         file.write(elfHeader);
         console.log("已写入ELF头");
 
-        // 获取程序头表信息
+        // Read the program-header table
         const phdr = soInfo.phdr;
-        const e_phnum = soBase.add(56).readU16();  // ELF64头部中e_phnum的偏移量为56
-        const e_phentsize = soBase.add(54).readU16();  // ELF64头部中e_phentsize的偏移量为54
+        const e_phnum = soBase.add(56).readU16();  // ELF64 e_phnum is at offset 56
+        const e_phentsize = soBase.add(54).readU16();  // ELF64 e_phentsize is at offset 54
         console.log(`程序头表数量: ${e_phnum}, 每个条目大小: ${e_phentsize}`);
 
-        // 读取和写入程序头表
+        // Read and write the program-header table
         const phdrSize = e_phnum * e_phentsize;
         const phdrData = Memory.readByteArray(phdr, phdrSize);
         file.write(phdrData);
         console.log("已写入程序头表");
 
-        // 遍历程序头表，获取每个段的信息
+        // Iterate through the program headers and read each segment's metadata
         for (let i = 0; i < e_phnum; i++) {
             const phdrEntry = phdr.add(i * e_phentsize);
             const p_type = Number(phdrEntry.readU32());
 
-            // 只处理LOAD类型的段 (p_type = 1)
+            // Process only LOAD segments (p_type = 1)
             if (p_type === 1) {
                 const p_offset = phdrEntry.add(8).readU64();
                 const p_vaddr = phdrEntry.add(16).readPointer();
                 const p_filesz = phdrEntry.add(32).readU64();
 
                 if (p_filesz > 0) {
-                    // 计算内存中的实际地址
+                    // Compute the runtime address
                     const segmentAddr = soBase.add(p_vaddr.sub(soInfo.load_bias));
-                    // 设置文件偏移
+                    // Set the output-file offset
                     file.seek(p_offset);
 
-                    // 读取段内容并写入文件
+                    // Read the segment contents and write them to the file
                     try {
                         const segmentData = Memory.readByteArray(segmentAddr, p_filesz);
                         file.write(segmentData);
@@ -302,22 +302,22 @@ function dumpSoFromSoInfo(soInfo, outputPath) {
             }
         }
 
-        // 写入动态段
+        // Write the dynamic segment
         if (!soInfo.dynamic.isNull()) {
-            // 找到动态段的文件偏移
+            // Locate the dynamic segment's file offset
             for (let i = 0; i < e_phnum; i++) {
                 const phdrEntry = phdr.add(i * e_phentsize);
                 const p_type = phdrEntry.readU32();
 
-                // 动态段 (p_type = 2)
+                // Dynamic segment (p_type = 2)
                 if (p_type === 2) {
                     const p_offset = phdrEntry.add(8).readU64();
                     const p_filesz = phdrEntry.add(32).readU64();
 
-                    // 设置文件偏移
+                    // Set the output-file offset
                     file.seek(p_offset);
 
-                    // 读取动态段内容并写入文件
+                    // Read and write the dynamic-segment contents
                     const dynamicData = Memory.readByteArray(soInfo.dynamic, p_filesz);
                     file.write(dynamicData);
                     console.log(`已写入动态段: 偏移=${p_offset}, 大小=${p_filesz}`);
@@ -326,45 +326,45 @@ function dumpSoFromSoInfo(soInfo, outputPath) {
             }
         }
 
-        // 写入符号表和字符串表
+        // Write the symbol and string tables
         if (!soInfo.symtab.isNull() && !soInfo.strtab.isNull()) {
-            // 计算符号表和字符串表的大小
-            // 这里简化处理，实际应该通过动态段的DT_STRSZ和DT_SYMENT等项计算
-            // 符号表大小估算（可能不精确）
+            // Compute the symbol- and string-table sizes
+            // Simplified here; production code should derive the sizes from DT_STRSZ, DT_SYMENT, and related entries
+            // Estimate the symbol-table size; this may be imprecise
             let symtabSize = 0;
             let strtabSize = 0;
-            // 尝试通过遍历动态段找到符号表大小
+            // Try to derive the symbol-table size by walking the dynamic segment
             let currentDyn = soInfo.dynamic;
             while (true) {
                 const d_tag = Number(currentDyn.readULong());
                 if (d_tag === 0) break; // DT_NULL
 
-                // DT_STRSZ (10) 包含字符串表大小
+                // DT_STRSZ (10) contains the string-table size
                 if (d_tag === 10){
                     strtabSize = currentDyn.add(8).readULong();
                 }
 
-                // DT_SYMENT (11) 表示符号表条目大小
+                // DT_SYMENT (11) gives the symbol-table entry size
                 if (d_tag === 11) {
                     const entrySize = currentDyn.add(8).readULong();
-                    // 粗略估计符号表总条目数
+                    // Estimate the total symbol-table entry count
                     symtabSize = soInfo.rela_count * entrySize;
                 }
 
-                currentDyn = currentDyn.add(16); // 移动到下一个动态条目
+                currentDyn = currentDyn.add(16); // Advance to the next dynamic entry
             }
 
-            // 在文件中找到符号表和字符串表的偏移
+            // Locate the symbol- and string-table file offsets
             for (let i = 0; i < e_phnum; i++) {
                 const phdrEntry = phdr.add(i * e_phentsize);
                 const p_type = phdrEntry.readU32();
 
-                if (p_type === 1) { // LOAD类型
+                if (p_type === 1) { // LOAD segment
                     const p_vaddr = phdrEntry.add(16).readPointer();
                     const p_offset = phdrEntry.add(8).readU64();
                     const p_memsz = phdrEntry.add(40).readU64();
 
-                    // 检查符号表地址是否在这个段内
+                    // Check whether this segment contains the symbol-table address
                     if (soInfo.symtab.compare(soBase.add(p_vaddr.sub(soInfo.load_bias))) >= 0 &&
                         soInfo.symtab.compare(soBase.add(p_vaddr.sub(soInfo.load_bias)).add(p_memsz)) < 0) {
 
@@ -375,7 +375,7 @@ function dumpSoFromSoInfo(soInfo, outputPath) {
                         console.log(`已写入符号表: 偏移=${symtabOffset}, 大小=${symtabSize}`);
                     }
 
-                    // 检查字符串表地址是否在这个段内
+                    // Check whether this segment contains the string-table address
                     if (soInfo.strtab.compare(soBase.add(p_vaddr.sub(soInfo.load_bias))) >= 0 &&
                         soInfo.strtab.compare(soBase.add(p_vaddr.sub(soInfo.load_bias)).add(p_memsz)) < 0) {
 
@@ -389,21 +389,21 @@ function dumpSoFromSoInfo(soInfo, outputPath) {
             }
         }
 
-        // 写入重定位表
+        // Write the relocation table
         if (!soInfo.rela.isNull() && soInfo.rela_count > 0) {
-            const relaSize = soInfo.rela_count * 24; // Elf64_Rela结构体大小为24字节
+            const relaSize = soInfo.rela_count * 24; // Elf64_Rela is 24 bytes
 
-            // 查找重定位表在文件中的偏移
+            // Locate the relocation table's file offset
             for (let i = 0; i < e_phnum; i++) {
                 const phdrEntry = phdr.add(i * e_phentsize);
                 const p_type = phdrEntry.readU32();
 
-                if (p_type === 1) { // LOAD类型
+                if (p_type === 1) { // LOAD segment
                     const p_vaddr = phdrEntry.add(16).readPointer();
                     const p_offset = phdrEntry.add(8).readU64();
                     const p_memsz = phdrEntry.add(40).readU64();
 
-                    // 检查重定位表地址是否在这个段内
+                    // Check whether this segment contains the relocation-table address
                     if (soInfo.rela.compare(soBase.add(p_vaddr.sub(soInfo.load_bias))) >= 0 &&
                         soInfo.rela.compare(soBase.add(p_vaddr.sub(soInfo.load_bias)).add(p_memsz)) < 0) {
 
@@ -417,21 +417,21 @@ function dumpSoFromSoInfo(soInfo, outputPath) {
             }
         }
 
-        // 写入PLT重定位表
+        // Write the PLT relocation table
         if (!soInfo.plt_rela.isNull() && soInfo.plt_rela_count > 0) {
-            const pltRelaSize = soInfo.plt_rela_count * 24; // Elf64_Rela结构体大小为24字节
+            const pltRelaSize = soInfo.plt_rela_count * 24; // Elf64_Rela is 24 bytes
 
-            // 查找PLT重定位表在文件中的偏移
+            // Locate the PLT relocation table's file offset
             for (let i = 0; i < e_phnum; i++) {
                 const phdrEntry = phdr.add(i * e_phentsize);
                 const p_type = phdrEntry.readU32();
 
-                if (p_type === 1) { // LOAD类型
+                if (p_type === 1) { // LOAD segment
                     const p_vaddr = phdrEntry.add(16).readPointer();
                     const p_offset = phdrEntry.add(8).readU64();
                     const p_memsz = phdrEntry.add(40).readU64();
 
-                    // 检查PLT重定位表地址是否在这个段内
+                    // Check whether this segment contains the PLT-relocation address
                     if (soInfo.plt_rela.compare(soBase.add(p_vaddr.sub(soInfo.load_bias))) >= 0 &&
                         soInfo.plt_rela.compare(soBase.add(p_vaddr.sub(soInfo.load_bias)).add(p_memsz)) < 0) {
 
@@ -455,12 +455,12 @@ function dumpSoFromSoInfo(soInfo, outputPath) {
     }
 }
 
-// 使用示例
+// Usage example
 function dumpSo(soInfo, outputPath) {
     return dumpSoFromSoInfo(soInfo, outputPath);
 }
 
-// 将函数导出到RPC
+// Export the function through RPC
 rpc.exports = {
     dumpSo
 }

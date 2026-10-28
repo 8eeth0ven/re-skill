@@ -7,9 +7,9 @@
 When asked to run the full chain on `<apk>` (in the re skill entry: "fully automated RE / run the pipeline / run the full chain on `<apk path>`"):
 
 1. Read `pipeline.md` in this directory (the single workflow definition; execute stages in order);
-2. Run the full chain on the APK path: `S0 check → S1 parallel information gathering → S2 static → S3 dynamic → S4 report`;
+2. Run the full chain on the APK path: `S0 check → S1 independent information gathering in parallel + dependency join → S2 static → S3 dynamic → S4 report`;
 3. Artifacts land under `输出/<package>-<date>/` (next to the APK, or in a user-specified directory);
-4. A stage's acceptance gate (files exist and are non-empty) must pass before entering the next stage; on failure take the degradation path — **never ask the user, never halt**;
+4. Close each stage as PASS or documented DEGRADED before entering the next stage; unavailable evidence must remain explicit. On failure take the degradation path — **never ask the user, never halt**;
 5. At the end, return the `03-report.md` path to the user, together with a list of "skipped items and reasons".
 
 All commands are real commands a subagent can run directly via Bash (baseline environment: macOS arm64).
@@ -25,9 +25,15 @@ Rule: never duplicate technique-library knowledge in this branch.
 | File | Purpose |
 | -------------- | ---------------------------------- |
 | `pipeline.md` | Core: the five-stage DAG, commands / artifacts / acceptance gates / degradations in four-column tables |
-| `env_check.sh` | Standalone environment-check script (exit 0 = all green / 1 = has yellows / 2 = critical red) |
+| `init_pipeline.sh` | Source with one APK path; safe shared-state initialization and env.sh persistence |
+| `run_with_timeout.py` | Bounded command/process-tree execution with global deadline and S4 reserve; rc=124 on timeout |
+| `env_check.py` | Preferred cross-platform environment check; exit 0 = green / 1 = noncritical degradation / 2 = critical missing capability |
+| `env_scan.py` | Read-only tool/device inventory and dated environment snapshots |
+| `env_check.sh` | Legacy macOS Bash health check; same exit-code convention |
 
-## Environment baseline (as actually measured by env_check.sh)
+## Historical Environment Baseline (2026-10-16)
+
+These are dated measurements, not current availability. Run the relevant preferred check before execution; Linux/Windows support is not equivalent to a real-machine verification claim. Select the actual available test AVD instead of assuming the example name exists.
 
 - Available: jadx 1.5.6 / apktool 3.0.3 / adb+SDK (~/Library/Android/sdk) / radare2 / 7z / java 24 / node / uv / timeout (coreutils 9.9) / aapt2 (inside SDK build-tools 36.0.0)
 - Installing (probed dynamically, degrade on absence): the frida suite and python libs (unicorn/capstone/androguard/apkid/apkleaks) → venv `tools-env/.venv`

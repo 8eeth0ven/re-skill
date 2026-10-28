@@ -42,10 +42,10 @@ Unknown PE/SYS (sample/driver dump/vendor component)
 ### 1.2 Type Identification (Copy-Pasteable Commands)
 
 ```powershell
-# DIE 命令行:壳/编译器/语言一次出
+# DIE CLI: identify packer/compiler/language together
 diec.exe C:\samples\target.sys
 
-# pefile 精确判型(Subsystem=1 即 NATIVE 驱动)
+# Use pefile for precise classification (Subsystem=1 means a NATIVE driver)
 pip install pefile
 python -c "import pefile; pe=pefile.PE(r'C:\samples\target.sys'); \
  print(hex(pe.FILE_HEADER.Machine), 'dll' if pe.is_dll() else 'exe/drv', \
@@ -70,8 +70,8 @@ The entry-surface list directly determines which sinks the §2.4 scripts scan.
 ### 1.4 The Vulnerability-Hypothesis List Template (the Work Product Running Through This Part)
 
 ```
-| # | 位置(模块+RVA/函数名) | 假设类型 | 触发条件 | 置信度 | 验证方式(§/命令) |
-| 1 | mydrv.sys+0x11230 IoctlHandler | METHOD_NEITHER 无 Probe | CTL 0x222023 | 高 | WinDbg bp + 传用户指针 |
+| # | Location (module+RVA/function) | Hypothesis | Trigger | Confidence | Verification (§/command) |
+| 1 | mydrv.sys+0x11230 IoctlHandler | METHOD_NEITHER without Probe | CTL 0x222023 | High | WinDbg bp + a user pointer |
 ```
 
 ## 2. The Ghidra Workflow (the Free Mainstay)
@@ -82,17 +82,17 @@ The entry-surface list directly determines which sinks the §2.4 scripts scan.
 :: 1) JDK 21
 winget install Microsoft.OpenJDK.21
 
-:: 2) 解压 Ghidra 12.1.4,GUI 起步
+:: 2) Extract Ghidra 12.1.4 and start the GUI
 C:\ghidra_12.1.4_PUBLIC\ghidraRun.bat
 
-:: 3) headless 批量分析(注意先建项目目录)
+:: 3) Headless batch analysis (create the project directory first)
 mkdir C:\proj C:\scripts
 C:\ghidra_12.1.4_PUBLIC\support\analyzeHeadless.bat C:\proj vulnproj ^
   -import C:\samples\target.sys ^
   -scriptPath C:\scripts ^
   -postScript find_dangerous_xrefs.py > C:\proj\audit.log 2>&1
 
-:: 4) 对已导入程序二次跑脚本(不重分析)
+:: 4) Rerun scripts on imported programs without re-analysis
 analyzeHeadless.bat C:\proj vulnproj -process target.sys -noanalysis ^
   -scriptPath C:\scripts -postScript find_ioctl_dispatch.py
 ```
@@ -121,19 +121,19 @@ In the import wizard (`File→Import File`) for a .sys: choose Language `x86:LE:
 
 ```python
 # -*- coding: utf-8 -*-
-# find_dangerous_xrefs.py — postScript: 对敏感内核 API 列出全部调用者
+# find_dangerous_xrefs.py — postScript: list all callers of sensitive kernel APIs
 SENSITIVE = [
-  # 探针类:有=审计上下文;无=用户指针裸奔嫌疑(重要负证据)
+  # Probe APIs: presence provides audit context; absence suggests unprotected user pointers (useful negative evidence)
   "ProbeForRead", "ProbeForWrite", "MmProbeAndLockPages",
-  # MDL/映射类:METHOD_NEITHER/直接访问用户内存的信号
+  # MDL/mapping APIs: signs of METHOD_NEITHER or direct user-memory access
   "MmGetSystemAddressForMdlSafe", "MmMapLockedPagesSpecifyCache", "IoAllocateMdl",
-  # 拷贝类:长度来源审计(信任 InputBufferLength?)
+  # Copy APIs: audit the length source (is InputBufferLength trusted?)
   "RtlCopyMemory", "memcpy",
-  # 池类:UAF/双 free/溢出
+  # Pool APIs: UAF/double-free/overflow
   "ExAllocatePoolWithTag", "ExAllocatePool2", "ExFreePoolWithTag",
-  # 引用类:竞态降引用
+  # Reference APIs: races in reference release
   "ObReferenceObjectByHandle", "ObDereferenceObject",
-  # 完成类:handler 候选定位
+  # Completion APIs: locate candidate handlers
   "IofCompleteRequest",
 ]
 st = currentProgram.getSymbolTable()
@@ -154,8 +154,8 @@ for name in SENSITIVE:
 
 ```python
 # -*- coding: utf-8 -*-
-# find_ioctl_dispatch.py — 定位 DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]
-# 偏移:x64 = 0x70 + 0x0E*8 = 0xE0;x86 = 0x34 + 0x0E*4 = 0x6C(IRP_MJ_DEVICE_CONTROL=0x0E)
+# find_ioctl_dispatch.py — locate DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]
+# Offsets: x64 = 0x70 + 0x0E*8 = 0xE0; x86 = 0x34 + 0x0E*4 = 0x6C (IRP_MJ_DEVICE_CONTROL=0x0E)
 from ghidra.program.model.scalar import Scalar
 
 OFFSETS = {0xE0: "x64", 0x6C: "x86"}
@@ -169,7 +169,7 @@ while it.hasNext():
         continue
     print("entry func: %s @ %s" % (f.getName(), f.getEntryPoint()))
     for ins in listing.getInstructions(f.getBody(), True):
-        # DriverEntry 常见形态: lea rax,[handler]; mov [rcx+0xE0],rax
+        # Common DriverEntry pattern: lea rax,[handler]; mov [rcx+0xE0],rax
         if ins.getMnemonicString().lower() not in ("mov", "lea"):
             continue
         for i in range(ins.getNumOperands()):
@@ -213,7 +213,7 @@ PROBES = ("ProbeForRead", "ProbeForWrite", "MmProbeAndLockPages")
 def ea_of(name):
     return ida_name.get_name_ea(idaapi.BADADDR, name)
 
-# 1) 收集"调用了 Probe 的函数"白名单
+# 1) Collect an allowlist of functions that call Probe
 probed = set()
 for n in PROBES:
     e = ea_of(n)
@@ -222,7 +222,7 @@ for n in PROBES:
             f = ida_funcs.get_func(x.frm)
             if f: probed.add(f.start_ea)
 
-# 2) handler 候选 = IofCompleteRequest 调用者
+# 2) Candidate handlers = callers of IofCompleteRequest
 handlers = {}
 comp = ea_of("IofCompleteRequest")
 if comp != idaapi.BADADDR:
@@ -230,7 +230,7 @@ if comp != idaapi.BADADDR:
         f = ida_funcs.get_func(x.frm)
         if f: handlers[f.start_ea] = idc.get_func_name(f.start_ea)
 
-# 3) handler 里出现 METHOD_NEITHER 形态立即数((ctl&3)==3)且不在 Probe 白名单 → 高危
+# 3) A handler with a METHOD_NEITHER-like immediate ((ctl&3)==3) outside the Probe allowlist is high priority
 import ida_ua, ida_bytes
 BAD = []
 for start, name in handlers.items():
@@ -242,7 +242,7 @@ for start, name in handlers.items():
         if ida_ua.decode_insn(insn, ea):
             for op in insn.ops:
                 if op.type == ida_ua.o_imm and (op.value & 3) == 3 \
-                   and op.value > 0x1000:   # 排除小常量
+                   and op.value > 0x1000:   # Exclude small constants
                     hits.append((ea, op.value))
     if hits:
         BAD.append((name, start, hits))
@@ -260,13 +260,13 @@ Companion notes: `Alt+T` searching `85 c0 74` (test/jz after probes) is only fol
 This environment's `ida-pro-mcp` plugin (or an isomorphic open-source version) exposes IDA to the agent; the typical audit loop no longer writes one-off scripts but drives conversationally:
 
 ```
-check_connection                      → 确认 IDA 在线
-list_strings_filter "IOCTL|\\\\Device\\\\"   → 拿设备名/CTL 字串
-get_function_by_name "SubIoctlHandler" → 定位
-decompile_function <addr>              → 读伪码找漏洞形态
-get_xrefs_to <ProbeForRead ea>         → 负证据:谁没用
-set_comment <addr> "AUDIT: UAF 假设#2" → 结论落库
-rename_function <addr> "vuln_read_oob" → 命名即报告素材
+check_connection                      → Confirm that IDA is online
+list_strings_filter "IOCTL|\\\\Device\\\\"   → Obtain device names/CTL strings
+get_function_by_name "SubIoctlHandler" → Locate the function
+decompile_function <addr>              → Read pseudocode and identify vulnerability patterns
+get_xrefs_to <ProbeForRead ea>         → Negative evidence: callers that do not use it
+set_comment <addr> "AUDIT: UAF 假设#2" → Persist the conclusion
+rename_function <addr> "vuln_read_oob" → Function names become report evidence
 ```
 
 Essentials: the MCP loop suits interactive auditing of "discover → verify → annotate"; full-volume batch still goes through headless (§2.4); the two complement each other.
@@ -282,10 +282,10 @@ _NT_SYMBOL_PATH = srv*C:\symbols*https://msdl.microsoft.com/download/symbols
 Three-segment semantics: `srv*local cache directory*upstream server`. Setup:
 
 ```bat
-:: 用户级永久(新开的 WinDbg/Ghidra/IDA 全吃到)
+:: Persistent user-level setting (inherited by newly opened WinDbg/Ghidra/IDA)
 setx _NT_SYMBOL_PATH srv*C:\symbols*https://msdl.microsoft.com/download/symbols
 
-:: 会话级(当前 cmd)
+:: Session-level setting (current cmd)
 set _NT_SYMBOL_PATH=srv*C:\symbols*https://msdl.microsoft.com/download/symbols
 ```
 
@@ -294,13 +294,13 @@ Multi-level chaining (your own symbols first): `C:\mysym;srv*C:\symbols*https://
 ### 4.2 symchk Batch Downloads (the WDK Debuggers Directory)
 
 ```bat
-:: 单文件(按其 DEBUG 目录 GUID 自动匹配)
+:: Single file (automatically match the DEBUG-directory GUID)
 symchk.exe C:\samples\mydrv.sys /s srv*C:\symbols*https://msdl.microsoft.com/download/symbols
 
-:: 一次拉齐内核全家桶(ntoskrnl/hal/win32k…)
+:: Fetch kernel symbols together (ntoskrnl/hal/win32k...)
 symchk.exe C:\Windows\System32\ntoskrnl.exe /om C:\sym_manifest.txt > nul
 
-:: 校验已缓存
+:: Verify cached symbols
 symchk.exe /v C:\symbols\ntkrnlmp.pdb
 ```
 
@@ -309,12 +309,12 @@ symchk.exe /v C:\symbols\ntkrnlmp.pdb
 The PDB lookup chain sits in the EXE's DEBUG directory (the RSDS record): `PDB name + GUID (dashes stripped) + Age`.
 
 ```
-# 从 pefile 提取
+# Extract from pefile
 python -c "import pefile; pe=pefile.PE(r'C:\Windows\System32\ntoskrnl.exe'); \
  d=[e for e in pe.DIRECTORY_ENTRY_DEBUG if e.struct.Type==2][0]; \
  print(d.entry.PdbFileName, d.entry.Signature_Guid, hex(d.entry.Age))"
 
-# URL = 服务器/{pdbname}/{GUID去连字符小写}{Age十六进制}/{pdbname}
+# URL = server/{pdbname}/{GUID without hyphens, lowercase}{Age in hexadecimal}/{pdbname}
 curl -O https://msdl.microsoft.com/download/symbols/ntkrnlmp.pdb/9c1c8a4b1234abcd1/ntkrnlmp.pdb
 ```
 
@@ -338,23 +338,23 @@ Applicability: msdl allows direct directory-link downloads (no auth); if the tar
 ### 5.1 Dual-Machine Kernel Debugging (KDNET, the Current Standard Posture)
 
 ```bat
-:: 目标机(VM 即可;管理员 cmd)
+:: Target machine (a VM is sufficient; administrator cmd)
 bcdedit /debug on
-:: 自动生成 key(推荐,kdnet.exe 在 WDK Debuggers 目录;同时校验网卡支持)
+:: Generate the key automatically (recommended; kdnet.exe is in the WDK Debuggers directory and checks NIC support)
 C:\Debuggers\amd64\kdnet.exe 192.168.56.1 50000
-:: 它会输出形如: key=1.2.3.4 (或 2.0.spbrt... 格式),并直接替你写好 dbgsettings
-:: 手动等价:
+:: Outputs a key such as key=1.2.3.4 (or 2.0.spbrt... format) and writes dbgsettings automatically
+:: Manual equivalent:
 bcdedit /dbgsettings net hostip:192.168.56.1 port:50000 key:1.1.1.1
-:: 多网卡时指定(设备管理器→网卡→详细信息→位置信息):
+:: Select an adapter on multi-NIC hosts (Device Manager → network adapter → Details → Location information):
 bcdedit /set "{dbgsettings}" busparams 0.25.0
 shutdown /r /t 0
 ```
 
 ```bat
-:: 调试机(宿主)
+:: Debugger machine (host)
 winget install Microsoft.WinDbg
-:: GUI: File→Kernel Debug→Net, 填 port 50000 + key
-:: 命令行等价:
+:: GUI: File → Kernel Debug → Net; enter port 50000 + key
+:: CLI equivalent:
 windbgx -k net:port=50000,key=1.1.1.1
 ```
 
@@ -363,20 +363,20 @@ Once connected, `Ctrl+Break` breaks in, `g` continues; `qd` or the target's `bcd
 ### 5.2 Command Quick Reference (Vulnerability-Verification Oriented)
 
 ```
-!analyze -v                 # 崩溃一站式:符号/栈/桶号(每次 BSOD 第一条)
-dt nt!_EPROCESS             # 结构现场核对(禁止抄旧表)
-dt nt!_IO_STACK_LOCATION    # Type3InputBuffer 偏移现场拿
-!process 0 0                # 全进程; .process /i <EPROC> 切地址空间(KPTI 两跳)
-!thread / !irp <addr>       # IRP 四要素: 谁发的/什么 IOCTL/缓冲区在哪
-!pool <addr> / !poolused 2  # 池标签回溯——UAF/溢出的归属判定
-!devobj <name|addr> / !drvobj mydrv 7   # 设备栈/驱动分发函数全景(直接列 dispatch!)
-bp mydrv+0x1234 / ba e1 mydrv!Handler  # 断点(RVA 或符号)
-ed <addr> <val>             # 改内存(修补校验跳过/篡改长度复测)
-uf mydrv!Handler            # 整函数反汇编;k/cvn 查栈
-!verifier 3                 # Driver Verifier 状态
-.bugcheck / .lastevent      # 回看崩溃码与首因
-!address / !pte <addr>      # 页表走查(PTE 有效? 用户/内核页?)
-lm k / lmvm mydrv           # 模块基址表(rebase 计算)/模块详情
+!analyze -v                 # Crash triage: symbols/stack/bucket; first command after each BSOD
+dt nt!_EPROCESS             # Check the structure in the target build; never copy offsets from an old table
+dt nt!_IO_STACK_LOCATION    # Obtain the Type3InputBuffer offset from the target structure
+!process 0 0                # All processes; .process /i <EPROC> switches address space (two-stage KPTI)
+!thread / !irp <addr>       # IRP details: issuer/IOCTL/buffer location
+!pool <addr> / !poolused 2  # Trace pool tags to attribute a UAF or overflow
+!devobj <name|addr> / !drvobj mydrv 7   # Device stack and driver dispatch panorama; lists dispatch functions directly
+bp mydrv+0x1234 / ba e1 mydrv!Handler  # Breakpoint by RVA or symbol
+ed <addr> <val>             # Modify memory to bypass a check or retest a changed length
+uf mydrv!Handler            # Disassemble the full function; k/cvn inspects the stack
+!verifier 3                 # Driver Verifier status
+.bugcheck / .lastevent      # Review the bugcheck code and initial cause
+!address / !pte <addr>      # Inspect page tables: valid PTE? user or kernel page?
+lm k / lmvm mydrv           # Module bases for rebasing / module details
 ```
 
 `!drvobj mydrv 7` prints the MajorFunction table directly — the dynamic counterpart of statically finding the dispatch (the verifier of the §2.4 script results).
@@ -384,17 +384,17 @@ lm k / lmvm mydrv           # 模块基址表(rebase 计算)/模块详情
 ### 5.3 Conditional Breakpoints and Scripting
 
 ```bat
-:: 经典条件断点: 只停 IOCTL 0x222023 的请求
+:: Classic conditional breakpoint: stop only on IOCTL 0x222023
 bp mydrv+0x11230 ".if (poi(@rdx+0xb8+0x20+0x18) == 0x222023) {} .else {g}"
-:: x64 handler(DeviceObject@rcx, Irp@rdx); 用 dt 现场核对偏移再写死!
+:: x64 handler(DeviceObject@rcx, Irp@rdx); verify offsets with dt before hardcoding them
 
-:: WinDbg 1.x 新语法(/w = Data Model 过滤器,命中才断,比 .if 快):
+:: WinDbg 1.x syntax (/w = Data Model filter; stops only on a match and is faster than .if):
 bp /w "myctl(@rdx)" mydrv+0x11230
 
-:: 访问断点抓用户指针被内核读:
+:: Data breakpoint to catch a kernel read from a user pointer:
 ba r1 <user_addr>
 
-:: 池标签条件:
+:: Pool-tag condition:
 bp ExAllocatePool2 "/w (poi(@rcx+8)==0x20206656)"
 ```
 
@@ -402,7 +402,7 @@ WinDbg JS (built-in Chakra/Data Model; `C:\scripts\ioctllog.js`):
 
 ```javascript
 // .scriptload C:\scripts\ioctllog.js
-// 用法: dx @$scriptContents.RunCmd("!irp @rdx")
+// Usage: dx @$scriptContents.RunCmd("!irp @rdx")
 function RunCmd(cmd) {
     let ctl = host.namespace.Debugger.Utility.Control;
     let out = ctl.ExecuteCommand(cmd);
@@ -418,12 +418,12 @@ Pair the script with a `bp … ".if(…) {} .else {g}"` whose body calls `dx @$s
 ### 5.4 Crash-Dump Analysis (the fuzz→dump→locate Main Path)
 
 ```bat
-:: 双机在线: 崩溃自动断在 KD,直接 !analyze -v,最省事
-:: 离线: 配置目标机 dump(系统属性→高级→启动与恢复;或注册表)
+:: Live two-machine debugging: a crash stops in KD; run !analyze -v directly
+:: Offline: configure target-machine dumps (System Properties → Advanced → Startup and Recovery, or registry)
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\CrashControl" /v CrashDumpEnabled /t REG_DWORD /d 2 /f
-::   d=2 kernel dump, 7 自动 memory dump, 3 small(只有 64K 栈,信息少)
+:: d=2 kernel dump, 7 automatic memory dump, 3 small dump (only a 64K stack, less information)
 
-:: 分析
+:: Analysis
 windbgx -z C:\Windows\MEMORY.DMP
 kd -z C:\Windows\Minidump\*.dmp
 ```
@@ -431,11 +431,11 @@ kd -z C:\Windows\Minidump\*.dmp
 The localization routine (fixed order):
 
 ```
-!analyze -v            → FAILURE_BUCKET_ID 指向 mydrv+offset? → RVA=offset-ImageBase
-kb                     → 栈里自己驱动帧
-!irp <arg2寄存器存的irp> → 确认是我们的 IOCTL(ctl code/进程)
-dq/bl 数据指针          → 是否用户地址/池块越界特征
-!pool <fault_addr>     → Free 的池 = UAF; 标签归属
+!analyze -v            → Does FAILURE_BUCKET_ID point to mydrv+offset? → RVA=offset-ImageBase
+kb                     → Find frames belonging to the target driver
+!irp <arg2寄存器存的irp> → Confirm this is our IOCTL (ctl code/process)
+dq/bl 数据指针          → Check for a user address or pool-boundary violation
+!pool <fault_addr>     → A free pool block indicates UAF; check tag ownership
 ```
 
 **Industrializing the fuzz loop**: VM snapshot + an IOCTL fuzzer (homegrown/ioctlbf-class tool) varying lengths and values per CTL → crash → snapshot rollback → archive dumps and batch `!analyze -v` (`kd -z -c "!analyze -v; q"` scripted).
@@ -444,10 +444,10 @@ dq/bl 数据指针          → 是否用户地址/池块越界特征
 
 ```bat
 verifier /standard /driver mydrv.sys
-:: 单开 Special Pool(每次分配独页+护栏页,溢出/野指针当场 BSOD):
+:: Enable Special Pool alone (one page per allocation + guard page; overflows/dangling accesses cause immediate BSOD):
 verifier /flags 0x8 /driver mydrv.sys
 shutdown /r /t 0
-:: KD 里查: !verifier 3 ; 关: verifier /reset
+:: In KD: !verifier 3; disable with verifier /reset
 ```
 
 Of greatest value to UAF hypotheses: under Special Pool a freed block gets painted `0xF0EEF0EE…`; the crash then lands exactly on **the instruction that re-accesses the freed object** — the scene wasn't unfindable, it was too late; Verifier pulls the scene back to the first scene.
@@ -457,12 +457,12 @@ Of greatest value to UAF hypotheses: under Special Pool a freed block gets paint
 ### 6.1 Breakpoints and Conditional Breakpoints
 
 ```
-bp DeviceIoControl                          ; 符号断点(x64: rcx=h, rdx=code, r8=inBuf)
-SetBreakpointCondition DeviceIoControl, "rdx==0x222023"   ; 条件
+bp DeviceIoControl                          ; Symbol breakpoint (x64: rcx=h, rdx=code, r8=inBuf)
+SetBreakpointCondition DeviceIoControl, "rdx==0x222023"   ; Condition
 SetBreakpointCommand DeviceIoControl, "log \"code={x:rdx} in={p:r8} len={x:r9}\"; run"
 g
-bphws <addr>, w                             ; 硬件写断点(UAF 换占位观察)
-bphwc *                                     ; 清硬件断点
+bphws <addr>, w                             ; Hardware write breakpoint to observe reclaimed UAF slots
+bphwc *                                     ; Clear hardware breakpoints
 ```
 
 Logging: `View→Log`; persistent tracing: `Trace→Trace Into→Stop condition`+`Log File`. Align argument observation with the x64 calling-convention registers (rcx/rdx/r8/r9); don't memorize pseudo-APIs.
@@ -487,20 +487,20 @@ Logging: `View→Log`; persistent tracing: `Trace→Trace Into→Stop condition`
 
 1. **Static (Ghidra)**: headless import + the §2.4 scripts → the `RtlHeapFree` xref list; decompile `SdkClose`:
    ```c
-   SdkClose(ctx) { Free(ctx->pkt); Free(ctx); /* timer 未 Kill,持 ctx */ }
+   SdkClose(ctx) { Free(ctx->pkt); Free(ctx); /* timer is not killed and still holds ctx */ }
    ```
    In `SdkPoll` the timer callback still dereferences `ctx` → **Hypothesis #1: Poll after Close = UAF read**, high confidence. Record: the free instruction RVA 0x2f10, the Poll callback's fetch of ctx->pkt RVA 0x3a44.
 2. **Dynamic (x64dbg)**:
    ```
-   bp netsdk.SdkClose           ; 断在 Free 调用内: 单步到 Free 返回,记 ctx 地址=0x1a4b3c20
-   bphws 0x1a4b3c20, r          ; 对 free 后地址下硬件读断点
-   g                            ; 触发 timer(等待/注入事件)
-   → 断在 netsdk+0x3a44 读 [ctx+0x18]  ← UAF 实锤(读已释放堆)
+   bp netsdk.SdkClose           ; Break inside Free; step until it returns and record ctx address=0x1a4b3c20
+   bphws 0x1a4b3c20, r          ; Set a hardware read breakpoint on the freed address
+   g                            ; Trigger the timer by waiting or injecting an event
+   → Stops at netsdk+0x3a44 reading [ctx+0x18] ← confirmed UAF: read from freed heap memory
    ```
 3. **Occupancy controllability**: spray the same size (`ctx` size 0x48):
    ```
-   : 宿主脚本或注入 DLL 循环 HeapAlloc(0x48) 填 0x41414141…
-   bphws 后 g → 断点显示 RIP←[0x41414141…] 类间接调用 → 控制 RIP 达成
+   : A host script or injected DLL repeatedly calls HeapAlloc(0x48) and fills with 0x41414141…
+   bphws followed by g → breakpoint shows an indirect call such as RIP←[0x41414141…] → RIP control established
    ```
 4. **POC solidification** (single file: LoadLibrary→SdkOpen→start a spraying thread→SdkClose→SdkPoll); a crash dump/EIP=0x41414141 completes the report's evidence chain.
 5. **Wrap-up**: tag the two RVAs in Ghidra (`vuln_uaf_free`/`vuln_uaf_use`); mark the hypothesis verified.
@@ -511,16 +511,16 @@ Logging: `View→Log`; persistent tracing: `Trace→Trace Into→Stop condition`
 
 1. **Static (IDA, the §3.3 script)**: the handler is on the NO-PROBE list + the case constant `0x222023` (CTL_CODE(0x8000,0x808,METHOD_NEITHER,FILE_ANY_ACCESS)); decompile that case:
    ```c
-   in = stack->Parameters.DeviceIoControl.Type3InputBuffer; // 用户裸指针
+   in = stack->Parameters.DeviceIoControl.Type3InputBuffer; // Raw user pointer
    len = stack->Parameters.DeviceIoControl.InputBufferLength;
-   RtlCopyMemory(kbuf, in, len);          // 无 ProbeForRead/__try
+   RtlCopyMemory(kbuf, in, len);          // No ProbeForRead/__try
    ```
    **Hypothesis #2: arbitrary user pointers read directly by the kernel → crash/info leak; a double dereference = the raw material for TOCTOU arbitrary write**.
 2. **Dynamic (WinDbg dual-machine, §5.1 already connected)**:
    ```bat
-   :: 调试机
-   lm vm mydrv                     ; 记基址 0xFFFFF805`40000000 → handler=+0x11230
-   bp mydrv+0x11230 ".if (poi(@rdx+0xd8) == 0x222023) {} .else {g}"  ; 用 dt 校偏移
+    :: Debugger machine
+   lm vm mydrv                     ; Record base 0xFFFFF805`40000000 → handler=+0x11230
+   bp mydrv+0x11230 ".if (poi(@rdx+0xd8) == 0x222023) {} .else {g}"  ; Verify the offset with dt
    g
    ```
    Run the minimal trigger program on the target (below) → hit → `!irp @rdx` confirms Type3InputBuffer = our user pointer → `t`/`p` step to `RtlCopyMemory` and watch the direct `mov rax,[user address]` with no Probe whatsoever.
@@ -549,11 +549,11 @@ Logging: `View→Log`; persistent tracing: `Trace→Trace Into→Stop condition`
 ### 7.3 Loop Discipline (Distilled from the Two Walk-Throughs)
 
 ```
-静态只产"假设",不产"结论";动态只验"假设",不产"新面"(新面回静态清单)
-每条假设 = RVA + 类型 + 触发参数 三要素齐才进动态
-崩溃三证: !analyze 符号定位 + !irp 请求归属 + 栈回溯到用户输入
-POC 最小化: 能复现即可,堆喷/RIP 控制按报告级别加码
-每轮结束: Ghidra/IDA 注释落库 + 假设清单状态机(pending→verified/refuted)
+Static analysis produces hypotheses, not conclusions; dynamic analysis verifies hypotheses; any newly found surface returns to the static inventory
+Each hypothesis requires all three: RVA + type + trigger parameters before dynamic verification
+Three crash evidence items: !analyze symbol location + !irp request attribution + a stack trace back to user input
+Minimize the PoC to reproduce; add heap spraying/RIP control as required by the reporting standard
+At each round end: persist Ghidra/IDA comments and update the hypothesis state (pending→verified/refuted)
 ```
 
 ## Appendix: Related Chapters and External Anchors

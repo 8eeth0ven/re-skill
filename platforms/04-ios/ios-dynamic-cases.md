@@ -19,12 +19,12 @@ uint8_t nop[4] = {0x1f,0x20,0x03,0xd5};   patchCode(ptrace_svc_p+4, nop, 4);
 
 ```c
 new = mmap(NULL, pagesize, RW, MAP_ANON|MAP_SHARED, -1, 0);
-memcpy(new, target_addr - 4*4, 4*4);       // 拷 svc 前 4 条指令(未做相对寻址修复,已知坑)
-// 新页接判断码: cmp x16,#0x1a / b.ne 跳回原svc / 是 ptrace 跳到 svc 下一条
+memcpy(new, target_addr - 4*4, 4*4);       // Copy the four instructions before svc; relative addressing is not relocated, a known limitation
+// New page: cmp x16,#0x1a / b.ne back to original svc / for ptrace, branch to the instruction after svc
 uint8_t check_jmp[] = {0x1f,0x6a,0x00,0xf1, 0x51,0x00,0x00,0x58, 0x20,0x02,0x1f,0xd6,
-    /* orig_svc_next_addr 8B 小端 */ 0x51,0x00,0x00,0x58, 0x20,0x02,0x1f,0xd6, /* orig_svc_addr 8B */};
-// # (省略:两个地址各按 8 字节小端逐字节展开)
-patchCode(target_addr-4*4, /* ldr x16,#8 / br x16 / new_p */, 4*4);   // 目标处跳向新页
+    /* orig_svc_next_addr: 8B little-endian */ 0x51,0x00,0x00,0x58, 0x20,0x02,0x1f,0xd6, /* orig_svc_addr: 8B */};
+// Omitted: expand both addresses byte by byte as 8-byte little-endian values
+patchCode(target_addr-4*4, /* ldr x16,#8 / br x16 / new_p */, 4*4);   // Branch from the target to the new page
 mprotect(new, len, PROT_READ|PROT_EXEC);
 ```
 
@@ -35,20 +35,20 @@ Author: xia0. Patch out ptrace from LLDB: find the address in memory → rewrite
 
 ```c
 new = mmap(0, 0x1000, RW, MAP_ANON|MAP_SHARED, -1, 0);
-vm_copy(self_task, page_start, 0x1000, new);          // 拷 target 所在整页
-*(uint32_t*)(new + patch_offset) = 0xd65f03c0;        // 写 ret
-mprotect(new, 0x1000, PROT_READ|PROT_EXEC);           // mmap 页 max_protection=rwx 可改
+vm_copy(self_task, page_start, 0x1000, new);          // Copy the entire page containing target
+*(uint32_t*)(new + patch_offset) = 0xd65f03c0;        // Write ret
+mprotect(new, 0x1000, PROT_READ|PROT_EXEC);           // The mmap page has max_protection=rwx, allowing this permission change
 mach_vm_remap(mach_task_self(), &target, 0x1000, 0, VM_FLAGS_OVERWRITE,
-              self_task, new, TRUE, &c, &m, inherit); // 映射回 target 实现代码段改写
-sys_icache_invalidate(...); sys_dcache_flush(...);    // 清缓存
+              self_task, new, TRUE, &c, &m, inherit); // Map back onto target to modify its code segment
+sys_icache_invalidate(...); sys_dcache_flush(...);    // Invalidate caches
 ```
 
 Pitfalls: on iOS 12 the remapped page turns to zeros (codesign validation; HookZz doesn't support it either), while iOS 9 works; forgetting mprotect leaves the rx page as rw and execution faults (`memory region` reveals it instantly). Field case (iQiyi calling ptrace dynamically inside main):
 
 ```
-debugserver 127.0.0.1:1234 -x backboard /var/.../iQiYiPhoneVideo.app/iQiYiPhoneVideo   # 经 iproxy
-# lldb 挂上,main 断住后一行命令: debugme
-(lldb) x/12i 0x00000001837dc180   # patch 前 mov x16,#0x1a / svc #0x80;patch 后首指令 0xd65f03c0 ret
+debugserver 127.0.0.1:1234 -x backboard /var/.../iQiYiPhoneVideo.app/iQiYiPhoneVideo   # Through iproxy
+# Attach lldb, stop at main, then run debugme
+(lldb) x/12i 0x00000001837dc180   # Before patch: mov x16,#0x1a / svc #0x80; after patch: first instruction is 0xd65f03c0 ret
 ```
 
 The ptrace recognition signature inside libsystem_kernel is exactly `mov x16,#0x1a; svc #0x80` (x16=26).
@@ -61,17 +61,17 @@ MSHookFunction(MSFindSymbol(NULL,"_ptrace"), my_ptrace, &orig_ptrace);
 MSHookFunction((void*)dlsym, my_dlsym, &orig_dlsym);
 MSHookFunction((void*)sysctl, my_sysctl, &orig_sysctl);
 MSHookFunction((void*)syscall, my_syscall, &orig_syscall);
-hook_svc_x80();   // 内联 svc 专用
+hook_svc_x80();   // For inline svc calls
 ```
 
 **Full-scan svc 0x80 hooking** (HookZz/Dobby; the universal solution when addresses cannot be predicted): zz_macho gets the __TEXT start/end + slide, loops `zz_vm_search_data` scanning for the bytes `0xd4001001`, and per hit `ZzBuildHookAddress(svc, svc+4, pre_call, half_call, TRUE)` + `ZzEnableHook`. The pre/half callbacks dispatch on the syscall number — **do not NOP them all uniformly** (normal logic also goes through svc; blanket NOPs crash):
 
 ```c
-// pre_call(RegState *rs):系统调用号 = rs->general.regs.x16,参数 = x0
-SYS_syscall(ptrace,31,...) 变种: x1==PT_DENY_ATTACH → 写 regs.x1 = 0
-SYS_ptrace 直调: x0==PT_DENY_ATTACH → 写 regs.x0 = 0
-SYS_sysctl: STACK_SET 存 num_syscall 与 info_ptr(=regs.x2)
-// half_call(返回前): info->kp_proc.p_flag &= ~(P_TRACED);  抹掉被调试标志位
+// pre_call(RegState *rs): syscall number = rs->general.regs.x16; argument = x0
+SYS_syscall(ptrace,31,...) variant: x1==PT_DENY_ATTACH → write regs.x1 = 0
+Direct SYS_ptrace: x0==PT_DENY_ATTACH → write regs.x0 = 0
+SYS_sysctl: STACK_SET saves num_syscall and info_ptr (=regs.x2)
+// half_call (before return): info->kp_proc.p_flag &= ~(P_TRACED); clear the traced flag
 ```
 
 Pitfall: on iOS 12.1.1 after ticking, debugserver can't find the process — the debugger must attach at the instant the app launches.
@@ -81,9 +81,9 @@ Author: vlinkstone. Symptoms: exits on launch with no crash log (a voluntary exi
 
 ```asm
 mov x1, #0
-mov sp, x1      ; 清栈指针
-mov x29, x1     ; 清帧指针
-mov x30, x1     ; 清 lr —— 无脑 nop svc 会直接崩
+mov sp, x1      ; Clear the stack pointer
+mov x29, x1     ; Clear the frame pointer
+mov x30, x1     ; Clear lr; blindly replacing svc with nop causes a crash
 ```
 
 Solution: these two functions do nothing else, so just ret at the function head (change the return value where one is expected); keypatch finishes it; repackage with MonkeyDev, install, and it runs. Defensive perspective: the initialization phase is a good detection window; instruction-level syscalls + stack wrecking defeat blanket nops; periodic re-checks after launch; being too loud (exiting outright) is worse than reporting; inlining detection logic into business code; staying hidden and silent hits hardest.
@@ -105,10 +105,10 @@ Author: roysue (translation).
 
 ```bash
 brew install dpkg ldid
-sudo git clone --recursive https://github.com/theos/theos.git /opt/theos   # --recursive 必须,bootstrap.sh 已废弃
+sudo git clone --recursive https://github.com/theos/theos.git /opt/theos   # --recursive is required; bootstrap.sh is obsolete
 sudo chown $(id -u):$(id -g) /opt/theos
 # ~/.bash_profile: export THEOS=/opt/theos; export PATH=/opt/theos/bin/:$PATH
-# 验证:任意目录 nic.pl 出 New Instance Creator;旧版升级 git submodule update --recursive
+# Verify: nic.pl from any directory shows New Instance Creator; update older installations with git submodule update --recursive
 ```
 
 ### Tweak development: adding vibration feedback to volume changes
@@ -120,7 +120,7 @@ Author: 黑炭BC. The full Tweak + PreferenceBundle flow (sample: Volbrate). Hoo
     if(volVibrationOptions==2 || (volVibrationOptions==1 && volMax==YES)) [FeedbackCall vibrateDevice];
     else %orig;
 }
-// decreaseVolume 同构(volMin);-(float)volume 里 %orig 后记录 x==0→volMin、x==1→volMax、0<x<1 清两者
+// decreaseVolume is analogous (volMin); after %orig in -(float)volume, record x==0→volMin, x==1→volMax; clear both for 0<x<1
 %end
 ```
 
@@ -129,13 +129,13 @@ Custom vibration via a private API (no official docs): `AudioServicesPlaySystemS
 **PreferenceBundle (the settings panel)**: in theos `nic.pl` pick the 9th template `preference_bundle_modern`, created inside the tweak project directory; after installing it lives at `/Library/PreferenceBundles/`, built together with the tweak. entry.plist = the settings-entry icon text; Root.plist = UI + variable declarations (`<key>key</key><string>varName</string>`, plus `<key>PostNotification</key><string>com.your.tweak/preferences.changed</string>` so setting changes post a Darwin notification); the Controller subclasses PSListController and implements `- (id)specifiers`: `_specifiers = [[self loadSpecifiersFromPlistName:@"Root" target:self] retain];`. Tweak.xm cannot call the Bundle for values directly — interact through the plist (`~/.Library/Preferences/`), initialize in `%ctor` and respond live via Darwin notifications:
 
 ```objc
-// NSUserDefaults 分类补 objectForKey:inDomain: 后:
+// After adding objectForKey:inDomain: in the NSUserDefaults category:
 static void notificationCallback(...) {
     NSNumber *n = [[NSUserDefaults standardUserDefaults] objectForKey:@"enabled" inDomain:nsDomainString];
     enabled = (n)? [n boolValue]:YES;
 }
 %ctor {
-    notificationCallback(NULL,NULL,NULL,NULL,NULL);   // 启动先读一次
+    notificationCallback(NULL,NULL,NULL,NULL,NULL);   // Read once at startup
     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL,
         notificationCallback, (CFStringRef)nsNotificationString, NULL, CFNotificationSuspensionBehaviorCoalesce);
 }
@@ -152,7 +152,7 @@ Jailbroken hooking (MonkeyDev Tweak):
 ```objc
 int (*old_get_Gold)(); int new_get_Gold(){ return 9999; }
 %ctor{
-    unsigned long Gold = _dyld_get_image_vmaddr_slide(0) + 0x1011aa060;  // slide+静态偏移
+    unsigned long Gold = _dyld_get_image_vmaddr_slide(0) + 0x1011aa060;  // slide + static offset
     MSHookFunction((void *)Gold, (void *)&new_get_Gold, (void **)&old_get_Gold);
 }
 ```
@@ -161,7 +161,7 @@ Un-jailbroken modification: edit the assembly directly — at get_Gold's return,
 
 ```objc
 %hook UnityAppController
-- (void)init{ %orig; /* UIAlertView 弹窗验证 hook 成功 */ }
+- (void)init{ %orig; /* Use a UIAlertView dialog to verify that the hook works */ }
 %end
 ```
 
@@ -173,20 +173,20 @@ Author: DeviLeo. The full CydiaSubstrate-free, purely manual flow of dumping + w
 **bfinject dumping and injection** (must be run inside the bfinject directory; if the app crashes mid-way, Ctrl+C, restart the app and retry):
 
 ```bash
-iproxy 2222 22 && ssh root@localhost -p 2222        # 默认密码 alpine
-ps -e | grep moon                                    # 拿进程名/PID
-bash bfinject -P shootthemoon -L decrypt             # 或 -p PID;产物 decrypted.ipa 在 App Documents
+iproxy 2222 22 && ssh root@localhost -p 2222        # Default password: alpine
+ps -e | grep moon                                    # Obtain process name/PID
+bash bfinject -P shootthemoon -L decrypt             # Or use -p PID; decrypted.ipa is written to App Documents
 scp -P 2222 root@localhost:/private/var/mobile/Containers/Data/Application/<UUID>/Documents/decrypted-app.ipa ./
-bash bfinject -P shootthemoon -l ~/ShootMoonHacker   # 注入自编译 dylib
+bash bfinject -P shootthemoon -l ~/ShootMoonHacker   # Inject a custom-built dylib
 ```
 
 applst lists app info: `bundleURL` (the app directory)/`dataContainerURL` (the data directory); on the Mac, Console.app selecting the iPhone and filtering by a custom log prefix confirms whether the injected code ran. **The crack dylib**: in Xcode create a Cocoa Touch Framework; the core is Method Swizzling:
 
 ```objc
-// 通用交换封装:method_exchangeImplementations(om, nm);om/nm 按 isInstanceMethod 取
-// class_getInstanceMethod / class_getClassMethod;类名/方法名 NSClassFromString+NSSelectorFromString
-- (void)my_updateScore:(int)score { score = 10; [self my_updateScore:score]; }  // 交换后 my_ 调的才是原实现
-static void __attribute__((constructor)) entry(void){ /* [[NSObject new] hack] 里做交换 */ }
+// Generic swap wrapper: method_exchangeImplementations(om, nm); obtain om/nm according to isInstanceMethod
+// class_getInstanceMethod / class_getClassMethod; class/method names from NSClassFromString+NSSelectorFromString
+- (void)my_updateScore:(int)score { score = 10; [self my_updateScore:score]; }  // After swapping, my_ invokes the original implementation
+static void __attribute__((constructor)) entry(void){ /* Perform the swap in [[NSObject new] hack] */ }
 ```
 
 Three build settings: iOS Deployment Target 11.0, signing None, destination Generic iOS Device; argument-carrying method-name strings keep their colons (`updateScore:`, multi-arg `plus:and:`).
@@ -199,7 +199,7 @@ Author: butterflydog. The Swift 5 edition of class-dump: exports struct/class/en
 
 ```bash
 SwiftDump ./TestMachO > result.txt
-SwiftDump -a x86_64 ./TestMachO > result.txt   # fat binary 选架构(默认 arm64)
+SwiftDump -a x86_64 ./TestMachO > result.txt   # Choose the architecture for a fat binary; default is arm64
 ```
 
 Principle: borrows the Swift runtime's demangle functions — `swift_getTypeByMangledNameInContext` / `swift_demangle_getDemangledName`; restores complex generics (RxSwift nested generic signatures fully expanded). There is also a Frida edition, FridaSwiftDump, parsing the app running in the foreground directly.
@@ -215,7 +215,7 @@ Author: 梦野间 (translation). Frida NativeFunction in three steps — find th
 
 ```js
 new NativeFunction(Module.findExportByName('AudioToolbox','AudioServicesPlaySystemSound'),'void',['int'])(1007)
-// 分步: address → new NativeFunction(地址,'返回类型',['参数类型数组']) → 调用
+// Steps: address → new NativeFunction(address,'return type',['argument types']) → invoke
 ```
 No need to reverse the signature — look it up in Apple's headers (`void AudioServicesPlaySystemSound(SystemSoundID id)` → `'void',['int']`). System sound IDs: 1007 SMS/1000 mail/1100 lock/1108 camera shutter; audio lives at `/System/Library/Audio/UISounds/`. Attach to any app to call system functions; to call an app's own, you must attach to that app.
 
@@ -224,7 +224,7 @@ No need to reverse the signature — look it up in Apple's headers (`void AudioS
 ```js
 // audiobox_rpc.js
 rpc.exports = { sms: ()=>_play(1007), email: ()=>_play(1000) };
-// ObjC 同样可 RPC:ObjC.classes.UIApplication.sharedApplication().openURL_(ObjC.classes.NSURL.URLWithString_(url))
+// Objective-C also supports RPC: ObjC.classes.UIApplication.sharedApplication().openURL_(ObjC.classes.NSURL.URLWithString_(url))
 ```
 ```python
 session = frida.get_usb_device().attach('Telegram')
@@ -271,10 +271,10 @@ Author: obaby. Two unconventional routes (the generic five-step flow is in ios-o
 CHDeclareClass(HpLib_Graphics);
 CHOptimizedMethod(1, self, id, HpLib_Graphics, makeTextImage, NSString *, arg1) {
     NSString *ch_string = ch_dic[arg1];  if ([ch_string length]==0) ch_string = @"喵喵喵";
-    return CHSuper(1, HpLib_Graphics, makeTextImage, ch_string);   // 无命中传原 arg1 走原逻辑
+    return CHSuper(1, HpLib_Graphics, makeTextImage, ch_string);   // On a miss, pass the original arg1 through the original logic
 }
-// 补:部分文本走 NSString 构造,一并 hook HpLib_GSystem strNSString /
-// NSPlaceholderString 的 initWithBytes:length:encoding / initWithCString:encoding / initWithUTF8String
+// Also hook text built through NSString: HpLib_GSystem strNSString /
+// NSPlaceholderString initWithBytes:length:encoding / initWithCString:encoding / initWithUTF8String
 ```
 
 **Protecting the work** (against dylib theft): encrypt the dictionary (BABYStringEncoding/GTM_Encoder), decode inside the dylib then restore with NSPropertyListSerialization: `gtc2 = [[BABYStringEncoding alloc] initWithString:@"aCDEfGHijKlMnopQRsUvWXz012345689"]; [gtc2 decode:fileString error:nil]`. Command line: `GTM_Encoder -encodeFile <key> <input plist> <output enc>` (-decodeFile reverses).
@@ -298,7 +298,7 @@ var key []byte; var password = "xxx"
 clientKey, clientCert, _ := pkcs12.Decode(key, password)
 http.DefaultClient.Transport = &http.Transport{TLSClientConfig: &tls.Config{
     Certificates: []tls.Certificate{{Certificate: [][]byte{clientCert.Raw}, PrivateKey: clientKey}}}}
-// handler 里把请求 URL 改写为真实 API host 转发,响应原样回写
+// Rewrite the request URL to the real API host inside the handler, forward it, then relay the response unchanged
 ```
 
 On the Burp side, a Python plugin redirects the host locally: in processHttpMessage, when `getHost()=="arcapi-v2.lowiro.com"`, call `messageInfo.setHttpService(helpers.buildHttpService("127.0.0.1", 5151, "http"))`.
@@ -311,11 +311,11 @@ Author: 那年没下雪. The app's mutual SSL couldn't be captured, so pivot to 
 **Deploying debugserver by hand** (when no ready-made environment exists):
 
 ```bash
-# DeveloperDiskImage.dmg 在 Xcode 的 DeviceSupport/<版本>/ 下,挂载取 usr/bin/debugserver;
-# 同目录造 entitlement.xml:debugapplications/get-task-allow/task_for_pid-allow/run-unsigned-code 全 true
+# DeveloperDiskImage.dmg resides under Xcode DeviceSupport/<version>/; mount it and extract usr/bin/debugserver
+# Create entitlement.xml in the same directory: debugapplications/get-task-allow/task_for_pid-allow/run-unsigned-code all true
 codesign -s - --entitlements entitlement.xml -f debugserver
-scp -r debugserver root@localhost -p xxxx:/usr/bin       # 经 iproxy 转发
-# 手机: debugserver 127.0.0.1:1998 -a /var/mobile/进程
+scp -r debugserver root@localhost -p xxxx:/usr/bin       # Forward through iproxy
+# On the phone: debugserver 127.0.0.1:1998 -a /var/mobile/<process>
 # Mac:  lldb -> process connect connect://localhost:1998
 ```
 

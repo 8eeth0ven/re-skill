@@ -7,7 +7,7 @@
 ### 7.1 Toast
 
 ```javascript
-// 弹窗关键类
+// Core dialog classes
 var toast = Java.use("android.widget.Toast");
 toast.show.implementation = function () {
     console.log("toast.show: ");
@@ -21,9 +21,9 @@ makeText (grab the toast text):
 var Toast = Java.use("android.widget.Toast");
 Toast.makeText.overload("android.content.Context", "java.lang.CharSequence", "int").implementation = function (context, text, duration) {
     console.log("Toast message:", text);
-    // 调用原始 makeText 方法生成 Toast 对象
+    // Call the original makeText method to create the Toast
     var toast = this.makeText(context, text, duration);
-    // 返回生成的 Toast 对象
+    // Return the created Toast
     return toast;
 };
 ```
@@ -33,7 +33,7 @@ Toast.makeText.overload("android.content.Context", "java.lang.CharSequence", "in
 ```javascript
 Java.perform(function() {
     var Dialog = Java.use("android.app.Dialog");
-    // Hook show() 方法
+    // Hook show()
     Dialog.show.implementation = function() {
         this.show();
     };
@@ -103,17 +103,17 @@ function goto_activity() {
         var Intent = Java.use("android.content.Intent");
         var ActivityThread = Java.use("android.app.ActivityThread");
 
-        // 获取当前的 Application 上下文
+        // Obtain the current Application context
         var currentApplication = ActivityThread.currentApplication();
         var context = currentApplication.getApplicationContext();
 
         var cpI = Java.use("o.cpI")
-        // 构造 Intent
-        var intent = Intent.$new(context, cpI.class); // 使用合适的构造器设置 Action 和 Data
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK.value); // 添加 FLAG_ACTIVITY_NEW_TASK
-        // 启动目标页面
+        // Construct the Intent
+        var intent = Intent.$new(context, cpI.class); // Choose the appropriate constructor for Action and Data
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK.value); // Add FLAG_ACTIVITY_NEW_TASK
+        // Launch the target screen
         console.log("Redirecting to: th.co.truemoney.wallet/o.cpI");
-        context.startActivity(intent); // 使用上下文启动 Intent
+        context.startActivity(intent); // Start the Intent through the context
     });
 }
 ```
@@ -124,20 +124,20 @@ function goto_activity() {
 function intent() {
     console.log("Script loaded successfully!");
 
-    // 使用Java.use获取Intent类
+    // Resolve Intent with Java.use
     var Intent = Java.use("android.content.Intent");
 
-    // Hook无参构造函数
+    // Hook the no-argument constructor
     Intent.$init.overload().implementation = function () {
         console.log("[$init.overload()] Intent的无参构造函数被调用");
-        // 调用原始构造函数
+        // Call the original constructor
         var result = this.$init();
-        // 打印堆栈信息以了解调用来源
+        // Print the stack trace to identify the caller
         console.log("调用堆栈:\n" + Java.use("android.util.Log").getStackTraceString(Java.use("java.lang.Exception").$new()));
         return result;
     };
 
-    // Hook带有Action参数的构造函数
+    // Hook the constructor taking an Action
     Intent.$init.overload("java.lang.String").implementation = function (action) {
         console.log("[$init.overload('java.lang.String')] Intent构造函数被调用，action: " + action);
         var result = this.$init(action);
@@ -145,10 +145,10 @@ function intent() {
         return result;
     };
 
-    // Hook带有另一个Intent参数的构造函数（复制构造函数）
+    // Hook the constructor taking another Intent (copy constructor)
     Intent.$init.overload("android.content.Intent").implementation = function (otherIntent) {
         console.log("[$init.overload('android.content.Intent')] Intent复制构造函数被调用");
-        // 获取原始Intent的信息
+        // Read the original Intent's information
         if (otherIntent != null) {
             var action = otherIntent.getAction();
             var dataString = otherIntent.getDataString();
@@ -168,7 +168,7 @@ function intent() {
         return result;
     };
 
-    // Hook带有Action和Uri参数的构造函数
+    // Hook the constructor taking Action and Uri
     Intent.$init.overload("java.lang.String", "android.net.Uri").implementation = function (action, uri) {
         console.log("[$init.overload('java.lang.String', 'android.net.Uri')] Intent构造函数被调用");
         console.log("Action: " + action + ", URI: " + (uri ? uri.toString() : "null"));
@@ -177,7 +177,7 @@ function intent() {
         return result;
     };
 
-    // Hook带有Context和Class参数的构造函数
+    // Hook the constructor taking Context and Class
     Intent.$init.overload("android.content.Context", "java.lang.Class").implementation = function (context, cls) {
         console.log("[$init.overload('android.content.Context', 'java.lang.Class')] Intent构造函数被调用");
         console.log("Class: " + cls.getName());

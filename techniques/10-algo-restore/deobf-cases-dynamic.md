@@ -41,29 +41,29 @@ Author: misskings
 **Setting up the unicorn environment** (fully runnable):
 ```python
 uc = unicorn.Uc(unicorn.UC_ARCH_ARM64, unicorn.UC_MODE_ARM)
-code_addr = 0x7eae047000                    # dump 时 so 真实基址,与文件名一致
-uc.mem_map(code_addr, 8*0x1000*0x1000)      # 代码区给大,内存不值钱
-stack_addr = code_addr + code_size          # 紧挨代码区划栈;stack_top = stack_addr+0x1000-0x8(64 位偏 8 字节)
+code_addr = 0x7eae047000                    # Actual shared-object base at dump time; matches the filename
+uc.mem_map(code_addr, 8*0x1000*0x1000)      # Allocate a large code region to avoid undersizing the mapping
+stack_addr = code_addr + code_size          # Place the stack immediately after the code; stack_top = stack_addr+0x1000-0x8, with 8-byte alignment for this 64-bit case
 uc.mem_map(stack_addr, 0x1000)
-args_addr = stack_addr + 0x1000; uc.mem_map(args_addr, 0x1000)   # 再划一块放参数
-uc.hook_add(unicorn.UC_HOOK_CODE, hook_code)                      # 逐指令回调
+args_addr = stack_addr + 0x1000; uc.mem_map(args_addr, 0x1000)   # Allocate a separate argument region
+uc.hook_add(unicorn.UC_HOOK_CODE, hook_code)                      # Instruction-level callback
 uc.mem_write(code_addr, open(dump_path,'rb').read())
-uc.mem_write(args_addr, input_str.encode()) # 随机入参,便于区分常量与输入相关值
+uc.mem_write(args_addr, input_str.encode()) # Use distinctive input to distinguish constants from input-dependent values
 uc.reg_write(UC_ARM64_REG_X0, args_addr); uc.reg_write(UC_ARM64_REG_X1, len(input_str))
 uc.reg_write(UC_ARM64_REG_SP, stack_top)
-uc.emu_start(code_addr+0xFCB4, code_addr+0xFF2C)   # IDA 偏移 + 基址;出参写在入参缓冲区,mem_read(args_addr) 读回
+uc.emu_start(code_addr+0xFCB4, code_addr+0xFF2C)   # IDA offset plus base; output is written into the input buffer and read back through mem_read(args_addr)
 ```
 
 **A customized trace callback** (three things that beat raw assembly dumps by an order of magnitude): ① after each assembly line, print the current values of all registers that line uses; ② **print the destination register's new value one line late** — in the next instruction's hook, read the previous instruction's first register = the post-execution value (`pre_codestr`/`pre_regname` held in globals); ③ **memory watching**: hex-snapshot the watch-listed addresses every 0x10 bytes; print on change:
 ```python
 cs = capstone.Cs(capstone.CS_ARCH_ARM64, capstone.CS_MODE_ARM); cs.detail = True
-reg_names = {"X0": UC_ARM64_REG_X0, ..., "W28": UC_ARM64_REG_W28, "SP": UC_ARM64_REG_SP}  # 完整表见 unicorn.arm64_const
+reg_names = {"X0": UC_ARM64_REG_X0, ..., "W28": UC_ARM64_REG_W28, "SP": UC_ARM64_REG_SP}  # Complete register constants are in unicorn.arm64_const
 def hook_code(uc, address, size, user_data):
     for inst in cs.disasm(uc.mem_read(address, size), size):
-        # 1) 先补打上一条执行后寄存器值(pre_codestr += "\t//%s=0x%x" 后 print)
-        # 2) watch_addrs 逐地址 b2a_hex 快照,变了就 print 并更新
-        # 3) 当前行:re.findall(r'[^0]([wx][0-9]+)', op_str, re.I|re.M) 抓寄存器名;第一个=被写寄存器存 pre_regname
-        #    拼行存 pre_codestr,has_pre=True
+        # 1. Add the previous instruction's post-execution register values to pre_codestr, then print that line
+        # 2. Snapshot each watch_addrs entry through b2a_hex; print and update when it changes
+        # 3. Extract register names with re.findall(r'[^0]([wx][0-9]+)', op_str, re.I|re.M); save the first written register in pre_regname
+        # Assemble the line in pre_codestr and set has_pre=True
 ```
 Output shape (pre-execution value first; after `//` is the post-execution value):
 ```
@@ -75,17 +75,17 @@ Key technique: **the same address recurring (loop body) — grep all its occurre
 
 **Restoration result** (C replica cross-checked identical):
 ```c
-char getAscii(int num) { char tmp[3]; snprintf(tmp,3,"%x",num); return tmp[0]; }  // 半字节转 hex ascii
+char getAscii(int num) { char tmp[3]; snprintf(tmp,3,"%x",num); return tmp[0]; }  // Convert a hexadecimal nibble to ASCII
 int sum = 0, eorsum = 0xff;
 for (int i = 0; i < strlen(input); i++) {
-    output[i] = input[i] ^ 0x1;                                             // 主体:逐字节异或 1
-    if (i==0x8||i==0xd||i==0x12||i==0x18) { output[i]=0x2d; continue; }    // UUID 分隔位 '-'
-    // 特例位:i==0xe→0x34;i==0x23→input[0x22];i==0x22→input[0x9];i==0x17→input[0x18]^0x1
-    if (i < 0x22) { int v = input[i]; if (i==0x17) v = input[0x18];        // 校验和只累加前 0x22 字节
+    output[i] = input[i] ^ 0x1;                                             // Main transformation: XOR every input byte with 1
+    if (i==0x8||i==0xd||i==0x12||i==0x18) { output[i]=0x2d; continue; }    // UUID separator positions use '-'
+    // Special positions: i==0xe -> 0x34; i==0x23 -> input[0x22]; i==0x22 -> input[0x9]; i==0x17 -> input[0x18]^0x1
+    if (i < 0x22) { int v = input[i]; if (i==0x17) v = input[0x18];        // The checksum accumulates only the first 0x22 bytes
                     sum += v; eorsum ^= v; }
 }
-output[0x22] = getAscii(sum - (sum & 0xfffffff0));   // 累加和低 4 位转 ascii
-output[0x23] = getAscii(eorsum & 0xf);               // 异或和低 4 位转 ascii
+output[0x22] = getAscii(sum - (sum & 0xfffffff0));   // Convert the low four bits of the sum to ASCII
+output[0x23] = getAscii(eorsum & 0xf);               // Convert the low four bits of the XOR sum to ASCII
 ```
 
 ## 3. Trace + frida Hook-Chain Restoration
@@ -100,7 +100,7 @@ var sub_13CE4 = new NativeFunction(Module.findBaseAddress("libnative-lib.so").ad
     "void", ["pointer","int","pointer","int","pointer"]);
 sub_13CE4(Memory.allocUtf8String("pediy_imyang_lXcaTALmow"), 23,
           Memory.allocUtf8String("www.pediy.com&kanxue"), 20, Memory.alloc(0x26));
-// 输出: 79 79 03 09 00 01 a4 b8 b6 c8 9e b4 7f 4f 29 b4 ...
+// Output: 79 79 03 09 00 01 a4 b8 b6 c8 9e b4 7f 4f 29 b4 ...
 ```
 **The round-function reasoning chain**:
 1. Argument 1 (23 bytes) is table-transformed byte by byte (0x70→0x51) yielding `514d43f9 b6cff93c b6ef9f85 cf506afb ef208329 3ca8f563 63636363 63636363` (the last two dwords are fixed padding values);
@@ -117,10 +117,10 @@ Author: 咸鱼炒白菜
 **The locating chain (pure frida)**: ① jadx shows `MainActivity.e(byte[])` is the native result function; ② hook `RandomStringUtils.randomAlphabetic` to **pin the random suffix "lXcaTALmow"** → the black-box input/output becomes reproducible; ③ hook the Java-layer `e` printing in/out-arg hex for a baseline pair; ④ hook `sub_184EC` (called three times; the third call's arg1 is the result) → reference backtracking to `sub_13CE4(input, inputlen, tb, tblen, output)`, the key algorithm.
 **The hook combo**:
 ```javascript
-RandomStringUtils.randomAlphabetic.overload('int').implementation = function (a) { return "lXcaTALmow"; };  // 固定随机串
-Java.choose("com.kanxue.ollvm5.MainActivity", { onMatch: function (inst) {    // Java 主动调 native
+RandomStringUtils.randomAlphabetic.overload('int').implementation = function (a) { return "lXcaTALmow"; };  // Fix the random string
+Java.choose("com.kanxue.ollvm5.MainActivity", { onMatch: function (inst) {    // Invoke the native method through Java
     console.log(ByteString.of(inst.e(Java.array('byte',[0x70,0x65,0x64,...]))).hex()); }, onComplete: function () {} });
-Interceptor.attach(base.add(0x13CE4), {   // native 层确认签名;output 延迟到 onLeave 读
+Interceptor.attach(base.add(0x13CE4), {   // Confirm the signature at the native layer; read output only in onLeave
   onEnter: function (args) { console.log(hexdump(args[0]), args[1]); arg4 = args[4]; },
   onLeave: function (r) { console.log(hexdump(arg4)); } });
 ```
@@ -128,19 +128,19 @@ Interceptor.attach(base.add(0x13CE4), {   // native 层确认签名;output 延�
 **Recognizing the AES S-box**: the lookup table `byte_42108` starts `63 7c 77 7b f2 6b 6f c5 30 01 67 2b fe d7 ab 76` = the standard S-box. **Why IDA statically finds no MD5/S-box signatures: OLLVM instruction substitution scatters the constants into the arithmetic** — you must confirm table contents dynamically via hook/trace.
 **The restored algorithm** (cross-check passed):
 ```c
-static char keytb[] = "www.pediy.com&kanxue";                 // 参数3
-static char keytbde[] = {0x31,0xf5,0xf5,0xf5, 0xf9,0x43,0x4d,0x51, 0xa8,0xfb,0x31,0xb6, ...};  // sub_13808 从 keytb 派生
+static char keytb[] = "www.pediy.com&kanxue";                 // Argument 3
+static char keytbde[] = {0x31,0xf5,0xf5,0xf5, 0xf9,0x43,0x4d,0x51, 0xa8,0xfb,0x31,0xb6, ...};  // sub_13808 derives this from keytb
 int REV(int v) { return ((v<<24)&0xFF000000)|((v<<8)&0xFF0000)|((v>>8)&0xFF00)|((v>>24)&0xFF); }
 int keygen_13CE4(input, inputlen, tb, tblen, output) {
-    sub_13808(tb, tblen, o13808);    // key 派生表;头 6 字节 = 79 79 03 [长度混淆式 (-len^0xFFFFFFF0)&-len] 00 01
-    for (int i=6; i<=0x25; i++)                               // input 逐字节过 S-box,越界补 0x63
+    sub_13808(tb, tblen, o13808);    // Derived key table; first six bytes are 79 79 03 [length expression (-len^0xFFFFFFF0)&-len] 00 01
+    for (int i=6; i<=0x25; i++)                               // Transform input bytes through the S-box, padding out-of-range positions with 0x63
         output[i] = (i-6 >= inputlen) ? 0x63 : byte_42108[input[i-6]];
-    for (int i=0; i<tblen; i++) tb[i] = byte_42108[(uchar)tb[i]];   // key 也过 S-box
-    for (int i=0; i<=(0x25-0x6)/4; i++) {                     // 8 轮,每轮一个 dword
-        uint tmp1; memcpy(&tmp1, keytbde+4*(i%4), 4);         // key 流,4 dword 循环
+    for (int i=0; i<tblen; i++) tb[i] = byte_42108[(uchar)tb[i]];   // The key also passes through the S-box
+    for (int i=0; i<=(0x25-0x6)/4; i++) {                     // Eight rounds, one dword per round
+        uint tmp1; memcpy(&tmp1, keytbde+4*(i%4), 4);         // Key stream cycles over four dwords
         uint tmp2; memcpy(&tmp2, output+i*4+6, 4);
-        tmp2 = REV((tmp2 >> 8*(i%4)) | (tmp2 << 32-8*(i%4))); // 按轮次循环移位再字节反转
-        int out = REV(tmp1 & ~tmp2 | tmp2 & ~tmp1);           // MBA 异或
+        tmp2 = REV((tmp2 >> 8*(i%4)) | (tmp2 << 32-8*(i%4))); // Rotate according to the round index, then reverse byte order
+        int out = REV(tmp1 & ~tmp2 | tmp2 & ~tmp1);           // MBA expression equivalent to XOR
         memcpy(output+(6+i*4), &out, 4);
     }
 }
@@ -160,11 +160,11 @@ Author: 咸鱼炒白菜
 **Dynamically locating the two password tables**: table 1: 153F24 suspected → hook 153F28 reading `this.context.x11`, cross-check → `v2015={0x3a,0x33,0x9b,0x79,0x61,0xf3,0x27,0x96,0xbe,0x5b,0x84,0xd2,0x6c,0xf5,0xb9,0x15}`; table 2: `LDUR W16,[X29,#var_80]` felt like a table → follow the writes to find `ADRL X10, xmmword_1FF160`, frida `print_string` dump → `"151caed3cfc7e999ebf6b66d3e8e96cc"` (taken with `i%8`).
 **Algorithm skeleton** (two big-layer loops with MBA):
 ```c
-for (int i = 0; i < 16; i++) {          // 第一轮:MD5 结果 → v2020[16];第二轮 v2020 与两表再混合出 16 字节
+for (int i = 0; i < 16; i++) {          // Round 1 maps the MD5 result into v2020[16]; round 2 mixes v2020 with two tables to produce another 16 bytes
     int v1433 = md5_out[i];             // = MD5(salt + input)
-    int v1434 = v2015[i];               // 密码表一
-    int v47   = v2018[i % 8];           // 密码表二(字符串取模)
-    // ……几十层 (~a & c | a & d) ^ e 形态 MBA 混合,输入只有 v1433/v1434/v47
+    int v1434 = v2015[i];               // First password table
+    int v47   = v2018[i % 8];           // Second password table, indexed modulo its string length
+    // Dozens of MBA layers shaped like (~a & c | a & d) ^ e; the only inputs are v1433/v1434/v47
     v2020[i] = result & 0xFF;
 }
 ```
@@ -176,7 +176,7 @@ Author: ddsf
 One core move: **negation-obfuscation equivalence simplification**:
 ```c
 v = (~0xa3 & 0x5E58FB3C | 0xa3 & 0xA1A704C3) ^ (~0x33 & 0x5E58FB3C | 0x33 & 0xA1A704C3);
-// 化简:v = 0x5E58FB3C ^ 0xA1A704C3(掩码抵消,纯常量)
+// Simplifies to v = 0x5E58FB3C ^ 0xA1A704C3: masks cancel, leaving a constant
 ```
 Method: locate the key encryption segment → segment it → pair up each segment's inputs and results → verify the simplification against traced register values. In traces, the abundant "negation + fixed constants" combos almost always fold back into one XOR/AND-OR via the selector identities.
 

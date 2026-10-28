@@ -11,8 +11,8 @@ Attacker's-eye layering: `physical (radio) → link (802.11/15.4) → protocol-s
 AP                          STA
  │ M1(ANonce) ────────────►│
  │ M2(SNonce,MIC)◄─────────│  PT KDF(ANonce,SNonce,PMK)
- │ M3(KCK MIC) ───────────►│  ← KRACK:重放 M3 → STA 重装已用 key
- │ M4(MIC) ◄───────────────│     nonce 复用 → TKIP/GCMP 明文恢复/注入
+ │ M3(KCK MIC) ───────────►│  ← KRACK: replay M3 → STA reinstalls an already-used key
+ │ M4(MIC) ◄───────────────│     Nonce reuse → TKIP/GCMP plaintext recovery/injection
 ```
 
 - "Understanding the KRACK key-reinstallation attack from the WPA2 four-way handshake" (the text version of a 2018 conference talk; a model protocol-layer attack)

@@ -202,7 +202,7 @@ Author: Mateusz Jurczyk
 - Method: decompile both sides to Hex-Rays .c listings; count `memset` references per top-level `Nt*` handler (direct calls and inlined `rep stosd` both decompile to `memset`; small zeroing `mov` sequences get missed and handled as false positives); sort alphabetically; textual diff the two lists.
 - Triage: keep only functions with *more* memsets in the new version; filter out newly-introduced routines (check old-version function lists); manually investigate each survivor.
 - Yield: Win7-vs-10 → 153 ntoskrnl functions (8 syscall handlers) + 89 win32k (16 handlers); Win8.1-vs-10 → 127 + 67. Two new CVEs: `NtGdiGetFontResourceInfoInternalW` (CVE-2017-8684, ~92-byte stack leak; pool branch safe because `PALLOCMEM` zeroes) and `NtGdiEngCreatePalette` (CVE-2017-8685, up to 1 kB stack leak with NULL source pointer + `bSafeReadBits` success).
-- Cross-branch ammunition: `NtGdiEngCreatePalette` was fixed in Win 8 but left Win 7 exposed — vendors patching inconsistently across supported branches both expose users and hand researchers attack vectors.
+- Cross-branch comparison: `NtGdiEngCreatePalette` was fixed in Win 8 but left Win 7 exposed — vendors patching inconsistently across supported branches both expose users and hand researchers attack vectors.
 - Refinement worth stealing: diff memset **size operands**, not just presence (manual `first-DWORD + memset 0x3FC` vs single `memset 0x400` was a real fix).
 - Explicitly "low hanging fruit": pseudocode-level diffing with little OS-internals expertise found these CVEs cheaply.
 > Same approach: a counting-anchors diff (memsets, locks, size constants, `ProbeForRead` calls) over decompilations beats full CFG diffing for specific bug classes — script it before reaching for BinDiff.

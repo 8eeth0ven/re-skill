@@ -29,12 +29,12 @@ Take any memory CVE: first classify it into one of these six rows, then ask wher
 ### 1.1 Typical Code Pattern
 
 ```c
-void handle_packet(char *in, size_t len) {   // len 来自网络包头,攻击者可控
-    char name[64];                           // [A] 定长栈缓冲,边界只存在于源码里
-    unsigned long auth = 0;                  // [B] 权限标志,恰好在缓冲区"上方"
-    memcpy(name, in, len);                   // [C] 拷贝 len 字节,与 64 无任何机器码关联
-    if (check_token(name)) auth = 1;         // [D] 越界写先改 auth 的经典位置
-    if (auth) grant_admin();                 // [E] 溢出 64<len<=72 字节即可直通管理权限
+void handle_packet(char *in, size_t len) {   // [A] len comes from a network packet header and is attacker-controlled
+    char name[64];                           // [A] Fixed-size stack buffer; the boundary exists only in source code
+    unsigned long auth = 0;                  // [B] Authorization flag located immediately above the buffer
+    memcpy(name, in, len);                   // [C] Copies len bytes; machine code does not associate len with 64
+    if (check_token(name)) auth = 1;         // [D] A common layout allows the out-of-bounds write to change auth first
+    if (auth) grant_admin();                 // [E] An overflow with 64<len<=72 can grant administrator access
 }
 ```
 
@@ -48,22 +48,22 @@ Line-by-line breakdown:
 x86-64 stack frame (grows toward lower addresses; an overflowing write climbs toward higher addresses):
 
 ```
-高地址
+High addresses
 +---------------------------+
-|  调用者的栈帧               |
+| Caller stack frame          |
 +---------------------------+
-|  返回地址 (ret addr)        |  ← 终极目标:函数 ret 时 pop 进 RIP
+| Return address (ret addr)   | ← Final target: ret pops it into RIP
 +---------------------------+
-|  saved rbp                 |  ← leave 指令用它恢复调用者帧
+| saved rbp                  | ← leave restores the caller frame from it
 +---------------------------+
-|  auth (8B)                 |  ← 溢出 64~72 字节即命中:权限被"写"出来
+| auth (8B)                  | ← Reached by a 64–72 byte overflow: the write changes authorization
 +---------------------------+
-|  (可能的对齐填充)           |
+| (possible alignment padding)|
 +---------------------------+
 |  name[56..63]              |
 |  name[0..55]     |        |
-+---------------------------+  ← rsp 指这里
-低地址        memcpy 从 name[0] 向上写,len>64 即逐字节吃掉 auth→saved rbp→ret
++---------------------------+ ← rsp points here
+Low addresses: memcpy writes upward from name[0]; len>64 overwrites auth→saved rbp→ret byte by byte
 ```
 
 The sole action of the `ret` instruction: pop the top 8 bytes of the stack into RIP. **A stack overflow = placing your own bytes at that position = directly choosing the address of the next instruction executed.**
@@ -80,12 +80,12 @@ The sole action of the `ret` instruction: pop the top 8 bytes of the stack into 
 ### 1.4 Escalation Chain
 
 ```
-越界写(长度不可控差值)
- → 覆盖 auth/函数指针/句柄(数据面,量小即可)
- → 覆盖返回地址(控制面)
- → NX 时代:ROP/ret2libc(代码重用,06 §8)
- → 无回显场景:BROP 盲摸(06 §8.3)
-安全事故形态:远程 RCE / 本地提权 / 认证绕过
+Out-of-bounds write (length difference not controlled)
+ → Overwrite auth/function pointer/handle (data-only impact can require few bytes)
+ → Overwrite return address (control flow)
+ → With NX: ROP/ret2libc (code reuse, 06 §8)
+ → Without output: blind BROP discovery (06 §8.3)
+Security impact: remote RCE / local privilege escalation / authentication bypass
 ```
 
 Note that the first stop of the escalation chain is routinely overlooked: **you do not need to hijack control flow — flipping a 0 to non-0 is already a security incident** (flip is_admin, flip a balance, flip an ACL bit). Data-plane attacks generate no crash logs and are stealthier than control-plane ones.
@@ -106,18 +106,18 @@ Pattern one: an off-by-one boundary slip (off-by-one / off-by-null):
 
 ```c
 char buf[256];
-ssize_t n = read(fd, buf, sizeof(buf));  // [A] 最多读 256,n∈[0,256]
-buf[n] = '\0';                           // [B] n==256 时写 buf[256]:恰好多一个 null
+ssize_t n = read(fd, buf, sizeof(buf));  // [A] Reads at most 256 bytes, n∈[0,256]
+buf[n] = '\0';                           // [B] n==256 writes buf[256]: exactly one extra null byte
 ```
 
 Pattern two: a length field decoupled from the application buffer:
 
 ```c
 struct msg {
-    uint16_t declared;         // [C] 包里自称的 body 长度
+    uint16_t declared;         // [C] Body length declared by the packet
     char body[512];
 };
-memcpy(m->body, pkt + 2, m->declared);   // [D] 用宣称长度拷,declared 可 >512
+memcpy(m->body, pkt + 2, m->declared);   // [D] Copies the declared length, which may exceed 512
 ```
 
 - **[B]** The single null byte lands on **the lowest byte of the next chunk's size field**, exactly clearing the `PREV_INUSE` bit — see 2.2.
@@ -129,14 +129,14 @@ memcpy(m->body, pkt + 2, m->declared);   // [D] 用宣称长度拷,declared 可 
 ptmalloc chunks sit adjacent (structural detail belongs to `../06-binary-vuln/heap-exploitation.md` §1.2; here we only look at "where the overflow lands"):
 
 ```
-       chunk A(被溢出者所在)          chunk B(受害者)
+       chunk A (overflow source)         chunk B (victim)
       +--------------------+        +--------------------+
-      | prev_size          |        | prev_size          | ← A 用户区尾部的溢出最先写到这
+      | prev_size          |        | prev_size          | ← The overflow from the end of A user data first reaches here
       +--------------------+        +--------------------+
-      | size = 0x91 (P=1)  |        | size = 0x91 (P=1)  | ← 再多写:改 B 的 size 低字节
+      | size = 0x91 (P=1)  |        | size = 0x91 (P=1)  | ← Additional bytes change the low byte of B size
       +--------------------+        +--------------------+
-  A ->| 用户数据 0x88 字节   |--溢出-->| B 用户数据(fd/bk/   |
-      |                    |        | next/key 复用区)    |
+  A ->| 0x88 bytes user data|--overflow-->| B user data (fd/bk/ |
+      |                    |            | next/key reuse)    |
       +--------------------+        +--------------------+
 ```
 
@@ -153,13 +153,13 @@ ptmalloc chunks sit adjacent (structural detail belongs to `../06-binary-vuln/he
 ### 2.4 Escalation Chain
 
 ```
-越界写(可低至 1 字节/1 null 字节)
- → 元数据破坏(size/P 位/fd/bk/next/key)
- → 分配器按假地图工作:unlink 双写/tcache 任意分配/合并出 overlap
-   (手法:06 §2-§4,tcache poisoning → 06 §2.2;unlink → 06 §3.1)
- → 任意地址写/受控地址分配
- → 落点:函数指针/GOT/vtable/内核对象
-安全事故:RCE / 内核提权 / 容器逃逸
+Out-of-bounds write (as small as 1 byte/1 null byte)
+ → Corrupt allocator metadata (size/P bit/fd/bk/next/key)
+ → Allocator follows forged metadata: unlink double write / arbitrary tcache allocation / overlapping chunks after consolidation
+   (techniques: 06 §2–§4; tcache poisoning → 06 §2.2; unlink → 06 §3.1)
+ → Arbitrary write / controlled-address allocation
+ → Targets: function pointers/GOT/vtables/kernel objects
+Security impact: RCE / kernel privilege escalation / container escape
 ```
 
 Out-of-bounds **reads** share the same root cause (nobody validates the boundary); only the primitive changes, to information leak: leak the canary/heap addresses/libc base to pave the way for the write direction — a write+read combination is the norm of a complete exploit chain.
@@ -179,13 +179,13 @@ Out-of-bounds **reads** share the same root cause (nobody validates the boundary
 Userspace service (alias not cleared):
 
 ```c
-struct conn *c = table_lookup(id);     // [A] 全局表持有 c 的引用
-pthread_mutex_lock(&c->lock);          // [B] 用 c 加锁
+struct conn *c = table_lookup(id);     // [A] The global table holds a reference to c
+pthread_mutex_lock(&c->lock);          // [B] Lock through c
 ...
-conn_destroy(c);                       // [C] 释放 c,table 忘了摘除
+conn_destroy(c);                       // [C] Frees c but forgets to remove it from the table
 ...
-struct conn *c2 = table_lookup(id);    // [D] 悬垂指针照常查到
-c2->handle(pkt);                       // [E] 那块内存的新主人替它"接单"
+struct conn *c2 = table_lookup(id);    // [D] Lookup still returns the dangling pointer
+c2->handle(pkt);                       // [E] The new occupant of that memory handles the call
 ```
 
 Kernel refcount style:
@@ -194,8 +194,8 @@ Kernel refcount style:
 obj = obj_get(id);     // [F] refcnt++
 ...
 obj_put(obj);          // [G] if (--refcnt == 0) kfree(obj)
-// 失效样本 F':拿了裸指针没 get,另一 CPU 上最后一个 put 释放,你还在用
-// 失效样本 G':错误路径多 put 一次 / 退出时少 put 一次(泄漏另一面)
+// Failure F': a raw pointer is used without get; another CPU drops the final put and frees it while it remains in use
+// Failure G': an error path performs an extra put, or exit omits a put (the corresponding leak case)
 ```
 
 - The essence of **[C][D]**: the free operation only returns memory, **it does not hunt down references**. `c` sits in a table, on a list, in a thread-local cache, in a closure — free knows about none of them.
@@ -204,19 +204,19 @@ obj_put(obj);          // [G] if (--refcnt == 0) kfree(obj)
 ### 3.2 What Happens at the Memory Level
 
 ```
-free(c) 之后、复用之前:
-      obj 内存
+After free(c), before reuse:
+      Object memory
       +---------------------+
-      | fd / next  (分配器写)|   ← 空闲态:前 16 字节被 tcache/fastbin 链指针占用
+      | fd / next (allocator)| ← Free state: tcache/fastbin list pointers occupy the first 16 bytes
       | key                 |
       +---------------------+
-      | (原字段残骸,含旧vptr)|   ← 越过元数据区,旧内容还在——"半尸"状态
+      | old fields and vptr  | ← Beyond allocator metadata, stale object contents remain
 
-spray 抢占之后(攻击者主动 malloc 同尺寸):
+After a spray reclaims the region (attacker mallocs the same size):
       +---------------------+
-      | 攻击者数据           |   ← 攻击字符串/伪造对象,布局与旧类型对齐
+      | attacker data       | ← Payload/forged object aligned with the former type layout
       +---------------------+
-旧指针 c2->handle(pkt) 读的 vptr,指向攻击者布置的假虚表
+The vptr read by c2->handle(pkt) points to the attacker-controlled forged vtable
 ```
 
 Kernel-side primitives: the freed object slot gets occupied by sprayable objects such as `msg_msg`/`pipe_buffer`/`sk_buff`/`tty_struct` (the object→primitive table in 06 `../06-binary-vuln/vuln-types-exploitation.md` §3.1). Browser/Office side: HTML+JS heap spraying fills predictable addresses (the origin of the IE-era 0x0c0c0c0c).
@@ -248,10 +248,10 @@ Category 3 is constructed deliberately by the attacker; category 1 is intercepte
 ### 3.6 Escalation Chain and Precedents
 
 ```
-释放后仍有可达引用 → 引用被再次解引用
- → (崩:被 QA 捕获) / (静默:数据腐败) / (抢占:类型混淆)
- → 伪造对象/劫持 vptr/函数指针 → RCE 或内核提权
-手法:UAF 直接打 tcache(06 §2.2)、CTF 入门 pwnable_hacknote
+A reachable reference remains after free → that reference is dereferenced again
+ → Crash caught by QA / silent data corruption / type confusion after reclamation
+ → Forged object / vptr or function-pointer hijack → RCE or kernel privilege escalation
+Techniques: UAF against tcache (06 §2.2), introductory CTF pwnable_hacknote
 ```
 
 - **CVE-2012-1889 "Baolei" (MSXML UAF)**: one of the most popular web drive-by vulnerabilities of its year; a textbook UAF + heap-spray RCE; the local corpus holds several analyses of the same IE UAF family.
@@ -265,10 +265,10 @@ Category 3 is constructed deliberately by the attacker; category 1 is intercepte
 ### 4.1 Typical Code Patterns
 
 ```c
-if (ptr) {           // [A] 只挡 NULL——防御的稻草人
-    free(ptr);       // [B] free 不改 ptr,ptr 仍非空、仍指原址
-    ...              // [C] 错误处理/提前 return/longjmp 路径
-    free(ptr);       // [D] 第二次,同值指针再次合法进入 free
+if (ptr) {           // [A] Rejects NULL only; it does not prevent repeated frees
+    free(ptr);       // [B] free does not modify ptr, which remains non-NULL and retains its address
+    ...              // [C] Error-handling/early-return/longjmp path
+    free(ptr);       // [D] The same pointer value reaches free a second time
 }
 ```
 
@@ -280,7 +280,7 @@ int load(void) {
     if (parse_hdr() < 0) return cleanup();   // cleanup: free(p) ...
     ...
 }
-// 上层:if (load() < 0) free(p);   ← 两个"都以为对方没管"的释放点
+// Caller: if (load() < 0) free(p); ← two release sites each assume the other has not released it
 ```
 
 - **[A]** `if (ptr)` as double-free protection is a negative optimization: it implies the author believed free nulls the pointer. C's free does not (same reasoning as 3.3).
@@ -290,14 +290,14 @@ int load(void) {
 ### 4.2 What Happens at the Memory Level
 
 ```
-第一次 free:p 进 tcache[idx] 链
+First free: p enters tcache[idx]
       tcache[idx]: p → x → y
                        p.next = x
 
-第二次 free(未检测):
-      tcache[idx]: p → p → x → y     ← 环:p.next 指向自己
-      malloc #1 取出 p(链头变 p,即又指 p)
-      malloc #2 再次取出 p           ← 同一地址交付两个主人 = overlap
+Second free (not detected):
+      tcache[idx]: p → p → x → y     ← Cycle: p.next points to itself
+      malloc #1 removes p (the new head is again p)
+      malloc #2 removes p again     ← Two owners receive the same address: overlap
 ```
 
 The fastbin era is isomorphic: the `A→B→A` sandwich (06 §3.2). `_int_free`'s check for fastbins is a single `old == p` (a double free is reported only when the list head equals this very chunk) — **it checks only for an immediate repeat, not the whole chain**; A→B→A with one chunk in between passes. Why so lax: **checking the full chain turns free from O(1) into O(n)**, a price the allocator refuses to pay on the hot path.
@@ -317,10 +317,10 @@ Bypasses (root-cause view):
 ### 4.4 Escalation Chain and Precedents
 
 ```
-double free → 同址双主/自环链
- → malloc 两次交付同一内存(chunk overlap)
- → 用 A 主人身份改 B 主人的指针字段 → 任意写/受控分配(06 §2.2/§3.2)
- → hook/vtable/函数指针落点
+Double free → duplicate ownership/self-looping list
+ → Two malloc calls return the same memory (chunk overlap)
+ → Use owner A to modify owner B pointer fields → arbitrary write/controlled allocation (06 §2.2/§3.2)
+ → Targets: hooks/vtables/function pointers
 ```
 
 - **CVE-2019-11932**: a double free in WhatsApp's DDGifSlurp while parsing GIFs; receiving a malicious GIF triggers a media-library RCE — the benchmark for "interactionless double free" on mobile.
@@ -337,47 +337,47 @@ double free → 同址双主/自环链
 Userspace file version (TOCTOU in its literal form):
 
 ```c
-if (access("/etc/target", W_OK) == 0) {   // [A] check:此刻有权限吗
-    fd = open("/etc/target", O_WRONLY);   // [B] use:两次系统调用之间
-    write(fd, buf, n);                     //     /etc/target 可以已被换成符号链接
+if (access("/etc/target", W_OK) == 0) {   // [A] Check: is access allowed now?
+    fd = open("/etc/target", O_WRONLY);   // [B] Use: a separate syscall leaves a race window
+    write(fd, buf, n);                     // /etc/target may already have been replaced with a symbolic link
 }
 ```
 
 Kernel double-fetch (reading the same user memory twice):
 
 ```c
-copy_from_user(&len, uarg, sizeof(len));     // [C] 第一次取:校验用
+copy_from_user(&len, uarg, sizeof(len));     // [C] First fetch: validation
 if (len > MAX_LEN) return -EINVAL;
-...                                          // [D] 窗口:用户线程改写 uarg 指向的页
-copy_from_user(&len2, uarg, sizeof(len2));   // [E] 第二次取:执行用,已换内容
-process(data, len2);                         // [F] 用未校验的 len2
+...                                          // [D] Window: a user thread modifies the page referenced by uarg
+copy_from_user(&len2, uarg, sizeof(len2));   // [E] Second fetch: execution uses changed content
+process(data, len2);                         // [F] Uses unvalidated len2
 ```
 
 CPU reordering version (publication without barriers):
 
 ```c
-data = 42;                // [G] 普通写
-ready = 1;                // [H] 编译器/CPU 可重排到 [G] 前——对端先见 ready 后见 data=随机
-// 正确:smp_store_release(&ready, 1) / 对端 smp_load_acquire
+data = 42;                // [G] Ordinary write
+ready = 1;                // [H] Compiler/CPU can reorder before [G]; the peer sees ready before initialized data
+// Correct: smp_store_release(&ready, 1) paired with smp_load_acquire on the peer
 ```
 
 Kernel callback-under-lock version:
 
 ```c
 mutex_lock(&dev->lock);
-dev->ops->callback(dev);   // [I] 回调内部:可能再次拿锁(死锁,好的情况)
-mutex_unlock(&dev->lock);  //     可能 drop 锁后仍持有 dev 裸引用(坏的情况)
+dev->ops->callback(dev);   // [I] Callback may acquire the same lock (deadlock, the less exploitable case)
+mutex_unlock(&dev->lock);  // It may retain a raw dev reference after dropping the lock (the more dangerous case)
 ```
 
 ### 5.2 What Happens at the Timeline Level
 
 ```
-线程 A(校验方)                     线程 B(攻击方)
+Thread A (checker)                  Thread B (attacker)
 ─────────────────────────────      ─────────────────────────────
-check(对象O):权限=只读 ✓
-                                    swap(对象O, 恶意对象O')
-use(对象O):按只读假设写入
-  → 写进的是 O' = 权限模型被换
+check(object O): read-only permission ✓
+                                    swap(object O, malicious object O')
+use(object O): write under the read-only assumption
+  → The write reaches O': the authorization model was replaced
 ```
 
 Double-fetch is the same picture, except that "thread B's write" lands between the kernel's two `copy_from_user` calls, **and the page being written lives in user address space — the kernel has no control over it whatsoever**.
@@ -392,9 +392,9 @@ Double-fetch is the same picture, except that "thread B's write" lands between t
 ### 5.4 Escalation Chain and Precedents
 
 ```
-窗口存在 → 攻击者在窗口内换数据/换对象/换权限
- → 校验失效(用了没校验过的输入)或对象被换(UAF 的前奏,竞态常是 UAF 的触发器)
- → 权限模型破坏/内核写原语 → 提权/沙箱逃逸
+A race window exists → attacker changes data/object/permissions inside it
+ → Invalidated checks (unvalidated input is used) or object substitution (often triggers UAF)
+ → Broken authorization model/kernel-write primitive → privilege escalation/sandbox escape
 ```
 
 - **CVE-2016-5195 Dirty COW**: a race between copy-on-write and the write-permission check yields a "write into a read-only mapping" primitive, usable against suid binaries/`/etc/passwd`; introduced in 2007, fixed only in 2016 — **a nine-year window**.
@@ -413,17 +413,17 @@ Double-fetch is the same picture, except that "thread B's write" lands between t
 struct base    { int kind; };
 struct derived { int kind; void (*fn)(void); long secret; };
 
-struct base *b = get_from_table(id);     // [A] 表里存的是 base*
-((struct derived *)b)->fn();             // [B] 编译器照偏移取 b+8 处当函数指针
-                                          //     不验 kind,不验真实布局——一次 cast,零检查
+struct base *b = get_from_table(id);     // [A] The table stores base*
+((struct derived *)b)->fn();             // [B] Compiler reads b+8 as a function pointer based on the cast
+                                          // Neither kind nor actual layout is checked: one cast, zero checks
 ```
 
 **Pattern two: types self-certified by magic numbers/offsets (the chronic disease of homegrown OOP)**
 
 ```c
-if (hdr->tag == 0xCAFEBABE) {            // [C] 标签在攻击者可写的内存里
+if (hdr->tag == 0xCAFEBABE) {            // [C] The tag is in attacker-writable memory
     obj = (java_obj *)hdr;
-    obj->vtable->invoke(obj);            // [D] 标签可伪造→整个类型系统可伪造
+    obj->vtable->invoke(obj);            // [D] A forgeable tag makes the type discriminator forgeable
 }
 ```
 
@@ -432,45 +432,45 @@ The object systems of kernels/browsers/COM/packers are all hand-rolled "pseudo t
 **Pattern three: sign extension (0xffffffff → -1 → 0xffffffffffffffff)**
 
 ```c
-int len = get_len();                    // [E] 32 位有符号,攻击者给 0xFFFFFFFF
-if (len > 1024) return -1;              // [F] 有符号比较:-1 < 1024,通过!
-memcpy(dst, src, len);                  // [G] memcpy 第三参是 size_t(64 位无符号):
-                                          //     (size_t)(int)-1 符号扩展成 2^64-1
-                                          //     长度检查与实际拷贝用了两套语义
+int len = get_len();                    // [E] Signed 32-bit value; attacker supplies 0xFFFFFFFF
+if (len > 1024) return -1;              // [F] Signed comparison: -1 < 1024, so it passes
+memcpy(dst, src, len);                  // [G] memcpy third argument is size_t (unsigned 64-bit)
+                                          // (size_t)(int)-1 sign-extends to 2^64-1
+                                          // The length check and copy use different numeric semantics
 ```
 
 **Pattern four: truncation (int → uint16_t size field)**
 
 ```c
-int total = width * height * 4;          // [H] 用 int 算总尺寸
-uint16_t alloc_size = total;             // [I] 截断:65536+8 → 8
-char *buf = malloc(alloc_size);          // [J] 分配 8 字节
-memcpy(buf, src, total);                 // [K] 拷 65544 字节 → 堆溢出
+int total = width * height * 4;          // [H] Compute the total size using int
+uint16_t alloc_size = total;             // [I] Truncation: 65536+8 → 8
+char *buf = malloc(alloc_size);          // [J] Allocate 8 bytes
+memcpy(buf, src, total);                 // [K] Copy 65544 bytes → heap overflow
 ```
 
 **Pattern five: multiplication wraparound bypassing length checks (small alloc, big write)**
 
 ```c
-size_t n = count * sizeof(struct item);  // [L] count=2^61 时(64 位)乘法回绕成 0
-buf = malloc(n);                          // [M] malloc(0) 成功返回小块
-memcpy(buf, src, count * sizeof(struct item));  // [N] 真实按回绕前的量写
-// 正确写法:if (count > SIZE_MAX / sizeof(struct item)) return; —— 漏写即洞
+size_t n = count * sizeof(struct item);  // [L] With count=2^61 on 64-bit, multiplication wraps to 0
+buf = malloc(n);                          // [M] malloc(0) can return a small allocation
+memcpy(buf, src, count * sizeof(struct item));  // [N] Intended large copy based on the pre-wrap amount; check the actual expression semantics
+// Correct: if (count > SIZE_MAX / sizeof(struct item)) return; — omitting this check permits overflow
 ```
 
 ### 6.2 What Happens at the Bit/Memory Level
 
 ```
-符号扩展(模式三):
+Sign extension (pattern three):
   int      0xFFFFFFFF        =  -1
-    ↓ (size_t) 符号扩展
+    ↓ (size_t) sign extension
   size_t   0xFFFFFFFFFFFFFFFF =  18446744073709551615
-  [F] 检查时的世界观            [G] 使用时的世界观
+  [F] Semantics during the check      [G] Semantics during use
   ────────────────              ────────────────────────
-  -1 ── 很小,放行               2^64-1 ── 巨量,无界拷贝
+  -1 ── small, accepted                2^64-1 ── huge, unbounded copy
 
-截断(模式四):
-  0x00010008 (65544) --取低16位--> 0x0008 (8)
-  分配用低位,写入用全值 → 差值全部越界
+Truncation (pattern four):
+  0x00010008 (65544) --low 16 bits--> 0x0008 (8)
+  Allocate with truncated bits, write with the full value → the difference is out of bounds
 ```
 
 ### 6.3 Why It Isn't Caught
@@ -483,13 +483,13 @@ memcpy(buf, src, count * sizeof(struct item));  // [N] 真实按回绕前的量�
 ### 6.4 Escalation Chain and Precedents
 
 ```
-符号扩展 → 巨量/负值长度 → 无界拷贝(回归 §1/§2 的溢出)
-截断/乘法回绕 → 小分配大写入 → 堆溢出(回归 §2)
-负偏移(int 转 64 位基址运算)→ 基址之前的 OOB 读写
-类型混淆(伪类型系统)→ 伪造对象 → 任意函数指针调用/字段错读
+Sign extension → huge/negative lengths → unbounded copy (returns to §1/§2 overflow cases)
+Truncation/multiplication wrap → small allocation with a large write → heap overflow (§2)
+Negative offset (int in 64-bit base arithmetic) → OOB read/write before the base
+Type confusion (forgeable type system) → forged object → arbitrary function-pointer call/misinterpreted fields
 ```
 
-- **CVE-2002-0392 (historical landmark)**: an integer overflow in Apache's chunked-encoding chunk-size computation → heap overflow → remote code execution, at its peak affecting one third of the world's web servers — the "war of independence" that established integer overflow as a standalone root-cause category.
+- **CVE-2002-0392 (historical landmark)**: an integer overflow in Apache's chunked-encoding chunk-size computation → heap overflow → remote code execution, at its peak affecting one third of the world's web servers — a landmark that established integer overflow as a standalone root-cause category.
 - **CVE-2021-21224 (V8 TurboFan, collected in 06 §2.4)**: a faulty type inference let the code after the `Object.is` branch keep operating on the narrow type; truncation to int32 → out-of-bounds indexing → fake objects. Same family: CVE-2021-38001 (06 §2.5).
 - **CVE-2017-11893**: the scripting engine's execution flow taking a wrong branch invalidated the object-type assumptions → type-confusion RCE.
 

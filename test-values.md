@@ -1,6 +1,6 @@
 # Test Value Conventions (Recognizability First)
 
-> Every injected/constructed test value must be **recognizable at a glance, greppable, and low-collision**: seeing it in memory, traces, responses, or logs tells you it's a probe; at wrap-up, grep once to confirm zero residue. When old snippets contain low-recognizability values, replace them in place per these conventions.
+> Every injected/constructed test value must be **recognizable at a glance, greppable, and low-collision**: seeing it in memory, traces, responses, or logs tells you it's a probe; at wrap-up, compare with the task's baseline and confirm zero task-owned live-target residue. When old snippets contain low-recognizability values, replace them in place per these conventions.
 
 ## I. Unified Value Families
 
@@ -10,7 +10,7 @@
 | Memory-write probe / magic value | `0x52455052` ("REPR") | `ptr.writeU32(0x52455052)` | ASCII-readable, shows as REPR in hexdumps; avoids deadbeef/cafebabe and other common values watchers look for |
 | PoC/replay constructed value | string `REPROBE-<date>-<seq>` | `REPROBE-20261016-001` | Unique, traceable to the test day; locatable if it leaks into production data |
 | Test account / phone number / ID | Obviously fake segments | `13800138RE` / `probe_<date>@re.local` / id as `910000000+seq` | Avoids real number-segment business logic; risk control can recognize them as tests |
-| On-device file/process names | unified prefix `re_` | `/data/local/tmp/re_fs`, `re_probe.js` | Wrap-up `ls /data/local/tmp/re_*` clears them in one go |
+| On-device file/process names | unified prefix `re_` | `/data/local/tmp/re_fs`, `re_probe.js` | List `re_*` for inspection; remove only files registered as created by this task |
 | Memory search value (value-editing cases) | segment-style: e.g. coins as `95270001` (non-round, non-zero) | — | Integers/0 collide heavily; segment-style values hit uniquely |
 | Trace marker labels | `re_tag_<n>` | `re_tag_hook1` | Tell your own markers apart at a glance in the call tree |
 
@@ -27,6 +27,6 @@
 2. **During verification**: grep the value-family strings in responses/memory/traces to confirm arrival (not "probably arrived")
 3. **At wrap-up** (hooked into device-testing §I.4 and the unattended master control's closing):
    - `grep -r "\[RE\]" <artifact dir>` should leave only your own logs
-   - On the device side, `ls /data/local/tmp/re_*; ps -A | grep re_` to confirm emptiness
-   - Grep replayed traffic for `REPROBE-` to confirm no test value leaked into real submissions
+   - On the selected device, inspect `ls /data/local/tmp/re_*` and `ps -A` for the exact registered task files/PIDs, compare with the baseline, and confirm only this task's live residue is gone; unrelated or pre-existing `re_*` objects must remain
+   - Grep replayed traffic for `REPROBE-` to confirm no test value leaked into real submissions; retain marked values in the task's own evidence logs
 4. unicorn/emulation layers likewise: demo values use the `0x52455052` family (replacing the old 0x42 example); when checking register results, state where the expected value came from

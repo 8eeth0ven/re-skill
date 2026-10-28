@@ -1,8 +1,8 @@
-# Breach Table · Windows (Drivers/Kernel/EoP)
+# Vulnerability Validation Table · Windows (Drivers/Kernel/EoP)
 
-> The master index is at `../breach-tables-cve.md` (CVE-worthy = security-policy violation + exploitability proof + impact scope); set up the environment and dual-machine kernel debugging first via `../platforms/01-windows/win-vuln/toolchain-setup.md`; the nine kernel entrances are compared in `../platforms/01-windows/win-vuln/kernel-attack-surface.md` §1. Surfaces absent from the table are still fair game — this table is just the high-yield guns.
+> The master index is at `../breach-tables-cve.md` (CVE-worthy = security-policy violation + exploitability proof + impact scope); set up the environment and dual-machine kernel debugging first via `../platforms/01-windows/win-vuln/toolchain-setup.md`; the nine kernel entrances are compared in `../platforms/01-windows/win-vuln/kernel-attack-surface.md` §1. Surfaces absent from the table are still fair game — this table prioritizes high-value validation checks.
 
-| What to recognize | Where to hit | What counts as a hit | False leads |
+| Recognition signal | Validation action | Confirmation criteria | Exclusions and false positives |
 | --- | --- | --- | --- |
 | A signed .sys (even WHQL) exposing `\Device\` where `IoCreateDeviceSecure` set no SDDL → device DACL missing | Enumerate the surface per `../platforms/01-windows/win-vuln/driver-ioctl-audit.md` §1 (namespace/ACL/SDDL/Access-bit interplay); confirm with WinObj or the access mask that Everyone can open it | An unprivileged user can open the device + at least one bad IOCTL = a full elevation surface | The device ACL allows only SYSTEM/Admin; the device opens but every IOCTL walks a validated path |
 | In IOCTL handling, METHOD_NEITHER's `Type3InputBuffer/UserBuffer` used raw without Probe (or Probed once, then used outside the loop) | Checklist per `../platforms/01-windows/win-vuln/driver-ioctl-audit.md` §3.1; decode the CTL_CODE to type it first (§2.2/§2.3 — the four Method semantics); user mode passes a kernel address for a direct write | A user-controllable pointer → kernel arbitrary read/write (only a stable write counts; a BSOD is merely the floor) | Fully Probed + wrapped in try/except; METHOD_BUFFERED with all lengths checked |

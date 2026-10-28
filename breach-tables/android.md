@@ -1,8 +1,8 @@
-# Breach Table · Android (Apps/ROMs/Devices)
+# Vulnerability Validation Table · Android (Apps/ROMs/Devices)
 
 > The master index is at `../breach-tables-cve.md` (CVE-worthy = security-policy violation + exploitability proof + impact scope); capability and environment gaps: `../re-to-cve-audit.md`; channels and templates: `../disclosure-cve.md`. Packed apps go through `../techniques/03-unpacking/` first, then back to this table; knowledge navigation at `../platforms/02-android/android-knowledge-map.md`, sample/technique cross-reference in `../platforms/02-android/malware-and-ctf.md`. Surfaces absent from the table are still fair game.
 
-| What to recognize | Where to hit | What counts as a hit | False leads |
+| Recognition signal | Validation action | Confirmation criteria | Exclusions and false positives |
 | --- | --- | --- | --- |
 | A third-party SDK .so inside an aar/jar where `readelf -s` shows `Java_`-prefixed static exports | Grep the Java layer's `System.loadLibrary` against native method declarations → audit parameter validation in each exported function (memcpy/strcpy/sprintf-class sinks); the .so is an ELF — structure parsing in `../platforms/02-android/file-formats.md` | An exported component/deep link delivers attacker-controlled input into the SDK's native OOB point (cross-app reachable memory corruption) | The component isn't exported and has no IPC surface; the native inputs are length-clamped; it only crashes its own app, not cross-app |
 | The .so has no `Java_` exports but Java declares natives (RegisterNatives dynamic registration) | In IDA locate `JNI_OnLoad` → read the registration table (names/signatures/function pointers); or frida-hook `RegisterNatives` to lift the whole table directly (see `../techniques/02-frida/native-hook-cheatsheet.md`), then audit sinks as in the row above | Type confusion/OOB inside a dynamically registered function (the face static scans miss) | The registered functions are all validated; the registered functions are reachable only on the app's own internal call chain |

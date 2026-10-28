@@ -41,7 +41,7 @@ This function looks up the concrete address of a function. Its arguments are a h
 
 ```javascript
 function hook_dlsym(){
-    // 获取dlsym函数的地址
+    // Resolve dlsym
     let dlsymAddr = Module.findExportByName("libdl.so","dlsym");
     console.log(dlsymAddr);
     // hook dlsym
@@ -65,7 +65,7 @@ function hook_dlsym(){
 When to use: wait until the target so has finished loading, then inline hook its internal functions.
 
 ```javascript
-//8.0以下所有的so加载都通过dlopen
+// On Android versions below 8.0, shared-object loading goes through dlopen
 function hook_dlopen() {
     Interceptor.attach(Module.findExportByName(null, "dlopen"), {
         onEnter: function (args) {
@@ -73,16 +73,16 @@ function hook_dlopen() {
             var so_name = ptr(args[0]).readCString();
             if (so_name.indexOf("libxx.so") >= 0) {
                 console.log("dlopen:", ptr(args[0]).readCString());
-                this.call_hook = true;//dlopen函数找到了
+                this.call_hook = true;// dlopen found the target library
             }
 
         }, onLeave: function (retval) {
-            if (this.call_hook) {//dlopen函数找到了就hook so
+            if (this.call_hook) {// Hook the shared object once dlopen has found it
                 inline_hook();
             }
         }
     });
-    // 高版本Android系统使用android_dlopen_ext
+    // Newer Android versions use android_dlopen_ext
     Interceptor.attach(Module.findExportByName(null, "android_dlopen_ext"), {
         onEnter: function (args) {
             var pathptr = args[0];
@@ -200,11 +200,11 @@ function hook_kill() {
     null !== killAddr && Interceptor.attach(killAddr, {
         onEnter: function (args) {
             console.log('kill called with pid: ' + args[0].toInt32() + ', signal: ' + args[1].toInt32());
-            // 在这里可以修改 args 来改变行为
+            // Modify args here to change behavior
         },
         onLeave: function (retval) {
             console.log('kill returned: ' + retval.toInt32());
-            // 在这里可以修改返回值
+            // Modify the return value here
         }
     });
 }
@@ -242,17 +242,17 @@ function create_pthread_create() {
         const so_name = module.name;
         const baseAddr = module.base
         console.log("pthread_create", so_name, "0x" + parg2.sub(baseAddr).toString(16), "0x" + parg3.toString(16))
-        // 成功的返回值是0
+        // A successful call returns 0
         return pthread_create(parg0, parg1, parg2, parg3)
     }, "int", ["pointer", "pointer", "pointer", "pointer"])
 }
 
 
-// 或者
+// Alternative
 function replace_thread() {
     var new_pthread_create = create_pthread_create()
     var pthread_create_addr = Module.findExportByName(null, "pthread_create")
-    // 函数替换
+    // Replace the function
     Interceptor.replace(pthread_create_addr, new_pthread_create);
 }
 
@@ -264,7 +264,7 @@ replace_thread()
 ```javascript
 // Frida script to hook pthread_start
 function hook__pthread_start() {
-    // 查找 pthread_start 函数地址
+    // Locate pthread_start
     var __pthread_start = DebugSymbol.fromName("_ZL15__pthread_startPv").address;
     console.log(__pthread_start)
     __pthread_start && Interceptor.attach(__pthread_start, {
@@ -333,9 +333,9 @@ function hook_strstr() {
         onEnter: function (e) {
             var haystack = e[0].readCString();
             var needle = e[1].readCString();
-            // 上面两个都是字符串
+            // Both arguments above are strings
         }, onLeave: function (e) {
-            // 返回值0就是没有检测到
+            // A return value of 0 indicates that the detection did not match
         }
     })
 }
@@ -347,16 +347,16 @@ function hook_strstr() {
 function hook_strcmp() {
     Interceptor.attach(Module.findExportByName(null, 'strcmp'), {
         onEnter: function (args) {
-            // 获取 strcmp 的参数（两个字符串）
+            // Read strcmp's two string arguments
             var str1 = args[0].readUtf8String();
             var str2 = args[1].readUtf8String();
-            // 输出调用 strcmp 时传入的两个字符串
+            // Print both strings passed to strcmp
             console.log('strcmp called with:');
             console.log('  str1: ' + str1);
             console.log('  str2: ' + str2);
         },
         onLeave: function (retval) {
-            // 输出 strcmp 返回值
+            // Print strcmp's return value
             console.log('strcmp returned: ' + retval.toInt32());
         }
     });
@@ -375,9 +375,9 @@ When to use: the packer decrypts an encrypted instruction block and memcpys it b
         this.size = args[2].toInt32();
     },
     onLeave: function (retval) {
-        // ARM64指令是4字节
+        // ARM64 instructions are 4 bytes wide
         if (this.size === 4) {
-            // 检查地址是否落在代码段
+            // Check whether the address lies in a code segment
             if (textRange && (this.src.compare(textRange.base) >= 0 && this.src.compare(textRange.base.add(textRange.size)) < 0)) {
                 console.log("可能是ARM64指令的memcpy:");
 
@@ -387,7 +387,7 @@ When to use: the packer decrypts an encrypted instruction block and memcpys it b
                 console.log("字节打印：")
                 console.log(hexdump(this.dst, { offset: 0, length: this.size }));
 
-                // 可以根据常见的ARM64指令模式进一步确认，比如分析前几个bit
+                // Confirm with common ARM64 instruction patterns, for example by inspecting the leading bits
                 var instruction = Memory.readU32(this.dst);
                 console.log("Instruction (hex): " + instruction.toString(16));
             }
@@ -402,14 +402,14 @@ This example also demonstrates the use of Thumb pointer `and(-2)` alignment:
 
 ```javascript
 const l = Module.getExportByName("libc.so", "pthread_create")
-// 地址对齐，其实默认就是对齐的
+// Align the address; it is normally already aligned
 const i = l.and(-2)
-// 如果这个是成功的
+// If this succeeds
 const r = Interceptor.attach(Module.getExportByName("libc.so", "memcmp"), {
     onEnter: function (e) {
         this.match = 0 === e[0].compare(i) || 0 === e[1].compare(i)
     }, onLeave: function (e) {
-        // 销毁掉
+        // Destroy the object
         this.match && (e.replace(new NativePointer(0)), r.detach())
     }
 });
@@ -483,14 +483,14 @@ function hook_init_array() {
         onEnter: function (args) {
             let soinfo = args[0];
             let soname = get_soname(soinfo).readCString();
-            // 此时还没有执行完成初始化函数
-            // 这个时候就可以加载so了，可以在这个位置nop掉其他的东西
+            // Initialization has not yet completed at this point
+            // Load the shared object here; this is also a possible location for NOP patches
         },
         onLeave: function (retval) {
             if (this.match) {
                 console.log("libDexHelper.so", "加载成功")
                 const module = Process.findModuleByName("libDexHelper.so");
-                // 执行结束初始化函数了，接下来会跑dlopen
+                // Initialization has completed; dlopen runs next
             }
         }
     });
@@ -556,13 +556,13 @@ function hook_native(){
 const hooks = Module.load('/data/app/com.example.hookdemo-xMdClW3H4V5El06BIcGN0A==/lib/arm64/libhookdemo.so');
 var Imports = hooks.enumerateImports();
 for(var i = 0; i < Imports.length; i++) {
-    //函数类型
+    // Function type
     console.log("type:",Imports[i].type);
-    //函数名称
+    // Function name
     console.log("name:",Imports[i].name);
-    //属于的模块
+    // Owning module
     console.log("module:",Imports[i].module);
-    //函数地址
+    // Function address
     console.log("address:",Imports[i].address);
  }
 ```
@@ -649,10 +649,10 @@ function dumpAllFieldValue(obj) {
 ```javascript
 function getFieldValue(obj, className, fieldName) {
     try {
-        var cls = Java.use(className).class; // 获取对象的类
-        var field = cls.getDeclaredField(fieldName); // 获取指定字段
-        field.setAccessible(true); // 设置字段为可访问
-        return field.get(obj); // 获取字段值
+        var cls = Java.use(className).class; // Obtain the object's class
+        var field = cls.getDeclaredField(fieldName); // Resolve the requested field
+        field.setAccessible(true); // Make the field accessible
+        return field.get(obj); // Read the field value
     } catch (e) {
         console.error("Failed to get field: " + fieldName + ", Error: " + e);
         return null;
@@ -669,9 +669,9 @@ Java.enumerateClassLoadersSync().forEach(classLoader => {
 ```javascript
 var methods = clazz.class.getDeclaredMethods();
 for (var i = 0; i < methods.length; i++) {
-    // 获取方法的名称和签名
+    // Read the method name and signature
     var methodName = methods[i].getName();
-    var methodSignature = methods[i].toString(); // toString() 方法会返回方法的签名信息
+    var methodSignature = methods[i].toString(); // toString() returns the method signature
     console.log("Method: " + methodName + ", Signature: " + methodSignature);
 }
 ```
@@ -681,13 +681,13 @@ for (var i = 0; i < methods.length; i++) {
 Normally, on arm64 one instruction is 4 bytes:
 
 ```javascript
- Instruction.parse(ptr(地址))
+ Instruction.parse(ptr(address))
 ```
 
 You can also just look at the hex:
 
 ```javascript
-console.log(hexdump(ptr(地址), {
+console.log(hexdump(ptr(address), {
     length: 4,
     header: true,
     ansi: true
@@ -717,18 +717,18 @@ baseFirstAddress.compare(base.add(size)) < 0;
 For the full function-ized nop/ret version (wrapped as retFunc/nopFunc) see also [advanced/patch-and-memory.md](advanced/patch-and-memory.md); here is the minimal form:
 
 ```javascript
-Memory.protect(ptr(地址), 4, 'rwx');
-// 使用 Arm64Writer 写入 'ret' 指令
+Memory.protect(ptr(address), 4, 'rwx');
+// Write a 'ret' instruction with Arm64Writer
 var writer = new Arm64Writer(parg2);
 writer.putRet();
 writer.flush();
 writer.dispose();
 console.log("ret success");
 
-// 写入nop指令
+// Write a NOP instruction
 var writer = new Arm64Writer(parg2);
-writer.putNop(); // 写入 nop 指令
-writer.flush();  // 刷新写入到内存
+writer.putNop(); // Write a NOP instruction
+writer.flush();  // Flush the instruction writer to memory
 console.log("ret success");
 ```
 
@@ -736,9 +736,9 @@ console.log("ret success");
 
 ```javascript
 const address = module.base.add(0xEA478);
-// 使用 Memory.readU64 读取 64 位数据
+// Read a 64-bit value with Memory.readU64
 const value = Memory.readU64(address);
-// 打印模块和相关符号
+// Print the module and related symbols
 const func_module = Process.findModuleByAddress(ptr(value))
 console.log(func_module.name)
 console.log(func_module.base)

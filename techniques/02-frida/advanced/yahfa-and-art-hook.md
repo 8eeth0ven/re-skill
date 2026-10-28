@@ -9,7 +9,7 @@ When to use: the app detects frida's inline hooks (trap instructions), so you sw
 ### 4.1 Importing yahfa
 
 ```javascript
-// 加载相关需要的so
+// Load the required shared libraries
 var data_files_path = "/data/data/th.co.truemoney.wallet/files/"
 var libdlfuncPathStr = data_files_path + "libdlfunc.so";
 Module.load(libdlfuncPathStr)
@@ -29,22 +29,22 @@ const _getThread = new NativeFunction(
 );
 const _visiblyInit = new NativeFunction(
     module.findExportByName("Java_lab_galaxy_yahfa_HookMain_00024Utils_visiblyInit"),
-    'int',    // return value是一个int（如果C++层是int返回，Frida层也要对应int；如返回值是jint）
+    'int',    // Integer return type; it must match the C++/JNI return type, for example jint
     ['pointer', 'pointer', 'long']
 );
 const _init = new NativeFunction(
     module.findExportByName("Java_lab_galaxy_yahfa_HookMain_init"),
-    'void',   // 如果底层JNI定义是 `static void init(...)`，这里就用 'void'
+    'void',   // Use 'void' when the underlying JNI declaration is static void init(...)
     ['pointer', 'pointer', 'int']
 );
 const _findMethodNative = new NativeFunction(
     module.findExportByName("Java_lab_galaxy_yahfa_HookMain_findMethodNative"),
-    'pointer', // JNI层返回的是 Object( Method/Constructor )
+    'pointer', // The JNI layer returns an Object (Method or Constructor)
     ['pointer', 'pointer', 'pointer', 'pointer', 'pointer']
 );
 const _backupAndHookNative = new NativeFunction(
     module.findExportByName("Java_lab_galaxy_yahfa_HookMain_backupAndHookNative"),
-    'bool', // JNI层一般返回 boolean
+    'bool', // The JNI layer normally returns a boolean
     ['pointer', 'pointer', 'pointer', 'pointer', 'pointer']
 );
 ```
@@ -55,7 +55,7 @@ const _backupAndHookNative = new NativeFunction(
 export function init() {
     const VERSION = Java.use('android.os.Build$VERSION');
     let buildSdk = VERSION.SDK_INT.value;
-    // Android 6.0+ (即 Build.VERSION_CODES.M=23) 才考虑 PREVIEW_SDK_INT
+    // PREVIEW_SDK_INT applies only on Android 6.0+ (Build.VERSION_CODES.M = 23)
     if (buildSdk >= 23) {
         try {
             const previewSdkInt = VERSION.PREVIEW_SDK_INT.value;
@@ -63,11 +63,11 @@ export function init() {
                 buildSdk += 1;
             }
         } catch (e) {
-            // 忽略
+            // Ignore this lookup failure
         }
     }
     const env_ptr = Java.vm.getEnv().handle;
-    // 调用我们在上面定义的 this.init(...)，而不是直接 init(buildSdk)
+    // Call this.init(...) defined above rather than directly calling init(buildSdk)
     _init(env_ptr, ptr(0), buildSdk);
     console.log(`[HookMain] Initialized with SDK version: ${buildSdk}`);
 }
@@ -78,7 +78,7 @@ export function init() {
 ```javascript
 class Utils {
     constructor(env) {
-        // 在 Frida 中获取 Env，用于之后调用 NativeFunction
+        // Obtain the Frida JNI Env for subsequent NativeFunction calls
         this.env = env;
         this.env_ptr = this.env.handle;
         this.nullptr = ptr(0x0);
@@ -97,7 +97,7 @@ class Utils {
     }
 
     initClass() {
-        // 模拟 Java 中的 Utils.initClass()
+        // Reproduce Utils.initClass() from the Java implementation
         if (this.shouldVisiblyInit()) {
             const thread = this.getThread();
             return this.visiblyInit(thread);
@@ -129,10 +129,10 @@ export class YahfaHook {
 
     doHookDefault(patchClassLoader, originClassLoader) {
         try {
-            // 使用patchClassLoader加载HookInfo类
+            // Load HookInfo through patchClassLoader
             const HookInfoClass = patchClassLoader.loadClass("lab.galaxy.yahfa.HookInfo");
             const HookInfo = Java.cast(HookInfoClass, Java.use('java.lang.Class'));
-            // 获取hookItemNames字段
+            // Read the hookItemNames field
             const hookItemNamesField = HookInfo.getDeclaredField("hookItemNames");
             hookItemNamesField.setAccessible(true);
             const hookItemNames = hookItemNamesField.get(null);
@@ -147,10 +147,10 @@ export class YahfaHook {
     doHookItemDefault(patchClassLoader, hookItemName, originClassLoader) {
         try {
             console.log(`[HookMain] Start hooking with item ${hookItemName}`);
-            // 加载hookItem类
+            // Load the hookItem class
             const HookItemClass = patchClassLoader.loadClass(hookItemName);
             const HookItem = Java.cast(HookItemClass, Java.use('java.lang.Class'));
-            // 获取className, methodName, methodSig字段
+            // Read the className, methodName, and methodSig fields
             const classNameField = HookItem.getDeclaredField("className");
             classNameField.setAccessible(true);
             const className = classNameField.get(null);
@@ -164,15 +164,15 @@ export class YahfaHook {
                 console.warn(`[HookMain] No target class. Skipping...`);
                 return;
             }
-            // 加载目标类
+            // Load the target class
             const TargetClassClass = originClassLoader.loadClass(className);
             const TargetClass = Java.cast(TargetClassClass, Java.use('java.lang.Class'));
-            // 检查是否为抽象类
+            // Check whether the target is abstract
             const Modifier = Java.use('java.lang.reflect.Modifier');
             if (Modifier.isAbstract(TargetClass.getModifiers())) {
                 console.warn(`[HookMain] Hook may fail for abstract class: ${className}`);
             }
-            // 查找hook和backup方法
+            // Locate the hook and backup methods
             let hookMethod = null;
             let backupMethod = null;
             const declaredMethods = HookItem.getDeclaredMethods();
@@ -190,12 +190,12 @@ export class YahfaHook {
                 console.error(`[HookMain] Cannot find hook for ${methodName}`);
                 return;
             }
-            // 初始化类
+            // Initialize the class
             if (this.utilsObj.initClass() !== 0) {
                 console.error(`[HookMain] Utils.initClass failed`);
                 return;
             }
-            // 查找并备份&钩取
+            // Locate the method, create its backup, and install the hook
             this.findAndBackupAndHook(TargetClass, methodName, methodSig, hookMethod, backupMethod);
         } catch (e) {
             console.error(`[HookMain] doHookItemDefault exception: ${e}`);
@@ -230,7 +230,7 @@ export class YahfaHook {
         if (!Modifier.isStatic(hookModifiers)) {
             throw new Error(`Hook must be a static method: ${hook}`);
         }
-        // 检查方法兼容性
+        // Check method compatibility
         this.checkCompatibleMethods(target, hook, "Original", "Hook");
 
         if (backup) {
@@ -241,7 +241,7 @@ export class YahfaHook {
             this.checkCompatibleMethods(target, backup, "Original", "Backup");
         }
 
-        // 调用原生备份和钩取方法
+        // Call the native backup-and-hook method
         const success = this.backupAndHookNative(
             target,
             hook.$h,
@@ -280,13 +280,13 @@ export class YahfaHook {
         const Method = Java.use('java.lang.reflect.Method');
         const Constructor = Java.use('java.lang.reflect.Constructor');
 
-        // 1) original 可能是 Method 或 Constructor，在纯 JS 层并不知道其具体类型，只能尝试 cast
+        // 1) original may be a Method or Constructor; plain JS must try the appropriate cast
         let originalMethodObj;
         let originalConstructorObj;
         try {
             originalMethodObj = Java.cast(originalPtr, Method);
         } catch (e) {
-            // 不是 Method
+            // Not a Method
         }
         if (originalMethodObj === null) {
             try {
@@ -379,24 +379,24 @@ frida's Java-layer hook is **entry replacement**: the target ArtMethod's entry p
 The whole chain (direction: hooked method → JS → write-back):
 
 ```
-目标方法第 N 条字节码
-   │ 原地替换为 invoke-static Lbridge;.hook(IJ...)V   ← 覆盖写,原指令先存起来
+Bytecode instruction N of the target method
+   | Replace in place with invoke-static Lbridge;.hook(IJ...)V; save the overwritten instruction first
    ▼
-ART 解释器执行到这条 invoke-static
+The ART interpreter reaches this invoke-static
    ▼
-调用 Java.registerClass 注册的 bridge 类静态方法
-   (frida 注册的是 native java method → nativeFunctionCallback → 进 JS)
+Call the bridge class's static method registered through Java.registerClass
+   (Frida registers a native Java method -> nativeFunctionCallback -> JS)
    ▼
-JS 回调里:沿当前线程 Thread → ManagedStack 取「上级 fragment」
-   → 拿到 caller(=被 hook 方法)的 ShadowFrame
+In the JS callback: current Thread -> ManagedStack -> parent fragment
+   -> obtain the caller's ShadowFrame (the caller is the hooked method)
    ▼
-从 ShadowFrame.VRegs 读出 hook 点的寄存器现场(参数/局部变量值)
+Read the hook-point register state, including arguments and locals, from ShadowFrame.VRegs
    ▼
-JS 手动解释执行被覆盖的那条原指令(move/iget/add-int...)
+Interpret the overwritten instruction manually in JS (move/iget/add-int...)
    ▼
-SetVReg 把结果写回 caller 的 ShadowFrame 寄存器组(即改上一帧的值)
+SetVReg writes the result into the caller's ShadowFrame registers, modifying the previous frame
    ▼
-返回后 caller 继续解释后续字节码——原指令"像被执行过一样"
+Return; the caller interprets subsequent bytecode as though the original instruction had executed
 ```
 
 ### 3. How `Java.registerClass` serves as the trampoline

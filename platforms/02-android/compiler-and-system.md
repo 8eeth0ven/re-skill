@@ -6,15 +6,15 @@
 ## 1. Compile-Chain Panorama: from .java to CPU instructions
 
 ```
-.java ──javac──> .class ──d8/r8──> classes.dex ──打包──> .apk
+.java ──javac──> .class ──d8/r8──> classes.dex ──package──> .apk
                                               │
-        [安装期] pm/installd → dex2oat(64) ──> oat/<arch>/base.{odex,vdex}
+        [install time] pm/installd → dex2oat(64) ──> oat/<arch>/base.{odex,vdex}
                                               │
-        [运行期] ClassLoader → odex/vdex 优先,失败 fallback APK 内 dex
+        [runtime] ClassLoader → prefer odex/vdex; on failure fall back to dex inside the APK
                     │
-        ├─ nterp 汇编解释器执行(A12+ 默认)
-        ├─ JIT:热点方法→quick code(匿名 code cache)
-        └─ AOT:profile 回流→后台重 dex2oat(只编热方法)
+        ├─ nterp assembly interpreter (default on A12+)
+        ├─ JIT: hot methods → quick code (anonymous code cache)
+        └─ AOT: feed back profiles → background dex2oat recompilation (hot methods only)
 ```
 
 ### 1.1 Front end: javac and dx/d8/r8

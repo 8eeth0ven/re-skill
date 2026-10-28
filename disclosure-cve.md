@@ -1,7 +1,7 @@
 # Vulnerability Disclosure & CVE Application (A Hands-on Manual from Finding to ID)
 
-> Positioning: **the full ID-acquisition flow** — after finding a bug, whom to report to, how, how long until you get an ID, and what to do if rejected. How to find bugs (root cause/exploitation) is not this document's job → `../platforms/11-root-cause/`, `../techniques/`; the Chinese SRC report format → the global rules `vuln-report-format`.
-> Currency: **verified online 2026-10**. The CVE ecosystem went through a funding crisis and governance restructuring from 2025-04 (§1.2); treat each channel's official page as authoritative for timelines; old claims marked [Outdated] are background only — don't follow them.
+> Positioning: **the full ID-acquisition flow** — after finding a bug, whom to report to, how, how long until you get an ID, and what to do if rejected. How to find bugs (root cause/exploitation) is not this document's job → `platforms/11-root-cause/`, `techniques/`; the Chinese SRC report format → the global rules `vuln-report-format`.
+> Currency: the source document records **online verification in 2026-10**; this editorial revision has not reverified external services, CNA membership, counts, redirects, or response-time promises. Recheck the official channel before preparing a submission. **Historical snapshot, not a guarantee of current behavior.** The CVE ecosystem went through a funding crisis and governance restructuring from 2025-04 (§1.2); treat each channel's official page as authoritative for timelines; old claims marked [Outdated] are background only — don't follow them.
 
 ---
 

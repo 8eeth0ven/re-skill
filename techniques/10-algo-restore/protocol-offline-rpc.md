@@ -88,8 +88,8 @@ The community's distilled consensus:
 ### 2.4 A complete runnable skeleton: RPC server (JS) + Python client (device pool / self-healing / heartbeat)
 
 ```javascript
-// agent.js —— 注入目标 app 的 RPC 服务端
-// 假设已定位:com.xxx.security.SignUtil 的 native 方法 sign(Map) → String
+// agent.js: RPC server injected into the target application
+// Assume com.xxx.security.SignUtil.sign(Map) -> String has already been located
 var SIGN_CLASS = "com.xxx.security.SignUtil";
 
 function doSign(paramsObj) {
@@ -97,7 +97,7 @@ function doSign(paramsObj) {
     var Map = Java.use("java.util.HashMap");
     var m = Map.$new();
     for (var k in paramsObj) m.put(k, paramsObj[k]);
-    return Clz.sign(m);            // 返回签名字符串
+    return Clz.sign(m);            // Return the signature string
 }
 
 rpc.exports = {
@@ -111,7 +111,7 @@ rpc.exports = {
         if (err) throw new Error(err);
         return out;
     },
-    // 批量 amortize:一次往返出 N 个签名
+    // Amortize overhead by producing N signatures per round trip
     signBatch: function (list) {
         var results = [];
         Java.perform(function () {
@@ -127,7 +127,7 @@ rpc.exports = {
 
 ```python
 #!/usr/bin/env python3
-# rpc_client.py —— 设备池 + 长驻 + 心跳 + 异常自愈客户端骨架
+# rpc_client.py: persistent device-pool client skeleton with heartbeat and crash recovery
 # pip install frida frida-tools
 import frida, time, threading, queue, pathlib, itertools
 
@@ -135,7 +135,7 @@ AGENT_JS = pathlib.Path(__file__).with_name("agent.js").read_text(encoding="utf-
 PKG = "com.xxx.app"
 
 class DeviceWorker(threading.Thread):
-    """一台设备一个 worker:spawn 长驻 + 心跳 + 崩溃自愈"""
+    """One worker per device: persistent spawn, heartbeat, and crash recovery."""
     def __init__(self, device):
         super().__init__(daemon=True)
         self.device, self.api, self.alive = device, None, False
@@ -143,18 +143,18 @@ class DeviceWorker(threading.Thread):
         self._stop = False
 
     def _boot(self):
-        pid = self.device.spawn([PKG])          # 冷启动一次
+        pid = self.device.spawn([PKG])          # Cold-start once
         self.device.resume(pid)
-        time.sleep(8)                           # 等 app 过闪屏/自检,按目标调
+        time.sleep(8)                           # Wait for splash-screen and self-check completion; tune for the target
         session = self.device.attach(pid)
         session.on("detached", self._on_detached)
         script = session.create_script(AGENT_JS)
         script.load()
-        self.api = script.exports_sync          # frida>=12.3;旧版用 script.exports
+        self.api = script.exports_sync          # Frida >=12.3; older versions use script.exports
         self.pid, self.session = pid, session
 
     def _on_detached(self, reason, *a):
-        self.alive = False                      # 触发主循环自愈
+        self.alive = False                      # Trigger recovery in the main loop
 
     def _heartbeat(self, timeout=10):
         try: return time.time() - self.api.ping() / 1000 < timeout
@@ -166,7 +166,7 @@ class DeviceWorker(threading.Thread):
                 try:
                     self._boot(); self.alive = True
                 except Exception as e:
-                    time.sleep(5); continue     # 自愈失败退避重试
+                    time.sleep(5); continue     # Back off and retry if recovery fails
             try:
                 params, result_q = self.q.get(timeout=5)
             except queue.Empty:
@@ -175,7 +175,7 @@ class DeviceWorker(threading.Thread):
                 result_q.put(("ok", self.api.sign(params)))
             except Exception as e:
                 result_q.put(("err", str(e)))
-        # stop 后清理略
+        # Post-stop cleanup omitted
 
     def call(self, params, timeout=30):
         rq = queue.Queue()
@@ -183,7 +183,7 @@ class DeviceWorker(threading.Thread):
         return rq.get(timeout=timeout)
 
 class RpcPool:
-    """多设备负载:round-robin 分发到健康 worker"""
+    """Distribute device-pool requests round-robin among healthy workers."""
     def __init__(self, serials):
         self.workers = []
         for s in serials:
@@ -200,7 +200,7 @@ class RpcPool:
         raise RuntimeError("no healthy worker")
 
 if __name__ == "__main__":
-    pool = RpcPool(serials=["emulator-5554", "emulator-5556"])  # frida-ps -D 列 serial
+    pool = RpcPool(serials=["emulator-5554", "emulator-5556"])  # List device serials with frida-ps -D
     for _ in range(3):
         print(pool.sign({"ts": str(int(time.time() * 1000)), "path": "/api/list", "body": "{}"}))
 ```

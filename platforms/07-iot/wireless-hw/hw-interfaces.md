@@ -4,11 +4,11 @@
 ## 1. Master Table of the Four Debug Interfaces
 
 ```
-         ┌─────── 设备 PCB ───────┐
-  UART ──► TX RX GND(3-4 焊盘成排,最常见)
-  JTAG ──► TCK TMS TDI TDO RST GND(8-14 脚/测试点)
-  SPI  ──► CLK MOSI MISO CS + VCC GND(挂 Flash 芯片)
-  I2C  ──► SDA SCL + VCC GND(挂 EEPROM/传感器)
+         ┌─────── Device PCB ───────┐
+  UART ──► TX RX GND (3–4 pads in a row; the most common layout)
+  JTAG ──► TCK TMS TDI TDO RST GND (8–14 pins/test points)
+  SPI  ──► CLK MOSI MISO CS + VCC GND (attached Flash chip)
+  I2C  ──► SDA SCL + VCC GND (attached EEPROM/sensor)
          └────────────────────────┘
 ```
 

@@ -9,13 +9,13 @@ Author: skeep
 
 Core premise: x86 instructions are densely encoded — 98% of 16KB of random data disassembles into valid instructions — **disassembling successfully ≠ real code**. The feature checklist for judging "is this region garbage" (Ring0 instructions are legitimate only when analyzing bootloaders/kernels/drivers):
 ```
-Ring0 特权指令(用户态出现即垃圾): IN/INS/INSB/INSW/INSD  OUT/OUTS/OUTSB/OUTSW/OUTSD  IRET/IRETD  ARPL  ICEBP/INT 1  CLI/STI  HLT
-便利指令(编译器不生成、手写才用;占 opcode 空间近 1%,花指令高频):
-  ENTER/LEAVE(编译器用 PUSH/MOV/SUB)  LOOP/LOOPE/LOOPZ/LOOPNE/LOOPNZ  PUSHA/POPA(会存 SP 自身)
-不太可能的数学指令:
-  F*/WAIT/FWAIT(浮点;例外:shellcode 用 FPU 取自身指针、3D 程序正常)  SAHF/LAHF(高级语言不会产生)  AAA/AAS/AAM/AAD(BCD 远古单字节)
-  SBB(与 SUB 似占 3.5%;合法场景 32 位下做 64 位数学)  XLAT(单字节查表)  CLC/STC/CLD/STD(合法场景在 REP 串操作附近)
-远指针指令(16 位产物,32 位代码出现即垃圾): LDS/LSS/LES/LFS/LGS
+Ring-0 privileged/junk-code candidates in userspace: IN/INS/INSB/INSW/INSD  OUT/OUTS/OUTSB/OUTSW/OUTSD  IRET/IRETD  ARPL  ICEBP/INT 1  CLI/STI  HLT
+Unusual convenience instructions: generally hand-written rather than compiler-generated; nearly 1% of opcode space and frequent in junk sequences
+  ENTER/LEAVE (compilers often use PUSH/MOV/SUB)  LOOP/LOOPE/LOOPZ/LOOPNE/LOOPNZ  PUSHA/POPA (also saves SP)
+Unlikely arithmetic instructions:
+  F*/WAIT/FWAIT (floating point; exceptions include FPU-based shellcode self-location and legitimate 3D code)  SAHF/LAHF (unusual compiler output)  AAA/AAS/AAM/AAD (legacy one-byte BCD)
+  SBB (roughly 3.5%, similar to SUB; legitimate for 64-bit math in 32-bit code)  XLAT (one-byte table lookup)  CLC/STC/CLD/STD (legitimate near REP string operations)
+Far-pointer instruction candidates, associated with 16-bit code; inspect carefully in 32-bit code: LDS/LSS/LES/LFS/LGS
 ```
 **Instruction-prefix signals**: 32-bit code full of 16-bit registers (AX instead of EAX — the prefix bytes land in the ASCII letter range, frequent in disassembly text); frequent `LOCK/BOUND/WAIT` before mnemonics; segment prefixes `FS:/GS:/SS:/ES:` on instructions that **don't address memory**, `POP SS`, writes to segr7 → junk code (legitimate 32-bit code uses FS/GS only in specific scenarios). Usage: the above features appearing frequently and in swaths → judge the whole segment garbage; don't read it as code.
 
@@ -27,7 +27,7 @@ Author: neilwu
 def put_unconditional_branch(source, destination):
     offset = (destination - source - 4) >> 1
     if not (-2097152 <= offset <= 2097151): raise RuntimeError("Invalid offset")
-    if offset > 1023 or offset < -1024:    # 超 B 条件码 11 位范围,patch 4 字节 B.W(0xF000/0xB800 前后缀对)
+    if offset > 1023 or offset < -1024:    # Outside the 11-bit conditional-branch range; patch a 4-byte B.W using the 0xF000/0xB800 prefix/suffix pair
         PatchWord(source, 0xf000 | ((offset >> 11) & 0x7ff)); PatchWord(source+2, 0xb800 | (offset & 0x7ff))
     else: PatchWord(source, 0xe000 | (offset & 0x7ff))
 ```
@@ -76,37 +76,37 @@ Boundaries (may also be conservatively skipped): a block that is **simultaneousl
 **Pitfall: compiler block merging** (no other article covers it): the common head/tail of two cases gets merged by the compiler into one block:
 ```c
 case 1: case 2: {
-  puts("enter case 1 or 2");          // 合并的头(不属于任何单 case)
+  puts("enter case 1 or 2");          // Shared entry block, belonging to neither individual case
   if (state_var == 1) { puts("case 1"); state_var = 2; }
   else               { puts("case 2"); state_var = 3; }
-  puts("exit case 1 or 2");           // 合并的尾
+  puts("exit case 1 or 2");           // Shared exit block
 }
 ```
 The fix = **code copying**: copy every instruction on the paths "dispatcher entry → case entry" and "case exit → dispatcher entry" into the patch region; after patching, the executed sequence = the original case's instructions + the copied instructions — semantically equivalent, split back into independent cases; unrecognized cases fall back into the dispatcher and still work out right.
 
 **Multi-exit cases**: one case can have multiple exits (TBNZ/CBZ/CSEL+B coexisting) — **every exit must be patched individually**. Single-exit template (exit 1 patched to jump to the patch, exit 2 kept):
 ```
-b    patch_code                      ; 出口1 改跳 patch(原:tbnz w8,#0,to_dispatcher)
-cont: ...                           ; 出口2 保持原样(cbz w0,to_dispatcher)
+b    patch_code                      ; Redirect exit 1 to the patch; original: tbnz w8,#0,to_dispatcher
+cont: ...                           ; Preserve exit 2: cbz w0,to_dispatcher
 patch_code:
-tbnz w8, #0, to_case_entry          ; 复制原出口指令语义
+tbnz w8, #0, to_case_entry          ; Reproduce the original exit semantics
 b cont
 to_case_entry:
-  [patch 时覆盖掉的指令]
-  [离开当前块到分发器入口的所有指令]        ; 代码拷贝
-  [分发器入口到目标 case 入口的所有指令]    ; 代码拷贝
-  b 目标case
+  [instructions overwritten by the patch]
+  [all instructions from this block to the dispatcher entry]     ; copied code
+  [all instructions from dispatcher entry to target case entry]   ; copied code
+  b target_case
 ```
 Dual exit (CSEL-style) — **you cannot jump away right after CSET; the following MOV is a live instruction**:
 ```
-cset w7, eq                   ; !!! 保留,不可提前跳转(原:csel w7,w15,w14,eq)
+cset w7, eq                   ; Preserve this; do not branch early. Original: csel w7,w15,w14,eq
 mov  w20, w0
 b    patch_code
 patch_code:
 cbnz w7, true_branch
 cbz  w7, false_branch
-true_branch:  [覆盖指令][到分发器][分发器到真分支]  b 真分支
-false_branch: [覆盖指令][到分发器][分发器到假分支]  b 假分支
+true_branch:  [overwritten instructions][to dispatcher][dispatcher to true branch]   b true_target
+false_branch: [overwritten instructions][to dispatcher][dispatcher to false branch] b false_target
 ```
 Concrete instance (vdog 0x704dc; the predecessor loc_704CC's `LDR W9,[X19,#0x18]` would be overwritten): the patch region first re-emits `LDR W9,[X19,#0x18]`, then the original block's `STR W9,[X19,#0x1C]`, then copies the whole dispatcher binary-search CMP chain, ending with `B loc_70778` (the successor of 0x6fa40fc9). Engineering numbers: the vdog JNI_OnLoad repair ran 21KB of patches/15 minutes; copied instructions must be **dead-code-filtered** or the function grows too big for IDA to decompile; copying PC-relative instructions (calls/global references) requires **relocation repair**; the vdog JNI_OnLoad has **6 dispatchers** (customized ollvm or inline) — state-variable and dispatcher auto-recognition remains a to-do; verification: after restoring a four-branch fla function, F5 matched the source semantics, and JNI_OnLoad's anti-debug/signature checks/package-name checks all became readable.
 
@@ -119,19 +119,19 @@ Pure Unicorn+Capstone emulated execution (no angr/miasm — their arm64 support 
 
 **Step 1: Capstone disassembly into blocks + reference counting** (`md = Cs(CS_ARCH_ARM64, CS_MODE_ARM); md.detail = True`):
 ```python
-# 遍历 md.disasm(bin1[offset:end], offset):跳转/ret 指令(i.groups 非空)结束一块,记 saddress/eaddress/ins;
-# IMM 操作数记 naddress(跳转目标);自跳(imm==address)= 死循环入 dead_loop;每个跳转目标计数 processors[imm] += 1
-for dead in dead_loop: processors.pop(dead, None)   # 娜迦样本有死循环路径,必须剔除
+# Walk md.disasm(bin1[offset:end], offset); a branch/ret with nonempty i.groups ends a block; save saddress/eaddress/ins
+# Record immediate operands as naddress; self-jumps belong in dead_loop; count references with processors[imm] += 1
+for dead in dead_loop: processors.pop(dead, None)   # This Naga sample contains dead-loop paths; exclude them
 ```
 **Step 2: identify real blocks** — first pass: a target referenced by >1 block is the dispatcher; blocks referencing the dispatcher are candidates (`naddress in processors and processors[n]>1`); second pass (signatures): bogus blocks may also reference the dispatcher, so match by an "instruction mnemonic + operand types" signature (independent of registers/constants):
 ```python
-def get_code_sign(block):      # 'movz'+'12'(imm+reg) 这类助记符+操作数类型串接
+def get_code_sign(block):      # Concatenate mnemonic and operand-type signatures, for example 'movz' + '12' for immediate and register
     sign = ''
     for i in block['capstone']:
         sign += i.mnemonic
         for op in i.operands: sign += str(op.type)
     return sign
-# ollvm 虚假块特征码库(按样本积累):
+# OLLVM bogus-block signatures, accumulated per sample:
 ssign = {'b2','cmp11b.ne2','cmp11mov11b.ne2','movz12movk12b2','movz12movk12cmp11b.ne2',
          'movz12movk12cmp11mov11b.ne2','movz12movk12movz12movk12b2','movz12movk12cmp11movz12movk12b.eq2',
          'movz12movk12cmp11movz12movk12b.ne2','ldr13b2','...'}
@@ -139,13 +139,13 @@ def is_real_block(item):
     sign = get_code_sign(item)
     if sign in ssign or sign.endswith('movk12movz12movk12b.ne2'): return False
     return any(insn.mnemonic not in ['movz','movk','cmp','b.eq','b.ne'] for insn in item['capstone'])
-# ↑ 含任何非流程控制指令 = 真实块;剔除 fake 后,ret 块不引用任何块,单独补入 real_blocks
+# Any non-control-flow instruction identifies a real block; after filtering fake blocks, add unreferenced ret blocks to real_blocks separately
 ```
 **Step 3: Unicorn emulated execution to find successors**:
 ```python
 mu = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
-mu.mem_map(0x80000000, 0x10000*8); mu.reg_write(UC_ARM64_REG_SP, 0x80000000+0x10000*6)   # 栈
-mu.mem_map(0, 4*1024*1024); mu.mem_write(0, bin1)       # 代码,so 按基址 0 映射
+mu.mem_map(0x80000000, 0x10000*8); mu.reg_write(UC_ARM64_REG_SP, 0x80000000+0x10000*6)   # Stack
+mu.mem_map(0, 4*1024*1024); mu.mem_write(0, bin1)       # Code region; map the shared object at base 0
 mu.hook_add(UC_HOOK_CODE, hook_code); mu.hook_add(UC_HOOK_MEM_UNMAPPED, hook_mem_access)
 ```
 hook_code's five core tricks (all inside the per-instruction callback):
@@ -157,20 +157,20 @@ hook_code's five core tricks (all inside the per-instruction callback):
 
 Register-name conversion + context save/restore + path search:
 ```python
-def reg_ctou(regname):   # capstone 名 → unicorn 常量:w0-w28→W0+idx;x29→1,x30→2,其余 x→X0+idx;sp→4
+def reg_ctou(regname):   # Capstone name to Unicorn constant: w0-w28 -> W0+index; x29 -> 1; x30 -> 2; other x registers -> X0+index; sp -> 4
 def get_context():  return [mu.reg_read(UC_ARM64_REG_X0+i) for i in range(31)] + [mu.reg_read(UC_ARM64_REG_SP)]
 def set_context(regs):
     for i in range(31): mu.reg_write(UC_ARM64_REG_X0+i, regs[i])
     mu.reg_write(UC_ARM64_REG_SP, regs[31])
 def find_path(start_addr, branch=None):
-    # emu_start(start_addr, 0x10000);UcError 时 pc!=0 则 find_path(pc+4, branch) 出错处+4 续跑;返回 distAddr 或 None
-queue, flow = [(offset, None)], {}          # BFS,元素=(块地址,寄存器环境),保证每块用一致上下文搜后继
+    # emu_start(start_addr, 0x10000); on UcError with pc!=0, continue through find_path(pc+4, branch); return distAddr or None
+queue, flow = [(offset, None)], {}          # BFS items are (block address, register context), so each block searches successors under a consistent context
 while queue:
     pc, ctx = queue.pop(); set_context(ctx)
     if pc in flow: continue
     flow[pc] = []
-    # csel 块:p1=find_path(pc,0),恢复 saved 后 p2=find_path(pc,1),命中即 queue.append((p, get_context()))
-    # 顺序块:p=find_path(pc);命中即 queue.append((p, get_context()))
+    # csel block: p1=find_path(pc,0); restore saved state, then p2=find_path(pc,1); append each resolved (p, get_context()) to the queue
+    # Sequential block: p=find_path(pc); append the resolved (p, get_context()) to the queue
 ```
 Result: draw the flow graph with graphviz; write back per flow with Keystone — sequential block tails `ks.asm("b #%x" % dist)`; csel blocks `ks.asm("b%s #%x;b #%x" % (cond, d1, d2))` (cond taken from the csel condition code).
 Takeaway summary: reference counting finds the dispatcher → signature filtering drops bogus blocks → Unicorn one-way search of each real block's successor (csel both ways) → the flow dict → Keystone write-back; instructions inside real blocks aren't emulated for side effects (bl/memory access all skipped) — only the state flows.
@@ -220,10 +220,10 @@ Scenario: an encryption function with light fla obfuscation; IDA Trace yields lo
 Interceptor.attach(base_native.add(0x1500C), {
   onEnter: function (args) {
     this.args0 = args[0];   console.log("args0:", hexdump(this.args0));
-    var args1addr = ptr(args[1]).add(Process.pointerSize*2).readPointer();   // args[1] 二级结构:+2*8 处才是字符串本体
+    var args1addr = ptr(args[1]).add(Process.pointerSize*2).readPointer();   // Second-level args[1] structure: the string data is referenced at offset 2*8
     console.log("args1:", args1addr.readCString());
   },
-  onLeave: function (retval) {   // 返回值不在 retval,存在 args0+5*8 处指针指向的缓冲区——嵌套结构返回值位置要试探
+  onLeave: function (retval) {   // The output is not retval: it is in the buffer referenced at args0+5*8; probe nested return structures to locate the result
     console.log("onLeave:", hexdump(ptr(this.args0).add(Process.pointerSize*5).readPointer()));
   }
 });

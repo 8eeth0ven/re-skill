@@ -25,7 +25,7 @@ This booklet collects the "simplest and most-used" layer: locate a target functi
 The frida quick-check trio (adjust keywords as needed):
 
 ```js
-// ① 列已加载类，按关键词过滤（找检测类/业务类）
+// 1. Enumerate loaded classes and filter by keywords to locate detection or business classes
 Java.perform(function () {
   Java.enumerateLoadedClasses({
     onMatch: function (name) {
@@ -37,14 +37,14 @@ Java.perform(function () {
 ```
 
 ```js
-// ② 列已加载 so，找检测/加固库
+// 2. Enumerate loaded shared objects to locate detection or protection libraries
 Process.enumerateModules().filter(function (m) {
   return /sec|shield|guard|protect|jiagu/i.test(m.name);
 }).forEach(function (m) { console.log('[RE] ' + m.name + ' @ ' + m.base); });
 ```
 
 ```js
-// ③ 抓 AES key/IV：hook SecretKeySpec 与 IvParameterSpec 构造
+// 3. Capture AES key/IV by hooking SecretKeySpec and IvParameterSpec constructors
 function hex(buf) {
   return Array.from(buf).map(function (b) {
     return ('0' + (b & 0xff).toString(16)).slice(-2);
@@ -67,20 +67,20 @@ Java.perform(function () {
 Opening commands (get attached before anything else):
 
 ```bash
-frida -U -f com.target.app -l quick.js     # spawn 模式启动，检测早的 app 用这个
-frida -U -n com.target.app -l quick.js     # attach 到已运行的进程
+frida -U -f com.target.app -l quick.js     # Spawn mode; use when detection executes early
+frida -U -n com.target.app -l quick.js     # Attach to an already-running process
 ```
 
 What the one-line r2 commands mean (use with this section's tables):
 
 ```bash
-r2 -A libcheck.so          # 打开并全量分析（等价 aaa）
-izz~frida                  # 全部字符串里搜 frida（含资源段）
-iz~su                      # 当前段字符串搜 su
-afl~check                  # 函数名列表里搜 check
-axt @ sym.check_root       # 谁在调用这个函数（回溯调用链入口）
-pdf @ sym.check_root       # 反汇编看整个函数
-s 0x1A2B0; pd 10           # 跳到偏移直接看指令
+r2 -A libcheck.so          # Open and fully analyze, equivalent to aaa
+izz~frida                  # Search all strings, including resource sections, for frida
+iz~su                      # Search current-section strings for su
+afl~check                  # Filter function names for check
+axt @ sym.check_root       # Find callers of this function to trace the call chain backward
+pdf @ sym.check_root       # Disassemble the complete function
+s 0x1A2B0; pd 10           # Seek to an offset and inspect instructions
 ```
 
 Next step after locating the function: run `axt` first to see the call chain (confirm whether the entry sits in the Java or native layer), then decide which layer is cheapest to hook. For function layering and fallback paths see `../09-function-map/android-function-layers.md`.
@@ -136,18 +136,18 @@ Before/after comparison:
 ```smali
 invoke-static {}, Lcom/x/Check;->isVip()Z
 move-result v0
-const/4 v0, 0x1          # ← 插这一行覆盖校验结果（复用 v0，不改 .registers）
-if-eqz v0, :cond_fail    # 或者：把这行 if-eqz 改成 if-nez
+const/4 v0, 0x1          # Insert this line to override the check result, reusing v0 without changing .registers
+if-eqz v0, :cond_fail    # Alternative: change this if-eqz to if-nez
 ```
 - **The repackaging one-stop pipeline**:
 
 ```bash
-apktool d target.apk -o out/          # 改 out/smali*/
+apktool d target.apk -o out/          # Edit out/smali*/
 apktool b out/ -o patched.apk
 zipalign -p -f 4 patched.apk aligned.apk
 apksigner sign --ks debug.keystore --ks-pass pass:android --out signed.apk aligned.apk
 adb install -r signed.apk
-# 或签名一步到位：java -jar uber-apk-signer.jar -a patched.apk
+# Or align and sign in one step: java -jar uber-apk-signer.jar -a patched.apk
 ```
 
 Branch-patch practice in r2 (reassembling beats hand-computing bytes, especially for offset-carrying jumps):
@@ -155,7 +155,7 @@ Branch-patch practice in r2 (reassembling beats hand-computing bytes, especially
 ```bash
 r2 -w libcheck.so
 s 0x1A2B4
-wa b.ne 0x1A2C0       # b.eq 改 b.ne，目标写原来的跳转目标地址
+wa b.ne 0x1A2C0       # Change b.eq to b.ne, keeping the original branch target address
 pd 2
 q
 ```
@@ -164,13 +164,13 @@ q
 
 ```bash
 r2 -w libcheck.so
-iS~.text          # 关键：ELF 文件偏移 ≠ 运行时地址，iS 表里 addr(vaddr)↔paddr(文件偏移) 直接对照
-# 程序头级换算：readelf -l libcheck.so | grep -A1 LOAD
-#   文件偏移 = vaddr - 段VirtAddr + 段Offset
-afl~check         # 找目标函数；s sym.check_root 或 s 0x文件偏移
-wx 20008052c0035fd6   # 直写 hex 流（mov w0,#1; ret）
-# 或直接写汇编：wa mov w0, #1; ret
-pd 5              # 反汇编回来校验
+iS~.text          # ELF file offsets differ from runtime addresses; compare addr/vaddr with paddr in the iS table
+# Program-header conversion: readelf -l libcheck.so | grep -A1 LOAD
+# File offset = vaddr - segment VirtAddr + segment Offset
+afl~check         # Locate the target function; seek with s sym.check_root or s <file-offset>
+wx 20008052c0035fd6   # Write the hexadecimal bytes directly: mov w0,#1; ret
+# Or assemble directly: wa mov w0, #1; ret
+pd 5              # Disassemble again to verify
 q
 ```
 
@@ -185,11 +185,11 @@ Two thumb pitfalls: function symbol addresses carry bit0 (shown as +1) — compu
 Three post-edit self-checks:
 
 ```bash
-# 1. 反汇编回看是否预期指令
+# 1. Disassemble and compare against the expected instructions
 r2 -q -c 's 0x1A2B0; pd 2' libcheck.so
-# 2. 确认真的写进去了（改前后对比）
-md5 -q libcheck.so          # Linux 上用 md5sum
-# 3. 重打包后确认签名完整
+# 2. Confirm the bytes were actually written by comparing before and after
+md5 -q libcheck.so          # Use md5sum on Linux
+# 3. Verify the signature after repackaging
 apksigner verify -v signed.apk
 ```
 
@@ -197,7 +197,7 @@ When file patches are blocked by signature/integrity checks, do the patch in mem
 
 ```js
 var base = Module.findBaseAddress('libcheck.so');
-var addr = base.add(0x1A2B0);              // 函数在 so 内的偏移
+var addr = base.add(0x1A2B0);              // Function offset within the shared object
 Memory.protect(addr, 8, 'rwx');
 addr.writeByteArray([0x20,0x00,0x80,0x52, 0xC0,0x03,0x5F,0xD6]); // mov w0,#1; ret
 ```
@@ -231,13 +231,13 @@ Probe-value conventions in `../../test-values.md`: log prefix `[RE]`, constructe
 Verification command blocks (matching the three "commands below" markers above):
 
 ```bash
-# 硬编码密钥：hook 出 key/iv 后对抓包密文解一次，解出可读明文即命中
-echo '<b64密文>' | base64 -d | openssl enc -d -aes-128-cbc -K <keyhex> -iv <ivhex>
+# Hardcoded-key verification: capture key/IV, decrypt one captured ciphertext, and confirm readable plaintext
+echo '<base64-ciphertext>' | base64 -d | openssl enc -d -aes-128-cbc -K <keyhex> -iv <ivhex>
 
-# 单层 md5 口令：抓包 password 与常见弱口令哈希比对
+# Single-layer MD5 password: compare the captured password field against hashes of common weak passwords
 echo -n admin123 | md5sum
 
-# 日志泄漏：清空后操作 app 一轮
+# Log leakage: clear logs, then exercise one application workflow
 adb logcat -c && adb logcat | grep -i -e token -e password
 ```
 

@@ -25,7 +25,7 @@ Java.perform(function () {
     console.log("[+] Loading our CA...")
     var cf = CertificateFactory.getInstance("X.509");
 
-    // 这里需要ca证书
+    // Supply the CA certificate here
     try {
         console.log("加载ca 文件")
         var fileInputStream = FileInputStream.$new("/data/local/tmp/cer/desktop.cer");
@@ -90,7 +90,7 @@ if (Java.available) {
             }
         }
 
-        //在服务器校验客户端的情形下，帮助dump客户端证书，并保存为p12的格式，证书密码为r0ysue
+        // When the server validates the client, dump the client certificate to PKCS#12; the example password is r0ysue
         Java.use("java.security.KeyStore$PrivateKeyEntry").getPrivateKey.implementation = function () {
             var result = this.getPrivateKey()
             var packageName = Java.use("android.app.ActivityThread").currentApplication().getApplicationContext().getPackageName();

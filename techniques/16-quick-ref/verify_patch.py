@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Patch-byte self-check: capstone disassembly verification + unicorn emulated demo of "original returns 0 -> patched returns 1"
-# Run: tools-env/.venv/bin/python cve-hunter/verify_patch.py
+# Run: tools-env/.venv/bin/python techniques/16-quick-ref/verify_patch.py
 from capstone import Cs, CS_ARCH_ARM, CS_ARCH_ARM64, CS_ARCH_X86, CS_MODE_32, CS_MODE_64, CS_MODE_ARM, CS_MODE_THUMB
 from unicorn import Uc, UC_ARCH_ARM64, UC_ARCH_X86, UC_MODE_32, UC_MODE_ARM
 from unicorn.arm64_const import UC_ARM64_REG_LR, UC_ARM64_REG_X0
@@ -73,3 +73,6 @@ if __name__ == "__main__":
     a = unicorn_demo()
     x = x86_demo()
     print(f"\n结论: 反汇编 {n}/{len(PATTERNS)} PASS;arm64 原返0/补丁返1={'正确' if a['原函数']==0 and a['补丁后']==1 else '异常'};x86 同理={'正确' if x['原函数']==0 and x['补丁后']==1 else '异常'}")
+
+    success = n == len(PATTERNS) and a["原函数"] == 0 and a["补丁后"] == 1 and x["原函数"] == 0 and x["补丁后"] == 1
+    raise SystemExit(0 if success else 1)

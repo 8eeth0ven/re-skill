@@ -7,14 +7,14 @@
 
 ```
 app.apk (ZIP)
-├── AndroidManifest.xml      ← 二进制 AXML(§6)
-├── classes.dex [classes2.dex ...]   ← 代码(§1/§2)
-├── res/                     ← 编译后资源(二进制 AXML + arsc 索引,§7)
-├── resources.arsc           ← 资源表(§7)
-├── assets/                  ← 原样打包文件(壳的第二 dex / so / 配置常藏此)
-├── lib/<abi>/libxxx.so      ← native 库(§3 ELF)
-├── META-INF/                ← MANIFEST.MF / *.SF / *.RSA(DSA/EC) 签名文件
-└── (V2+ 签名块:ZIP 中央目录前的 APK Signing Block,	key-value:0x7109871a=V2)
+├── AndroidManifest.xml      ← binary AXML (§6)
+├── classes.dex [classes2.dex ...]   ← code (§1/§2)
+├── res/                     ← compiled resources (binary AXML + arsc indexes, §7)
+├── resources.arsc           ← resource table (§7)
+├── assets/                  ← packaged files; packers often hide secondary dex/so/configuration here
+├── lib/<abi>/libxxx.so      ← native libraries (§3 ELF)
+├── META-INF/                ← MANIFEST.MF / *.SF / *.RSA (DSA/EC) signature files
+└── (V2+ signature block: APK Signing Block before the ZIP central directory, key-value:0x7109871a=V2)
 ```
 
 - ZIP details: entries may be STORED (uncompressed; dex can be page-aligned at API27+ via `zipalign -p 4` for direct loading) or DEFLATED; **ZIP repackaging pitfalls**: central-directory offset recomputation, and packers that hide payload in the comment field (some whole-file packers put the original dex in the zip comment).
@@ -60,13 +60,13 @@ The header's tail map_off points here; an array of `map_item{uint16 type;uint16 
 
 ```
 code_item {
-  u16 registers_size;   // 本方法 v 寄存器总数
-  u16 ins_size;         // 传入参数占的寄存器(含 this)
-  u16 outs_size;        // 调用别人时要借的寄存器
+  u16 registers_size;   // Number of v registers in this method
+  u16 ins_size;         // Registers occupied by incoming arguments, including this
+  u16 outs_size;        // Registers reserved for outgoing call arguments
   u16 tries_size;
-  uleb128 debug_info_off;  // 常为 0(壳抹掉)
-  uleb128 insns_size;      // 16-bit 代码单元数
-  u16 insns[insns_size];   // 指令流(switch 表按 4 字节对齐,nop 填充)
+  uleb128 debug_info_off;  // Often 0 when removed by a packer
+  uleb128 insns_size;      // Number of 16-bit code units
+  u16 insns[insns_size];   // Instruction stream; switch tables align to 4 bytes with nop padding
   [padding]
   try_item tries[tries_size];   // {start_addr(u4) insn_count(u2) handler_off(u2)}
   encoded_catch_handler_list handlers;

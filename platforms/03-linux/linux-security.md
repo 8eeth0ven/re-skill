@@ -12,12 +12,12 @@ ELF (Executable and Linkable Format) is the foundation of all reversing on the L
 +-----------------------------+ 0x0
 | ELF Header (64B/52B)       |  e_ident/e_type/e_machine/e_entry/e_phoff/e_shoff
 +-----------------------------+
-| Program Header Table        |  执行视角:内核 loader 只认这里(PT_LOAD/PT_DYNAMIC...)
+| Program Header Table        | Execution view: the kernel loader uses these entries (PT_LOAD/PT_DYNAMIC...)
 +-----------------------------+
-| .text / .rodata / .data    |  ← 节(Section)按功能切分
-| .bss(仅占位)/.got/.plt    |
+| .text / .rodata / .data    | Sections grouped by function
+| .bss (placeholder)/.got/.plt |
 +-----------------------------+
-| Section Header Table        |  链接视角:ld/readelf -S 消费(可被 strip 删掉)
+| Section Header Table        | Linker view: consumed by ld/readelf -S; removable by strip
 +-----------------------------+
 ```
 (self-drawn ASCII)
@@ -54,15 +54,15 @@ Representative posts: Understanding the dynamic-linking lifecycle of Linux syste
 
 ```
 call printf@plt
-  └─ printf@plt:  jmp *GOT[n]        ← 第一次:GOT[n] 指向 plt[0]push 序列
-       ┌─(首次)──────────────────────┐
-       │ push reloc_index           │ plt 尾巴
+  └─ printf@plt:  jmp *GOT[n]        ← first call: GOT[n] points to the plt[0] push sequence
+       ┌─(first call)─────────────────┐
+       │ push reloc_index           │ PLT tail
        │ jmp  plt[0]                │
        │   push link_map            │
-       │   jmp  _dl_runtime_resolve │ ← ld.so:查 .dynsym+.dynstr
+       │   jmp  _dl_runtime_resolve │ ← ld.so: look up .dynsym+.dynstr
        └────────────────────────────┘
-  解析后 GOT[n] = 真实 printf 地址
-  第二次起:jmp *GOT[n] 直达 libc
+  After resolution: GOT[n] = the actual printf address
+  Subsequent calls: jmp *GOT[n] goes directly to libc
 ```
 (self-drawn ASCII)
 
@@ -75,7 +75,7 @@ Essentials:
 
 - `dlopen(path, flag)`: in glibc goes `__dlopen` → `_dl_open` (inside dlfcn/ld.so); core steps: mmap-map the load → `_dl_map_object` finds/maps the so → walks the `DT_NEEDED` dependency tree → `_dl_relocate_object` relocates (here `R_X86_64_JUMP_SLOT` is resolved immediately or deferred per BIND_NOW) → runs `.init_array`.
 - `dlsym(handle, name)`: `_dl_sym` → `do_dlsym`; first searches the handle's symbol tables (incl. the dependency chain, affected by `RTLD_LOCAL/GLOBAL` scopes), then falls back to the default scope; the return value is the real function address — **effectively a built-in "symbol brute-force interface"**; use it during RE to read any exported symbol.
-- Field hooks: LD_PRELOAD/LD_DEBUG=all are three free RE weapons (with dlopen): the first changes behavior, the second logs the whole ld.so symbol-lookup and binding process.
+- Field hooks: LD_PRELOAD/LD_DEBUG=all are three readily available RE techniques (including dlopen): the first changes behavior, the second logs the whole ld.so symbol-lookup and binding process.
 - Android-side variant: `/system/bin/linker` (bionic) does the same job; flow post: A brief talk on the startup flow of ELF executables.
 
 ### 1.5 The loading view (execution chain)
@@ -105,16 +105,16 @@ The classic community route: the best way to understand ELF is to hand-write a l
 The built-in interpreter imports `gdb` directly, no modules needed. Core APIs:
 
 ```python
-class ScanBP(gdb.Breakpoint):          # 类断点:停了自动做事
+class ScanBP(gdb.Breakpoint):          # Breakpoint subclass: execute actions automatically when hit
     def stop(self):
-        v = gdb.parse_and_eval("$rdi") # 取寄存器/表达式
+        v = gdb.parse_and_eval("$rdi") # Read a register or evaluate an expression
         s = gdb.selected_inferior().read_memory(int(v), 64).tobytes()
         open("dump.bin","ab").write(s)
-        return False                   # 不真正停,继续跑 → 无感批量 dump
+        return False                   # Continue without stopping; supports automated batch dumps
 
-gdb.execute("set pagination off")      # 跑任意 gdb 命令
-gdb.events.stop.connect(on_stop)       # 事件回调:断点/信号/退出
-gdb.write(gdb.execute("info functions", to_string=True))  # 捕获输出
+gdb.execute("set pagination off")      # Execute an arbitrary GDB command
+gdb.events.stop.connect(on_stop)       # Event callback: breakpoint/signal/exit
+gdb.write(gdb.execute("info functions", to_string=True))  # Capture command output
 ```
 Three usages: command line `-ex "source sc.py"`; `source` inside gdb; permanent in `~/.gdbinit`. Typical scenarios: looping memory reads/writes, batched breakpoints, "loop dump + compare until memory stops changing" during unpacking (the embryo of automated OEP finding).
 Representative post: gdb — automated debugging with python (2024-01).
@@ -168,10 +168,10 @@ On Linux, "exceptions" = signals (SIGTRAP/SIGSEGV/SIGILL). Debuggers take back c
 ### 4.1 UPX structure (Linux ELF edition)
 
 ```
-原文件: [ELF头|原段们|........]  --压缩-->
-UPX文件:[ELF头|PT_LOAD×2|UPX stub|压缩数据(LZ/NRV)]
-              │         └── 解压后 mmap RWX 区,自恢复 section
-              └── 入口指向 stub;特征串 "UPX!" / "$Info: This file is packed..."
+Original: [ELF header|original segments|........] --compress-->
+UPX:      [ELF header|PT_LOAD×2|UPX stub|compressed data (LZ/NRV)]
+              │         └── Decompress into an mmap RWX region and restore sections
+              └── Entry points to the stub; signatures: "UPX!" / "$Info: This file is packed..."
 ```
 (self-drawn ASCII)
 
@@ -228,7 +228,7 @@ The root reason Linux unpacking is more comfortable than Windows: **dynamic-link
 
 ### 7.1 RE entry points
 
-- **vmlinux extraction**: `/boot/vmlinuz` is compressed → the `extract-vmlinux` script decompresses a symbol-carrying vmlinux; distros offer `dbgsym` packages. No-symbols scenario: `vmlinux-to-elf` (rebuilds symbols from the kallsyms table) is the standard weapon.
+- **vmlinux extraction**: `/boot/vmlinuz` is compressed → the `extract-vmlinux` script decompresses a symbol-carrying vmlinux; distros offer `dbgsym` packages. No-symbols scenario: `vmlinux-to-elf` (rebuilds symbols from the kallsyms table) is the standard tool.
 - **kallsyms**: `/proc/kallsyms` exposes kernel symbol addresses (restricted by `kptr_restrict`; root or setting it to 0 shows real values); extraction scripts/module development all depend on it.
 - **Source**: `/usr/src` or elixir.bootlin.com online. Reversing so means reading ld.so; reversing the kernel means reading exactly these entries.
 
@@ -253,9 +253,9 @@ EoP chains, kernel heap exploitation, module-loading exploit usage → all in th
 
 ```python
 from qiling import Qiling
-ql = Qiling(["/samples/arm_bin"], "/rootfs/armhf")  # rootfs 提供 libc 等
-ql.hook_address(oep_cb, 0xADDR)      # 地址钩子:到 OEP dump
-def sys_hook(ql, syscall_id, params):  # syscall 钩子:行为画像
+ql = Qiling(["/samples/arm_bin"], "/rootfs/armhf")  # The rootfs supplies libc and other runtime dependencies
+ql.hook_address(oep_cb, 0xADDR)      # Address hook: dump at the OEP
+def sys_hook(ql, syscall_id, params):  # Syscall hook: build a behavior profile
     log(params)
 ql.os.set_syscall(0x1000, sys_hook)
 ql.run()

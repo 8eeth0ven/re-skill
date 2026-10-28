@@ -37,7 +37,7 @@ Spend 10 minutes classifying first, then follow the matching section. **The pric
 The standard flow: at the derailing instruction press D/U to redefine as data, re-Code from the correct bytes; for bulk cases, write IDAPython to scan past-jmp junk bytes and NOP them directly:
 
 ```python
-# IDAPython: 扫描 "短跳过垃圾字节" 型花指令并 NOP
+# IDAPython: scan short-branch-over-junk patterns and replace junk with NOPs
 import ida_bytes, ida_ua, idc
 
 def deflower(start, end):
@@ -45,11 +45,11 @@ def deflower(start, end):
     while ea < end:
         insn = ida_ua.insn_t()
         sz = ida_ua.decode_insn(insn, ea)
-        if sz <= 0:                       # 反汇编失败处 = 疑似花指令
+        if sz <= 0:                       # A disassembly failure may indicate junk bytes
             ida_bytes.patch_bytes(ea, b"\x1f\x20\x03\xd5")  # NOP (arm64)
             ea += 4
             continue
-        # Bxx 永假条件跳转(如 cmp 相同寄存器) → 改 NOP,交由下一条顺序执行
+        # Replace an always-false Bxx, for example after comparing a register with itself, with NOP so execution falls through
         if is_opaque_branch(insn):
             ida_bytes.patch_bytes(ea, b"\x1f\x20\x03\xd5")
         ea += sz
@@ -67,10 +67,10 @@ When statics can't tell "which branch is always false", run one real input under
 entry: state = INIT
 loop: while(1) {
     switch(state) {
-        case A: ...; state = C; continue;    // 真实块,尾部写下一个状态
+        case A: ...; state = C; continue;    // Real block; its tail writes the next state
         case B: ...; state = A; continue;
         ...
-        dispatcher 更新: state 变量 = case 值
+        dispatcher update: state variable = case value
     }
 }
 ```
@@ -87,27 +87,27 @@ Common arm64 shape: the master dispatcher is a `CMP W8, #imm / B.EQ block` chain
 ### 3.3 unicorn deflattening skeleton (a runnable frame)
 
 ```python
-# unicorn 版:遍历平坦化 CFG,输出 块号->后继 映射,再按映射 patch
+# Unicorn approach: walk the flattened CFG, build block-to-successor mappings, then patch from those mappings
 # pip install unicorn capstone keystone-engine
 from unicorn import *
 from unicorn.arm64_const import *
 import capstone
 
-BASE   = 0x10000                    # so 映射基址(取与 IDA 一致的相对基址便于回填)
-FUNC   = BASE + 0x8A40              # 目标函数
+BASE   = 0x10000                    # Shared-object mapping base; align with IDA's relative base to simplify writing patches back
+FUNC   = BASE + 0x8A40              # Target function
 FUNC_END = BASE + 0x9F00
-STATE_REG = UC_ARM64_REG_W8         # 分发变量所在寄存器(先静态认出 dispatcher)
+STATE_REG = UC_ARM64_REG_W8         # Dispatcher state register, identified statically first
 
 mu = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
 mu.mem_map(BASE, 0x100000)
 mu.mem_write(BASE, open("libtarget.so","rb").read())
 md = capstone.Cs(capstone.CS_ARCH_ARM64, capstone.CS_MODE_LITTLE_ENDIAN)
 
-blocks, succ = {}, {}               # state值 -> (块起址, 后继state集合)
+blocks, succ = {}, {}               # state value -> (block start, set of successor states)
 
 def trace_block(state_init, entry_pc):
-    """单次模拟:强制 state=state_init,顺序执行到下一个 dispatcher 为止"""
-    mu.reg_write(UC_ARM64_REG_X0, 0x1111)     # 输入参数按 hook 采集回填
+    """One run: force state=state_init, then execute until the next dispatcher."""
+    mu.reg_write(UC_ARM64_REG_X0, 0x1111)     # Restore input arguments from hook observations
     mu.reg_write(STATE_REG, state_init)
     last, cur = None, entry_pc
     hits = []
@@ -116,14 +116,14 @@ def trace_block(state_init, entry_pc):
         (ins,) = md.disasm(bytes(code), cur)
         hits.append(ins)
         if ins.mnemonic in ("b", "br") or ins.mnemonic.startswith("b."):
-            # 命中块尾:br/条件跳 回 dispatcher 之前停下
-            end_state = mu.reg_read(STATE_REG)  # 尾部写入的新 state
+            # At a block tail, stop before the branch returns to the dispatcher
+            end_state = mu.reg_read(STATE_REG)  # New state written by the block tail
             return entry_pc, end_state, hits
-        mu.emu_start(cur, cur + 4, count=1)     # 单步,寄存器随执行推进
+        mu.emu_start(cur, cur + 4, count=1)     # Single-step while preserving the evolving register state
         cur = mu.reg_read(UC_ARM64_REG_PC)
     return entry_pc, None, hits
 
-# 1) 从入口 state 出发 BFS 遍历所有可达 state
+# 1. BFS over all reachable states from the entry state
 from collections import deque
 q = deque([INIT_STATE]); seen = set()
 while q:
@@ -134,8 +134,8 @@ while q:
     succ[s] = nxt
     if nxt is not None: q.append(nxt)
 
-# 2) 按 succ 映射 patch:每个真实块尾部改写 dispatcher 更新段
-#    Keystone 汇编 "b #target" 逐字节写回 so 副本,回 IDA 验证 F5
+# 2. Patch from succ: rewrite each real block's dispatcher-update tail
+# Assemble b #target with Keystone, write the bytes into a copy of the shared object, then verify F5 in IDA
 import keystone
 ks = keystone.Ks(keystone.KS_ARCH_ARM64, keystone.KS_MODE_LITTLE_ENDIAN)
 for s, (blk_end, patch_addr, nxt_entry) in patch_plan(succ).items():
@@ -225,42 +225,42 @@ The trio: opcode permutation + JNIEnv reshuffling + bytecode decryption; trace c
 ### 7.1 angr symbolic-execution skeleton (flattening state traversal)
 
 ```python
-# angr 版:符号化 state 变量,求解每个 case 的真实后继
+# angr approach: symbolize the state variable and solve each case's real successors
 import angr, claripy
 
 proj = angr.Project("libtarget.so", auto_load_libs=False)
-FUNC = 0x8A40                       # 相对基址,与 IDA 对齐
-cfg = proj.analyses.CFGFast(normalize=True)   # 先建 CFG 拿基本块
+FUNC = 0x8A40                       # Relative base aligned with IDA
+cfg = proj.analyses.CFGFast(normalize=True)   # Build the CFG and recover basic blocks first
 
 state = proj.factory.blank_state(addr=FUNC)
-state_var = claripy.BVS("st", 32)   # dispatcher 的 state 变量(实际样本:定位其 SSA)
-# 标准做法:hook dispatcher 处,把 W8 寄存器/栈槽绑成符号,循环求解
+state_var = claripy.BVS("st", 32)   # Dispatcher state variable; locate its SSA representation in the actual sample
+# Hook the dispatcher, bind W8 or its stack slot to a symbolic value, then solve in a loop
 sm = proj.factory.simulation_manager(state)
 
-real_succ = {}                      # state值 -> 后继state值
+real_succ = {}                      # state value -> successor state value
 while sm.active:
     for s in sm.active:
         if s.addr in DISPATCH_BLOCKS:
-            v = s.solver.eval(state_var)      # 当前 case 值
-            nxts = s.solver.eval_upto(state_var_next, 8)  # 求后继
+            v = s.solver.eval(state_var)      # Current case value
+            nxts = s.solver.eval_upto(state_var_next, 8)  # Solve the successors
             real_succ.setdefault(v, set()).update(nxts)
-    sm.step()                                # 符号推进覆盖全部分支
+    sm.step()                                # Advance symbolic execution through all branches
 
-# 输出平坦化前的逻辑图:DFS real_succ 生成 块序 → patch 计划
-# 注:arm64 so 需处理寻址/plt,angr 对 so 的 loader 语义不稳,
-#     实战常退化为"angr 求后继 + unicorn 验证 + keystone patch"三段流水
+# Recover the pre-flattening graph: DFS over real_succ to produce block order, then a patch plan
+# ARM64 shared objects require correct address and PLT handling; angr loader semantics may be unreliable for a given library
+# A practical fallback is a three-stage pipeline: angr solves successors, Unicorn verifies, Keystone patches
 ```
 
 ### 7.2 unicorn single-step to solve BR targets (with §4)
 
 ```python
-# 收集 BR X9 的真实目标表
+# Collect the actual target table for BR X9
 targets = {}
 def br_hook(u, addr, size, ud):
-    if addr in BR_SITES:                      # 先静态/单步找到全部 BR 指令地址
+    if addr in BR_SITES:                      # Locate all BR instruction addresses through static analysis or single stepping first
         targets[addr] = u.reg_read(UC_ARM64_REG_X9)
-mu.hook_add(UC_HOOK_CODE, br_hook)            # 逐指令回调:命中 BR 处读 X9 即目标
-# 跑多组输入后:targets → idc.add_cref(ea, t, idc.fl_JF) 回 IDA
+mu.hook_add(UC_HOOK_CODE, br_hook)            # Instruction callback: read X9 at BR to obtain the target
+# After multiple inputs, write targets back to IDA with idc.add_cref(ea, t, idc.fl_JF)
 ```
 
 ## 8. Decision Tree (how to pick the route once you have an obfuscated so)

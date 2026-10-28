@@ -62,14 +62,14 @@ The table's "[Memory] → [Injection] → [Logic]" ordering is not random: the t
 ### 2.1 Kernel C (Linux/Android kernel)
 
 ```bash
-# ① 整数回绕→小分配大拷贝:用户可控长度参与乘加且无 check
+# ① Integer wrap → small allocation with a large copy: user-controlled lengths enter unchecked multiplication/addition
 rg -n 'copy_from_user|copy_from_iter' -A3 <dir> | rg -v 'if\s*\(|ret|check|fail'
 rg -n '(size|len|count)\s*=\s*.*\*\s*|=\s*.*\+\s*1' --type c <dir>
-# ② UAF/double-free:kfree 后同标识符是否再被解引用(重点看错误分支)
+# ② UAF/double-free: does the same identifier get dereferenced after kfree? Focus on error paths
 rg -n 'kfree|kvfree|brelse|put_' --type c <dir> -A6
-# ③ 竞态:共享结构(全局/文件私有数据)的写路径是否全在锁内
-rg -n 'mutex_lock|spin_lock|rcu_read_lock' <dir> | sort  # 对照写路径覆盖
-# ④ 未初始化:栈数组直接拷出
+# ③ Races: are all writes to shared structures (global/file-private data) protected by locks?
+rg -n 'mutex_lock|spin_lock|rcu_read_lock' <dir> | sort  # Compare against coverage of write paths
+# ④ Uninitialized memory: stack arrays copied directly to output
 rg -n '\w+\s+\w+\[\d+\];' -A3 <dir> | rg 'copy_to_user|memcpy'
 ```
 Three review questions: does any error path miss a free / double-free? Are struct fields re-trusted after `copy_from_user`? Can the thing be swapped out between the permission check (check) and the actual operation (use) (credential/path-class TOCTOU)? The kernel fuzzing and exploitation primer chain is [techniques 07-kernel/kernel-exploit-fuzzing.md](../../techniques/07-kernel/kernel-exploit-fuzzing.md); the Android kernel observation surface is [techniques 07-kernel/android-kernel-ebpf.md](../../techniques/07-kernel/android-kernel-ebpf.md).
@@ -77,18 +77,18 @@ Three review questions: does any error path miss a free / double-free? Are struc
 ### 2.2 Java Web (Spring Family)
 
 ```bash
-# ① 拼接 SQL/MyBatis ${}
+# ① SQL/MyBatis ${} concatenation
 rg -n 'createStatement|createQuery|jdbcTemplate\.' -A2 src | rg '\+|getParam|@Request'
-rg -n '\$\{' src/main/resources/mapper/            # ${} 为裸拼接,#{} 才是预编译
-# ② 命令/反序列化/XXE 三大 sink
+rg -n '\$\{' src/main/resources/mapper/            # ${} is raw concatenation; #{} is parameter binding
+# ② Three sink classes: command execution/deserialization/XXE
 rg -n 'Runtime\.getRuntime\(\)\.exec|ProcessBuilder|new ScriptEngine'
 rg -n 'readObject|XMLDecoder|Yaml\.load|enableDefaultTyping|JSON\.parseObject'
 rg -n 'DocumentBuilderFactory|SAXParserFactory|XMLInputFactory' -A6 | rg -v 'disallow|EXTERNAL|secure'
-# ③ SSRF:URL 构造点回溯是否用户可控
+# ③ SSRF: trace URL construction back to user-controlled sources
 rg -n 'new URL\(|HttpClient|openStream|RestTemplate' -B4 src | rg 'getParameter|@RequestParam|@PathVariable'
-# ④ 越权(架构级):findById 族不带属主条件——这条命中最有价值也最常被漏
+# ④ Architectural access-control failures: findById-style calls without ownership conditions are high-value and often missed
 rg -n 'findById|getOne|selectById|load\(' -A3 src | rg -v 'userId|tenantId|owner|current'
-rg -n 'preHandle|@PermitAll|antMatchers' src        # 边缘鉴权与裸奔路由对照
+rg -n 'preHandle|@PermitAll|antMatchers' src        # Compare boundary authorization with unprotected routes
 ```
 The taint-methodology corpus (CodeQL skeletons, component bugs classified by trigger surface, the Fastjson/Shiro evolution lines) → [05/code-audit.md](../05-web/code-audit.md) §4, §9.
 
@@ -96,22 +96,22 @@ The taint-methodology corpus (CodeQL skeletons, component bugs classified by tri
 
 Static review focuses on **"the gap between optimizer promises and runtime facts"**:
 ```bash
-rg -n 'VisitMul|VisitAdd|VisitBitwise|VisitCompare' src/compiler/typer.cc   # range 推导是否保守
-rg -n 'CheckBounds|CheckInt32Condition|CheckMaps' -B4 src/compiler/          # 哪些检查可被 typer 消除
-rg -n 'Map::TryUpdate|migrate|set_map' src/objects/                          # map 迁移窗口=混淆窗口
+rg -n 'VisitMul|VisitAdd|VisitBitwise|VisitCompare' src/compiler/typer.cc   # Is range inference conservative?
+rg -n 'CheckBounds|CheckInt32Condition|CheckMaps' -B4 src/compiler/          # Which checks can Typer eliminate?
+rg -n 'Map::TryUpdate|migrate|set_map' src/objects/                          # Map-migration windows can become type-confusion windows
 ```
 Three questions: does TurboFan's inferred interval hold under every feedback (SimplifiedLowering truncation)? Can deopt roll back after the types are already polluted? Under pointer compression, which object's compressed map is cheapest to forge with a 32-bit offset? Cases and sandbox-escape chains → [06/vuln-types-exploitation.md](../06-binary-vuln/vuln-types-exploitation.md) §2; the fuzz tooling surface → the same piece §7 (Fuzzilli/AFL++ seven engines).
 
 ### 2.4 Smart Contracts (Solidity)
 
 ```bash
-# ① 重入:外部调用前后,状态写在哪一侧(checks-effects-interactions)
+# ① Reentrancy: are state writes before or after external calls (checks-effects-interactions)?
 rg -n '\.call\{|\.call\.value|\.transfer\(|\.send\(' -B8 -A4 contracts/
-# ② 存储碰撞/代理布局
+# ② Storage collisions/proxy layouts
 rg -n 'delegatecall|assembly|storage' contracts/
-# ③ 弱随机/预言机污染源
+# ③ Weak randomness/oracle-manipulation sources
 rg -n 'block\.timestamp|blockhash|block\.difficulty|tx\.origin' contracts/
-# ④ 攻击面清单:外部可达函数全量
+# ④ Attack-surface inventory: all externally reachable functions
 rg -n 'function\s+\w+.*(external|public)' contracts/
 ```
 Tools: `slither contracts/` (reentrancy-eth/unchecked-returndata rules) + Foundry PoC-reproduction templates → [10/blockchain-security.md](../10-blockchain/blockchain-security.md) §3. Three review questions: is state updated only after the external call? Does the upgrade proxy's storage-slot layout match the implementation contract's? Does the price come from an on-chain manipulable source?
@@ -121,7 +121,7 @@ Tools: `slither contracts/` (reentrancy-eth/unchecked-returndata rules) + Foundr
 ```bash
 rg -n 'eval\(|assert\(|create_function|preg_replace.*\/e|unserialize\(|system\(|shell_exec' <dir>
 rg -n 'subprocess\.(call|run|Popen)\(\s*["\x27]|os\.system|pickle\.loads|yaml\.load\(\s*\w+\)|render_template_string' <dir>
-rg -n '\$_(GET|POST|REQUEST)\[' -A2 <dir>    # 超全局直达 sink 的最短链
+rg -n '\$_(GET|POST|REQUEST)\[' -A2 <dir>    # Shortest path from a superglobal directly to a sink
 ```
 
 ### 2.6 Mobile App Surface (Android, Black-box + Semi-White-box)
@@ -135,14 +135,14 @@ The mobile root-cause matrix stacks **client-trust root causes** (everything loc
 ### 2.7 Go / Node Web
 
 ```bash
-# Go:fmt.Sprintf 拼进 query/exec 是拼接注入主形态
+# Go: fmt.Sprintf concatenated into query/exec is a common injection pattern
 rg -n 'fmt\.Sprintf\(' --type go src | rg 'Query|Exec|Raw|Order|Where'
-rg -n 'exec\.Command\(ctx,\s*"sh",\s*"-c"' --type go src      # 走 shell 的降级调用
-rg -n 'http\.Get\(|NewRequest\(' -B4 src | rg 'Param|Form|Query' # SSRF 面
-# Node:eval 族 + 模板渲染 + 原型链
-rg -n 'eval\(|new Function\(|child_process\.exec\(' src        # exec(String) 走 shell
+rg -n 'exec\.Command\(ctx,\s*"sh",\s*"-c"' --type go src      # Fallback calls that invoke the shell
+rg -n 'http\.Get\(|NewRequest\(' -B4 src | rg 'Param|Form|Query' # SSRF surface
+# Node: eval family + template rendering + prototype chains
+rg -n 'eval\(|new Function\(|child_process\.exec\(' src        # exec(String) invokes a shell
 rg -n '\.render\(|renderTemplate\(' -B3 src | rg 'req\.(body|query|params)'
-rg -n '__proto__|merge\(|lodash\.set\(' src                     # 原型链污染入口
+rg -n '__proto__|merge\(|lodash\.set\(' src                     # Prototype-pollution entry points
 ```
 Go's `database/sql` parameter placeholders (`$1`/`?`) are the bind channel; any `Sprintf` in front of them is a fallback to the lexer channel — the verdict is the same as §1's master statement, regardless of language.
 
@@ -150,9 +150,9 @@ Go's `database/sql` parameter placeholders (`$1`/`?`) are the bind channel; any 
 
 Source-level three questions + patterns:
 ```bash
-rg -n 'reinterpret_cast<|static_cast<' -B2 src | rg 'void\*|char\*'   # 类型混淆温床
-rg -n 'unique_ptr|shared_ptr|raw new|delete ' src  # 所有权混用区(raw 指针越界扩散)
-rg -n 'base::CheckedNumeric|CheckedMul|saturated_cast' src  # 反向信号:哪里已在防整数回绕,旁边没防的就是遗漏
+rg -n 'reinterpret_cast<|static_cast<' -B2 src | rg 'void\*|char\*'   # Likely type-confusion surfaces
+rg -n 'unique_ptr|shared_ptr|raw new|delete ' src  # Mixed ownership models allow raw pointers to outlive their intended scope
+rg -n 'base::CheckedNumeric|CheckedMul|saturated_cast' src  # Reverse signal: existing integer-overflow guards may expose unguarded neighboring operations
 ```
 Without source, the procedure is fixed: version diffing (the pre/post-patch instruction delta = the root-cause coordinates) → PoC construction → crash attribution. Document-format (the Office Equation Editor) and virtualization-surface cases → [06/vuln-types-exploitation.md](../06-binary-vuln/vuln-types-exploitation.md) §5-6; diff-audit methodology is textually universal, the web-side version is in [05/code-audit.md](../05-web/code-audit.md) §8.
 
@@ -160,9 +160,9 @@ Without source, the procedure is fixed: version diffing (the pre/post-patch inst
 
 Firmware audits have no source to grep, but there is an equivalent — **string cross-references in the disassembly are the sink list**:
 ```bash
-binwalk -Me firmware.bin          # 提取 squashfs
+binwalk -Me firmware.bin          # Extract squashfs
 strings -tx ./squashfs-root/bin/httpd | grep -E 'ping|traceroute|wget|curl|reboot'
-# IDA/Ghidra 对每个命令字符串找 xref → 回溯参数来源 → 看是否来自解析后的 HTTP 变量
+# In IDA/Ghidra: find xrefs to each command string → trace argument origins → check whether parsed HTTP variables reach them
 ```
 Hitting `sprintf(buf,"...%s",user_var)` followed by `system(buf)` is the command-injection root cause (the firmware form of the master table's [Injection] command-injection row). Full five-path extraction/emulation/real-world cases → the [07/iot/](../07-iot/iot/) articles.
 

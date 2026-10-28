@@ -8,9 +8,9 @@
 ### Reversing the UPX Decompression Algorithm (orig: UPX 解压缩算法逆向)
 Author: 徐大力. The decompression core is two bit-stream fetch instructions; the nastiest part is `SUB ESI,-4` affecting CF followed by a flag-dependent addition. Rewriting in C at 32 bits suffices (different compression levels use different decompression algorithms (parameters/branch counts change), so the reversed C only unpacks samples of the same level):
 ```c
-int getbit(uint *pd, uint **pp){ int t=(*pd)>>31&1; *pd<<=1;   // 符号位即输出位
-  if(!*pd){ *pd=**pp; t=(*pd)>>31&1; *pd<<=1;                 // 位窗口耗尽重取4字节
-    *pd+=((uint)*pp>=0xFFFFFFFC ? 0 : 1); (*pp)++; }          // 模拟 SUB ESI,-4 的CF
+int getbit(uint *pd, uint **pp){ int t=(*pd)>>31&1; *pd<<=1;   // The sign bit is the output bit
+  if(!*pd){ *pd=**pp; t=(*pd)>>31&1; *pd<<=1;                 // Refill the 4-byte bit window when exhausted
+    *pd+=((uint)*pp>=0xFFFFFFFC ? 0 : 1); (*pp)++; }          // Simulate CF from SUB ESI,-4
   return t; }
 ```
 > Same approach: UPX unpacking detailed analysis (cradiator/index09), UPX static unpacker 0.3, UPXFix source code, UPX perfect-unpack script, UPX 4.0.2 source analysis, learning the UPX packing process, UPX internals analysis, fuzzing UPX with AFL
@@ -84,8 +84,8 @@ The real opcode = `code+RandomXX` (random-offset obfuscation); with imm present,
 ### The Three-Script Generic Method for Themida 1.9.1.0 (orig: Themida 1.9.1.0 三脚本通法)
 Author: wulje. Prerequisite: okdodo's invisible.dll plugin (replacing HideOD), or OD won't run; 1.9.x randomly inserts junk/flower instructions in key stretches — the same software encrypted twice differs, so signatures must be scouted on the spot. Script 1 (breakpoint scouting) runs fully automatically to produce 6 key addresses: Addr_4 = the shell's IAT-processing site; Addr_5 (signature `83BD????????000F8497000000`) = API-encryption wrap-up; Addr_0 (`83BD????????640F82??020000`+7) = the code-scan decision; Addr_3 = the `C1C003`+`0385????7409` sequence; Addr_1 = the `AD/01C8` spot (lods+add eax,ecx; eax = API address); Addr_2 = the `mov [eax],ecx` real-write spot. Script 2 (API repair) fills the 6 addresses into a loop; the A1~A5 skeleton:
 ```
-A1: mov temAPI,eax / gn temAPI / add APIstr,$RESULT_2                          ; 收集函数名(INT)
-A2: mov temIAT,eax / cmp edx,10000 / ja next / xor edx,80000000 / mov [eax],edx / next: mov [eax],temAPI   ; 填 IAT
+A1: mov temAPI,eax / gn temAPI / add APIstr,$RESULT_2                          ; Collect function names (INT)
+A2: mov temIAT,eax / cmp edx,10000 / ja next / xor edx,80000000 / mov [eax],edx / next: mov [eax],temAPI   ; Populate the IAT
 A3+A4: mov mem1,eax / mov temESI,[esi] / cmp temESI,AAAAAAAA / jnz step3 / mov [mem1],#FF25#+temIAT,jmp First(jmp [iat]) / step3: mov [mem1],#FF15#+temIAT(call [iat])
 A5: bc / (此处追加 OEP 重建代码)
 ```
@@ -192,9 +192,9 @@ Author: xhK. DLL unpacking has three parts: OEP (same as EXE) + relocation table
 ### A Generic Analysis Template for Self-Written IAT-Encrypting Shells (orig: 自写 IAT 加密壳通用分析模板)
 Author: 21花生. Typical flow: FS:[30]→PEB for the kernel32 base → walk exports for GetProcAddress → VirtualProtect to change attributes → code-section decryption → IAT handling: after LoadLibrary+GetProcAddress, XOR-encrypt the API address, then VirtualAlloc a block for the decrypt shellcode and fill the IAT with the block's base address. Unpacking script template (ODbgScript):
 ```
-VAR dwGetAPIAddr / VAR dwWriteIATAddr / MOV dwOEP,00409486      // GetProcAddress 返回下一条 / 写 IAT 下一条
+VAR dwGetAPIAddr / VAR dwWriteIATAddr / MOV dwOEP,00409486      // The instruction after GetProcAddress returns / the instruction after the IAT write
 BPHWS dwGetAPIAddr,"x" / BPHWS dwWriteIATAddr,"x" / BPHWS dwOEP,"x"
-LOOP0: RUN → eip==GetAPI处: MOV dwTmp,eax(真API) / eip==WriteIAT处: MOV [edi],dwTmp(改填真值) / eip==OEP: 结束
+LOOP0: RUN → at GetAPI: MOV dwTmp,eax (real API) / at WriteIAT: MOV [edi],dwTmp (restore real address) / at OEP: finish
 ```
 > Same approach: analysis of an IAT-encrypting shell (93019), borrowing the shell to auto-repair the ITA and IID tables (pediy09-463), handling the IAT at packing time (pediy6480, the shell's perspective), using IAT hijacking in packing (223515)
 
@@ -244,12 +244,12 @@ Simple analysis of the Themida 1.9.1.x CISC VM (509-536): its VM handlers run a 
 
 ### The Standard Shell Skeleton (for both reading and writing shells) (orig: 壳的标准骨架(读壳/写壳两用))
 ```
-入口: PUSHAD/PUSHFD → CALL $+5/POP EBP/SUB EBP,delta(自定位)
-取API: FS:[30]→PEB→kernel32基址→遍历导出表→GetProcAddress →VirtualAlloc/VirtualFree/VirtualProtect/LoadLibrary
-解密: 逐节(节表结构数组驱动) XOR/流密码/解压缩(aPLib/NRV/LZMA)
-IAT:   LoadLibrary+GetProcAddress 逐项填(可选:偷取/加密/模拟/重定向)
-重定位: 基址不等时按重定位表改写(压缩壳常用自造位移表)
-收尾:  恢复节属性(VirtualProtect)→POPAD→JMP/PUSH OEP/RET
+Entry: PUSHAD/PUSHFD → CALL $+5/POP EBP/SUB EBP,delta (self-location)
+API resolution: FS:[30]→PEB→kernel32 base→walk exports→GetProcAddress→VirtualAlloc/VirtualFree/VirtualProtect/LoadLibrary
+Decryption: per section (driven by a section-table array), XOR/stream cipher/decompression (aPLib/NRV/LZMA)
+IAT: fill entries using LoadLibrary+GetProcAddress (optional import stealing/encryption/emulation/redirection)
+Relocation: if bases differ, apply relocations (compression packers often use a custom delta table)
+Finish: restore section permissions (VirtualProtect)→POPAD→JMP/PUSH OEP/RET
 ```
 - C/C++ implementation tutorials: "A Shell Implemented in C++ (basic/advanced)" (206804/206873), "Writing Shells in C++ in Detail: Basics/Advanced" (250960/251267), "The Design Process of a PE File Shell" (180609), "Writing a Shell with C++" (264023); advanced: "Implementing a Shell via Process Injection" (pediy6647), "Using IAT Hijacking in Packing" (223515), "A Shell with API Monitoring + Code Reordering" (250530), "A Code-Bloat Mutation Shell in C++" (223629), "Open-Source Instruction Shell" (267369), "My Self-Written VM Encryption Shell MapoEngine" (218965), "The Secrets of Writing Evasion Shells" (252772), "shellcode Compression Shell 32/64-bit" (266186), "Amber, the First Reflective PE Shell" (222407), "VxPack Open-Source Packer" (248754).
 - Source-level: "The Outer-Shell Source of 海雨天风" (pediy6730), "Packer Source Shared" (172391), "IMProtect Embedded-Source Compile-Protection Shell, Open Sourced" (175371), "Simple PE Packing / Simple Packing / A Simple Manual Pack" (212994/212054/206576); Linux/ELF counterparts: "the elf compression shell" (509-474), "ELF64 Hand-Unpacking the UPX Shell in Practice" (255519), "upx unpacking notes under linux" (79061), "Hand-Unpacking a Customized android SO UPX Shell" (221997).

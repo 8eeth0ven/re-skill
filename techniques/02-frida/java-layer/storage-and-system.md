@@ -84,9 +84,9 @@ Strings that may be checked (packers scan the stack for these words): `Hooker ls
 
 ```javascript
 var Thread = Java.use('java.lang.Thread');
-// Hook实例方法getStackTrace()
+// Hook the instance method getStackTrace()
 Thread.getStackTrace.implementation = function () {
-    // 调用原始方法获取堆栈信息
+    // Call the original method to obtain the stack trace
     var stackTrace = this.getStackTrace.apply(this, arguments);
     var value = ""
     for (var i = 0; i < stackTrace.length; i++) {
@@ -97,27 +97,27 @@ Thread.getStackTrace.implementation = function () {
             ':' + element.getLineNumber() + ')' + "\n"
     }
     if (value.indexOf("HotdogConductor") !== -1) {
-        // 打印当前线程信息
+        // Print the current thread information
         console.log('[+] getStackTrace() called from thread: ' + this.getName());
-        // 打印堆栈信息
+        // Print the stack trace
         console.log('Stack trace elements:');
         console.log(value)
     }
-    return stackTrace; // 返回原始结果
+    return stackTrace; // Return the original result
 };
 ```
 
 Filtering (wipe the specified frames from the stack to pass anti-debug detection):
 
 ```javascript
-// 提取公共过滤逻辑
+// Extract the shared filtering logic
 function filterElement(element) {
-    // 处理文件名和行号，确保与目标字符串格式完全一致
+    // Normalize the filename and line number to match the target string exactly
     const line = '  at ' + element.getClassName() +
         '.' + element.getMethodName() +
         ' (' + element.getFileName() +
         ':' + element.getLineNumber() + ')' + "\n";
-    // 精准匹配 "buildResult(Native Method)"
+    // Match "buildResult(Native Method)" exactly
     return line.indexOf("buildResult(Native Method)") === -1;
 }
 
@@ -125,9 +125,9 @@ function filterElement(element) {
 var Thread = Java.use('java.lang.Thread');
 Thread.getStackTrace.implementation = function () {
     const stackTrace = this.getStackTrace.apply(this, arguments);
-    return stackTrace.filter(element => filterElement(element)); // 直接过滤
+    return stackTrace.filter(element => filterElement(element)); // Apply the filter directly
 };
-// Hook Throwable.getStackTrace()（如果你发现通过 Throwable 获取的堆栈未被过滤，需要额外处理）
+// Hook Throwable.getStackTrace() as well if stacks obtained through Throwable remain unfiltered
 var Throwable = Java.use('java.lang.Throwable');
 Throwable.getStackTrace.implementation = function () {
     const stackTrace = this.getStackTrace.apply(this, arguments);
@@ -165,13 +165,13 @@ PackageManager["getInstalledPackages"].implementation = function (i4) {
     console.log(`AndroidUtils.getInstalledPackages is called: i4=${i4}`);
     let result = this["getInstalledPackages"](i4).toArray()
     let filteredList = ArrayList.$new()
-    // 遍历原始列表
+    // Iterate through the original list
     for (var i = 0; i < result.length; i++) {
         var pkgInfo = Java.cast(result[i], Java.use("android.content.pm.PackageInfo"));
         var pkgName = pkgInfo.packageName.value;
-        // 检查该包名是否在隐藏列表中
+        // Check whether the package is in the hidden-package list
         if (appsToHide.indexOf(pkgName) === -1) {
-            // 如果不在隐藏列表中，则添加到新列表
+            // Keep packages absent from the hidden-package list
             filteredList.add(pkgInfo);
         } else {
             console.log("解决检测包名")
@@ -236,19 +236,19 @@ The full `usb_anti()` function (AccessibilityManager + Global/Secure getInt in o
 
 ```javascript
 function hook_package_info() {
-    // 获取PackageManager类
+    // Resolve the PackageManager class
     var PackageManager = Java.use("android.app.ApplicationPackageManager");
     
-    // hook getPackageInfo方法
+    // Hook getPackageInfo
     PackageManager.getPackageInfo.overload('java.lang.String', 'int').implementation = function (packageName, flags) {
         console.log("[+] getPackageInfo called");
         console.log("[+] packageName: " + packageName);
         console.log("[+] flags: " + flags);
         
-        // 调用原始方法
+        // Call the original method
         var result = this.getPackageInfo(packageName, flags);
         
-        // 打印返回的PackageInfo信息
+        // Print the returned PackageInfo
         console.log("[+] PackageInfo:");
         console.log("    packageName: " + result.packageName.value);
         console.log("    versionName: " + result.versionName.value);
@@ -267,7 +267,7 @@ When to use: when signature verification fails after repackaging, replace the si
 
 ```javascript
 function hook_pkms() {
-    // 获取PackageManager类
+    // Resolve the PackageManager class
     Java.enumerateClassLoadersSync().forEach(classLoader => {
         try {
             if (classLoader.loadClass("android.app.ApplicationPackageManager")) {
@@ -276,7 +276,7 @@ function hook_pkms() {
                 var Base64 = Java.use("android.util.Base64");
                 var sign = "MIICAzCCAWygAwIBAgIEUYH/FzANBgkqhkiG9w0BAQUFADBGMQ4wDAYDVQQHEwVIYW5vaTETMBEGA1UEChMKVmlldGluQmFuazEMMAoGA1UECxMDSVRDMREwDwYDVQQDEwhBbiBIb2FuZzAeFw0xMzA1MDIwNTUyMjNaFw0zODA0MjYwNTUyMjNaMEYxDjAMBgNVBAcTBUhhbm9pMRMwEQYDVQQKEwpWaWV0aW5CYW5rMQwwCgYDVQQLEwNJVEMxETAPBgNVBAMTCEFuIEhvYW5nMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCgI2mpcANCSIwwe/WLTBVG/IUEpM+ULVU+Ga9qwafkPxlaTNoK7kbo6ZTgj6h+E84oOnjZxIWGj6qOqx+mGgutw4hchqD13sW04AZksR6sAKBQOVpu6t4T8VPPxi0NaMjBwyUc6z/0CmrFHBwvwf12oJOthYo3urjVGReOoF51AQIDAQABMA0GCSqGSIb3DQEBBQUAA4GBADJLDyHC3rmeEweTcVoa5oWABEIM1QqwvtYK9Pz/1P4a/fXTESOm5eUjDmiUKAg1yNRwbt0988wMkSVOpyNgr5U5dmLyPXVZpBAP3vUyQh9h6rzjsmK+iSQO/YznRyzVvQgvV4eDUkD4uYecueHoVFX6rZkD8xtYftdInsOrr+ur"
                 var Signature = Java.use("android.content.pm.Signature");
-                // hook getPackageInfo方法
+                // Hook getPackageInfo
                 PackageManager.getPackageInfo.overload('java.lang.String', 'int').implementation = function (packageName, flags) {
                     var result = this.getPackageInfo(packageName, flags);
                     if ((Number(flags) & 64) != 0 && packageName.indexOf("com.vietinbank.ipay") !== -1){
@@ -315,24 +315,24 @@ public class ServiceManagerWraper {
 
     public static void hookPMS(Context context, String signed, String appPkgName, int hashCode) {
         try {
-            // 获取全局的ActivityThread对象
+            // Obtain the global ActivityThread instance
             Class<?> activityThreadClass = Class.forName("android.app.ActivityThread");
             Method currentActivityThreadMethod =
                     activityThreadClass.getDeclaredMethod("currentActivityThread");
             Object currentActivityThread = currentActivityThreadMethod.invoke(null);
-            // 获取ActivityThread里面原始的sPackageManager
+            // Read ActivityThread's original sPackageManager
             Field sPackageManagerField = activityThreadClass.getDeclaredField("sPackageManager");
             sPackageManagerField.setAccessible(true);
             Object sPackageManager = sPackageManagerField.get(currentActivityThread);
-            // 准备好代{过}{滤}理对象, 用来替换原始的对象
+            // Prepare a proxy object to replace the original object
             Class<?> iPackageManagerInterface = Class.forName("android.content.pm.IPackageManager");
             Object proxy = Proxy.newProxyInstance(
                     iPackageManagerInterface.getClassLoader(),
                     new Class<?>[]{iPackageManagerInterface},
                     new PmsHookBinderInvocationHandler(sPackageManager, signed, appPkgName, 0));
-            // 1. 替换掉ActivityThread里面的 sPackageManager 字段
+            // 1. Replace ActivityThread.sPackageManager
             sPackageManagerField.set(currentActivityThread, proxy);
-            // 2. 替换 ApplicationPackageManager里面的 mPM对象
+            // 2. Replace ApplicationPackageManager.mPM
             PackageManager pm = context.getPackageManager();
             Field mPmField = pm.getClass().getDeclaredField("mPM");
             mPmField.setAccessible(true);
@@ -363,16 +363,16 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 
 /**
- * PackageManager服务Hook处理器
- * 用于拦截和修改签名验证相关的调用
+ * PackageManager service hook handler
+ * Intercept and modify signature-verification calls
  */
 public class PmsHookBinderInvocationHandler implements InvocationHandler {
     private static final String TAG = "xyjuse";
 
-    private Object mBase; // 原始的IPackageManager对象
-    private String mFakeSignature; // 伪造的签名数据(Base64)
-    private String mTargetPackage; // 目标包名
-    private int mTargetHashCode; // 目标hashCode(可选)
+    private Object mBase; // Original IPackageManager instance
+    private String mFakeSignature; // Substitute signature bytes (Base64)
+    private String mTargetPackage; // Target package name
+    private int mTargetHashCode; // Target hashCode (optional)
 
     public PmsHookBinderInvocationHandler(Object base, String fakeSignature, String targetPackage, int hashCode) {
         this.mBase = base;
@@ -385,46 +385,46 @@ public class PmsHookBinderInvocationHandler implements InvocationHandler {
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
         String methodName = method.getName();
 
-        // 拦截getPackageInfo相关方法
+        // Intercept the getPackageInfo method family
         if ("getPackageInfo".equals(methodName)) {
             return handleGetPackageInfo(method, args);
         }
 
-        // 拦截getPackageInfoVersioned方法 (Android 8.0+)
+        // Intercept getPackageInfoVersioned (Android 8.0+)
         if ("getPackageInfoVersioned".equals(methodName)) {
             return handleGetPackageInfoVersioned(method, args);
         }
 
-        // 拦截getApplicationInfo方法
+        // Intercept getApplicationInfo
         if ("getApplicationInfo".equals(methodName)) {
             return handleGetApplicationInfo(method, args);
         }
 
-        // 拦截checkSignatures方法
+        // Intercept checkSignatures
         if ("checkSignatures".equals(methodName)) {
             return handleCheckSignatures(method, args);
         }
 
-        // 拦截hasSigningCertificate方法 (Android P+)
+        // Intercept hasSigningCertificate (Android P+)
         if ("hasSigningCertificate".equals(methodName)) {
             return handleHasSigningCertificate(method, args);
         }
 
-        // 其他方法直接调用原始实现
+        // Delegate other calls to the original implementation
         return method.invoke(mBase, args);
     }
 
     /**
-     * 处理getPackageInfo调用
+     * Handle getPackageInfo calls
      */
     private Object handleGetPackageInfo(Method method, Object[] args) throws Throwable {
-        // 调用原始方法
+        // Call the original method
         Object result = method.invoke(mBase, args);
 
         if (result instanceof PackageInfo) {
             PackageInfo packageInfo = (PackageInfo) result;
 
-            // 检查是否是目标包
+            // Check whether this is the target package
             if (isTargetPackage(packageInfo.packageName)) {
                 Log.d(TAG, "拦截到目标包的getPackageInfo调用: " + packageInfo.packageName);
                 return modifyPackageInfo(packageInfo);
@@ -435,7 +435,7 @@ public class PmsHookBinderInvocationHandler implements InvocationHandler {
     }
 
     /**
-     * 处理getPackageInfoVersioned调用 (Android 8.0+)
+     * Handle getPackageInfoVersioned calls (Android 8.0+)
      */
     private Object handleGetPackageInfoVersioned(Method method, Object[] args) throws Throwable {
         Object result = method.invoke(mBase, args);
@@ -453,19 +453,19 @@ public class PmsHookBinderInvocationHandler implements InvocationHandler {
     }
 
     /**
-     * 处理getApplicationInfo调用
+     * Handle getApplicationInfo calls
      */
     private Object handleGetApplicationInfo(Method method, Object[] args) throws Throwable {
-        // 对于ApplicationInfo，通常不需要修改签名
-        // 但可以在这里添加其他安全检查的绕过
+        // ApplicationInfo normally requires no signature changes
+        // Other security-check overrides can be added here
         return method.invoke(mBase, args);
     }
 
     /**
-     * 处理checkSignatures调用
+     * Handle checkSignatures calls
      */
     private Object handleCheckSignatures(Method method, Object[] args) throws Throwable {
-        // 检查参数中是否包含目标包名
+        // Check whether the arguments contain the target package name
         if (args != null && args.length >= 2) {
             String pkg1 = (String) args[0];
             String pkg2 = (String) args[1];
@@ -480,7 +480,7 @@ public class PmsHookBinderInvocationHandler implements InvocationHandler {
     }
 
     /**
-     * 处理hasSigningCertificate调用 (Android P+)
+     * Handle hasSigningCertificate calls (Android P+)
      */
     private Object handleHasSigningCertificate(Method method, Object[] args) throws Throwable {
         if (args != null && args.length >= 1) {
@@ -496,26 +496,26 @@ public class PmsHookBinderInvocationHandler implements InvocationHandler {
     }
 
     /**
-     * 修改PackageInfo中的签名信息
+     * Replace signature information in PackageInfo
      */
     private PackageInfo modifyPackageInfo(PackageInfo packageInfo) {
         try {
             if (mFakeSignature != null && !mFakeSignature.isEmpty()) {
-                // 解码Base64签名
+                // Decode the Base64 signature
                 byte[] signatureBytes = Base64.decode(mFakeSignature, Base64.NO_WRAP);
                 Signature fakeSignature = new Signature(signatureBytes);
 
-                // 替换signatures字段
+                // Replace the signatures field
                 if (packageInfo.signatures != null && packageInfo.signatures.length > 0) {
                     packageInfo.signatures[0] = fakeSignature;
                     Log.d(TAG, "已替换signatures字段");
                 }
 
-                // Android P+ 处理signingInfo
+                // Handle signingInfo on Android P+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     if (packageInfo.signingInfo != null) {
                         try {
-                            // 使用反射修改signingInfo中的签名
+                            // Use reflection to replace the signatures in signingInfo
                             modifySigningInfo(packageInfo.signingInfo, fakeSignature);
                             Log.d(TAG, "已替换signingInfo字段");
                         } catch (Exception e) {
@@ -532,20 +532,20 @@ public class PmsHookBinderInvocationHandler implements InvocationHandler {
     }
 
     /**
-     * 修改SigningInfo中的签名 (Android P+)
+     * Replace the signatures in SigningInfo (Android P+)
      */
     private void modifySigningInfo(SigningInfo signingInfo, Signature fakeSignature) throws Exception {
-        // 获取SigningInfo的私有字段
+        // Obtain SigningInfo's private fields
         Class<?> signingInfoClass = signingInfo.getClass();
 
         try {
-            // 修改mSigningDetails字段
+            // Replace mSigningDetails
             java.lang.reflect.Field signingDetailsField = signingInfoClass.getDeclaredField("mSigningDetails");
             signingDetailsField.setAccessible(true);
             Object signingDetails = signingDetailsField.get(signingInfo);
 
             if (signingDetails != null) {
-                // 修改SigningDetails中的signatures字段
+                // Replace SigningDetails.signatures
                 Class<?> signingDetailsClass = signingDetails.getClass();
                 java.lang.reflect.Field signaturesField = signingDetailsClass.getDeclaredField("signatures");
                 signaturesField.setAccessible(true);
@@ -557,13 +557,13 @@ public class PmsHookBinderInvocationHandler implements InvocationHandler {
                 }
             }
         } catch (NoSuchFieldException e) {
-            // 如果字段不存在，尝试其他方法
+            // If this field is absent, try another lookup route
             Log.w(TAG, "SigningInfo字段结构可能已变化: " + e.getMessage());
         }
     }
 
     /**
-     * 检查是否是目标包
+     * Check whether this is the target package
      */
     private boolean isTargetPackage(String packageName) {
         if (mTargetPackage == null || packageName == null) {
@@ -581,17 +581,17 @@ function print_pkms() {
     Java.perform(function () {
         try {
             var targetPackage = "com.vietinbank.ipay";
-            // 获取PackageManager
+            // Obtain PackageManager
             var ActivityThread = Java.use("android.app.ActivityThread");
             var currentApplication = ActivityThread.currentApplication();
             var context = currentApplication.getApplicationContext();
             var packageManager = context.getPackageManager();
-            // 获取签名
+            // Read the signature
             var packageInfo = packageManager.getPackageInfo(targetPackage, 64); // GET_SIGNATURES
             if (packageInfo.signatures.value && packageInfo.signatures.value.length > 0) {
                 var signature = packageInfo.signatures.value[0];
                 var signatureBytes = signature.toByteArray();
-                // 转换为Base64格式
+                // Convert it to Base64
                 var Base64 = Java.use("android.util.Base64");
                 var base64String = Base64.encodeToString(signatureBytes, 2);
                 console.log([base64String]);

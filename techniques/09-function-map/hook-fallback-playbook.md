@@ -47,7 +47,7 @@ Hook has no effect / gets countered
 ```js
 Java.perform(() => {
   const File = Java.use("java.io.File");
-  File.exists.implementation = function () { /* 过滤敏感路径 */ };
+  File.exists.implementation = function () { /* Filter sensitive paths */ };
 });
 ```
 
@@ -77,7 +77,7 @@ Interceptor.attach(readf, {
       .filter(l => !/frida|gum|re\.frida|linjector|TracerPid:\s*[1-9]/.test(l))
       .join("\n");
     if (cleaned.length !== s.length) {
-      this.buf.writeUtf8String(cleaned);   // 覆盖原 buffer
+      this.buf.writeUtf8String(cleaned);   // Overwrite the original buffer
       retval.replace(cleaned.length);
     }
   }
@@ -116,7 +116,7 @@ Stalker is expensive: use `Stalker.exclude` to shrink the followed range by excl
 **Fallback 3 (L5: eBPF, root)** — even direct calls cannot escape the audit:
 
 ```
-# bpftrace(GKI 内核一般可用,机型待验证)
+# bpftrace: generally available on GKI kernels; verify the specific device
 tracepoint:syscalls:sys_enter_openat /str(args->filename) =~ /proc/ {
   printf("%s(%d) %s\n", comm, pid, str(args->filename));
 }
@@ -134,7 +134,7 @@ eBPF is read-only; after locating the direct-call site, return to user mode (e.g
 Interceptor.attach(Module.findExportByName("libc.so", "connect"), {
   onEnter(args) {
     const sa = args[1];
-    if (sa.readU16() === 2 /*AF_INET*/) {          // sockaddr_in: sin_port 是网络序
+    if (sa.readU16() === 2 /*AF_INET*/) {          // sockaddr_in.sin_port uses network byte order
       const port = (sa.add(2).readU8() << 8) | sa.add(3).readU8();
       if (port === 27042 || port === 27043) {
         this.block = true;
@@ -176,13 +176,13 @@ Interceptor.attach(Module.findExportByName("libc.so", "__system_property_get"), 
 ```js
 const find = new NativeFunction(
   Module.findExportByName("libc.so", "__system_property_find"),
-  "pointer", ["pointer"]);          // (地址, returnType, argTypes):const prop_info* (const char*)
+  "pointer", ["pointer"]);          // (address, returnType, argTypes): const prop_info* (const char*)
 
 function patchProp(name, newval) {
   const pi = find(Memory.allocUtf8String(name));
   if (pi.isNull()) throw new Error("prop not found: " + name);
-  // P+ 序列化布局:serial(4字节) 之后紧跟 value 槽(92字节 PROP_VALUE_SIZE)
-  // 偏移随版本有过变化:先 dump 验证再写(待验证项)
+  // Android P+ serialized layout: serial (4 bytes), followed by the value slot (PROP_VALUE_SIZE = 92 bytes)
+  // Offsets have varied across versions; dump and verify before writing (unverified for this target)
   const val = pi.add(4);
   Memory.protect(val, 96, "rw-");
   const old = val.readCString();
@@ -205,29 +205,29 @@ Key points:
 
 ```js
 const vdso = Process.enumerateModules().find(m => m.name.includes("vdso"));
-// frida 一般把 [vdso] 列为模块;不行就扫 /proc/self/maps 找 [vdso] 段
+// Frida usually lists [vdso] as a module; otherwise locate the mapping in /proc/self/maps
 const sym = Module.enumerateSymbols(vdso.name)
   .find(s => s.name === "__vdso_clock_gettime");
-Memory.protect(sym.address, 0x1000, "rwx");   // vDSO 代码页只读,先放开
+Memory.protect(sym.address, 0x1000, "rwx");   // The vDSO code page is read-only; make it writable first
 Interceptor.attach(sym.address, {
-  onLeave(retval) { /* 见下降级2:在此做时间补偿 */ }
+  onLeave(retval) { /* Apply time compensation here as described in fallback 2 below */ }
 });
 ```
 
 **Fallback 2 (time compensation, attacking the essence of the double-read delta)** — don't intercept the read; make the returned value "look like no debugging happened":
 
 ```js
-let lastReal = null, fakeElapsed = 0;   // 伪造时钟累计值(ms)
-Interceptor.attach(getTimeFn, {           // libc 或 vDSO 的 clock_gettime
+let lastReal = null, fakeElapsed = 0;   // Accumulated synthetic clock value in milliseconds
+Interceptor.attach(getTimeFn, {           // clock_gettime from libc or the vDSO
   onEnter() { this.ts = this.context.x1; },
   onLeave() {
-    // tv_sec=*ts,tv_nsec=*(ts+8),折算 ms(演示;正式版按需改写两个字段)
+    // tv_sec=*ts, tv_nsec=*(ts+8); convert to milliseconds for this demo, and update both fields as needed in a complete implementation
     const now = this.ts.readU64().toNumber() * 1e3
               + this.ts.add(8).readU64().toNumber() / 1e6;
     if (lastReal !== null) {
-      const realDelta = now - lastReal;   // 含 hook/调试开销的真实增量
-      fakeElapsed += realDelta / 10;      // 压缩真实耗时,伪装成未调试
-      this.ts.writeU64(Math.floor(fakeElapsed / 1e3)); // 写回伪造 tv_sec,增量恒小且单调
+      const realDelta = now - lastReal;   // Actual elapsed time, including hook/debugging overhead
+      fakeElapsed += realDelta / 10;      // Compress elapsed time to simulate execution without debugging
+      this.ts.writeU64(Math.floor(fakeElapsed / 1e3)); // Write synthetic tv_sec; increments remain small and monotonic
     }
     lastReal = now;
   }
@@ -239,7 +239,10 @@ Idea: maintain a "fake clock" that always returns a forged accumulated value (co
 ### Case 5: Crypto — the so statically links boringssl, no EVP_* exports
 
 **Scenario**: the app's so ships its own full BoringSSL; `Module.findExportByName("libcrypto.so","EVP_CipherUpdate")` finds no symbol; the entire L3 layer is dead.
-**Fallback 0 (try the lazy route first: L1 is actually cheapest)** — the plaintext must have appeared at the Java layer:
+**Fallback 0 (conditional low-cost Java probe)** — use this when the observed
+caller or provider actually uses `javax.crypto.Cipher`. Native code may generate
+and consume plaintext without calling Java Cipher, so this is not a guaranteed
+observation point for a statically linked BoringSSL routine:
 
 ```js
 Java.perform(() => {
@@ -252,25 +255,32 @@ Java.perform(() => {
 });
 ```
 
-If the Java layer is also blocked by obfuscation/reflection shells, move on to native locating:
+If the Java probe has no hits, first establish whether that provider is on the
+executed path. No hits alone do not establish obfuscation, reflection, or hook
+blocking. For a wholly native path, inspect the actual JNI argument/result
+boundary or locate the native implementation directly:
 **Fallback 1 (signature scanning)**:
 
 ```js
 const mod = Process.getModuleByName("libtarget.so");
-// ① 版本字符串:boringssl 静态链接常残留标识
+// 1. Version strings: statically linked BoringSSL often retains identifying strings
 Memory.scanSync(mod.base, mod.size, "42 6F 72 69 6E 67 53 53 4C")  // "BoringSSL"
   .forEach(h => console.log("[str]", h.address));
-// ② arm64 crypto 指令:AESE = 0x4E2848xx → 字节 ?? 48 28 4E(小端)
+// 2. ARM64 crypto instructions: AESE = 0x4E2848xx, little-endian bytes ?? 48 28 4E
 mod.enumerateRanges("r-x").forEach(r => {
   Memory.scanSync(r.base, r.size, "?? 48 28 4E").forEach(h => {
     console.log("[AESE] @", h.address,
-      DebugSymbol.fromAddress(h.address));   // 无符号时手工回溯函数头
+      DebugSymbol.fromAddress(h.address));   // Without symbols, locate the function start manually
   });
 });
 ```
 
 Once you have an address inside the function, walk upward to find the function prologue (`stp x29, x30, [sp, #-...]`) to pin the entry, then `Interceptor.attach` hooks it by address (a statically linked function can still be inline-hooked — it merely lacks a symbol, not hookability).
-**Fallback 2 (Stalker follows the data flow)**: break at known Java entry points (`SecretKeySpec` construction, native methods), `Stalker.follow` records the call chain, watch which functions the key buffer address flows between, and locate the update-type function.
+**Fallback 2 (Stalker follows the data flow)**: start from a demonstrated entry
+on the actual path (`SecretKeySpec` only when used, an observed JNI native method,
+or a located native caller). Record a bounded call chain with `Stalker.follow`,
+then correlate buffer addresses and argument observations to locate the
+update-type function. A call trace alone does not prove how key bytes flow.
 **Domain reminder**: crypto has no syscall (layers doc §6); L4/L5 have nothing to intercept — the endgame against statically linked boringssl is signature scanning + in-memory hooks.
 
 ### Case 6: Thread detection — pthread_create hook bypassed by direct clone calls
@@ -299,8 +309,8 @@ Interceptor.attach(Module.findExportByName("libc.so", "getdents64"), {
       const name   = this.buf.add(off + 19).readCString();
       if (/^(gum-js-loop|gmain|pool-frida-|linjector)/.test(name)) {
         Memory.move(this.buf.add(off), this.buf.add(off + reclen), len - off - reclen);
-        len -= reclen; retval.replace(len);   // 删掉该目录项
-        continue;                              // off 不动,重读本位
+        len -= reclen; retval.replace(len);   // Remove this directory entry
+        continue;                              // Keep off unchanged and read the current position again
       }
       off += reclen;
     }
@@ -346,7 +356,7 @@ Stalker.follow(Process.getCurrentThreadId(), {
 const mod = Process.getModuleByName("libtarget.so");
 mod.enumerateRanges("r-x").forEach(r => {
   Memory.scanSync(r.base, r.size, "01 00 00 D4").forEach(h => {
-    // 向上回看 movz x8, #imm16 : 0xD2800008 | (imm<<5)
+    // Inspect preceding movz x8, #imm16: encoding 0xD2800008 | (imm<<5)
     let nr = -1;
     for (let back = 4; back <= 24; back += 4) {
       const w = h.address.sub(back).readU32();

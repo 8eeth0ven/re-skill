@@ -8,10 +8,10 @@
 iOS RE is isomorphic to Android RE; the differences concentrate in "the strong constraints of a closed ecosystem": App Store distribution must be signed + FairPlay-encrypted, the system volume is read-only, and the runtime is OC/Swift rather than Java/Kotlin. The typical workflow:
 
 ```
-拿 IPA(越狱机 dump / 抓商店包) → 砸壳(FairPlay 解密) → 解包 Payload/*.app
-  → 静态(class-dump 头文件 + Hopper/IDA 看 Mach-O)
-  → 动态(lldb 附加 debugserver / Frida hook)
-  → 改(重签重打包 / Tweak 注入) → 过检测(见第2篇)
+Obtain IPA (dump from a jailbroken device / capture an App Store package) → decrypt FairPlay → unpack Payload/*.app
+  → Static analysis (class-dump headers + Mach-O in Hopper/IDA)
+  → Dynamic analysis (lldb attached through debugserver / Frida hooks)
+  → Modify (re-sign/repackage / inject Tweak) → handle detection (see the second article)
 ```
 
 Compared with Android (detailed methodology cross-linked at `../../techniques/05-toolbox/tool-master-table.md`):
@@ -32,23 +32,23 @@ Compared with Android (detailed methodology cross-linked at `../../techniques/05
 ### 2.1 Overall layout
 
 ```
-+------------------------+  文件偏移 0
-| Mach-O Header (32B)    |  magic(cffaedfe=64位小端)/cputype/cpusubtype
-|  filetype/ncmds/       |  ncmds=Load Command 数
++------------------------+ File offset 0
+| Mach-O Header (32B)    | magic (cffaedfe=64-bit little-endian)/cputype/cpusubtype
+|  filetype/ncmds/       | ncmds=number of Load Commands
 |  sizeofcmds/flags/reserved
 +------------------------+
-| Load Commands 区        |  sizeofcmds 字节,每条 cmd+cmdsize 开头
-|  LC_SEGMENT_64 __TEXT   |   → 映射段页权限与 Section 表
+| Load Commands         | sizeofcmds bytes; each starts with cmd+cmdsize
+| LC_SEGMENT_64 __TEXT   | → Mapped segment permissions and Section table
 |  LC_SEGMENT_64 __DATA   |
-|  LC_DYLD_INFO_ONLY      |   → bind/lazy-bind 重定位信息
-|  LC_SYMTAB / LC_DYSYMTAB|   → 符号表/动态符号表
-|  LC_LOAD_DYLIB ×N       |   → 依赖的动态库
-|  LC_CODE_SIGNATURE      |   → 签名 blob
-|  LC_ENCRYPTION_INFO_64  |   → cryptoff/cryptsize/cryptid(砸壳关键)
+| LC_DYLD_INFO_ONLY      | → bind/lazy-bind relocation information
+| LC_SYMTAB/LC_DYSYMTAB  | → Symbol table/dynamic symbol table
+| LC_LOAD_DYLIB ×N       | → Dependent dynamic libraries
+| LC_CODE_SIGNATURE     | → Signature blob
+| LC_ENCRYPTION_INFO_64  | → cryptoff/cryptsize/cryptid (key fields for decryption)
 +------------------------+
-| __TEXT 段(可读可执行)   |  __text/__stubs/__stub_helper/__objc_methname...
-| __DATA 段(读写)         |  __got/__la_symbol_ptr/__objc_classlist/__cfstring...
-| __LINKEDIT 段(只读数据) |  符号表/字符串表/签名/函数地址表
+| __TEXT segment (r-x)  | __text/__stubs/__stub_helper/__objc_methname...
+| __DATA segment (rw-)  | __got/__la_symbol_ptr/__objc_classlist/__cfstring...
+| __LINKEDIT (read-only)| Symbol/string tables, signatures, function-address table
 +------------------------+
 ```
 
@@ -67,9 +67,9 @@ Store packages are usually FAT: after the `FAT_HEADER(magic 0xcafebabe, nfat_arc
 struct encryption_info_command_64 {
   uint32_t cmd;        // LC_ENCRYPTION_INFO_64 = 0x2C
   uint32_t cmdsize;
-  uint32_t cryptoff;   // 加密区在文件内的偏移(__TEXT 段内)
-  uint32_t cryptsize;  // 加密字节数
-  uint32_t cryptid;    // 0=未加密(自编译包);1=App Store FairPlay 加密
+  uint32_t cryptoff;   // Encrypted region file offset (inside __TEXT)
+  uint32_t cryptsize;  // Number of encrypted bytes
+  uint32_t cryptid;    // 0=unencrypted self-built package; 1=App Store FairPlay encryption
   uint32_t pad;
 };
 ```
@@ -83,12 +83,12 @@ OC method calls compile to `objc_msgSend(id self, SEL _cmd, ...)`; on arm64 it i
 
 ```
 objc_msgSend:
-  LDR  x16, [x0]           ; x0=self, 取 isa → class(注意经 &ISA_MASK)
-  LDR  x11, [x16, #CACHE]  ; 方法缓存 buckets
-  ... cache 命中 → 尾调 IMP
-  未命中 → __objc_msgSend_uncached → lookUpImpOrForward
-    ① class_rw_t 方法列表(含分类) ② 沿 superclass 上溯
-    ③ 仍未命中 → _objc_msgForward → 消息转发(resolvesInstanceMethod/
+  LDR  x16, [x0]           ; x0=self; load isa → class (apply ISA_MASK)
+  LDR  x11, [x16, #CACHE]  ; Method-cache buckets
+  ... cache hit → tail-call IMP
+  Cache miss → __objc_msgSend_uncached → lookUpImpOrForward
+    ① class_rw_t method list, including categories ② walk the superclass chain
+    ③ Still missing → _objc_msgForward → message forwarding (resolvesInstanceMethod/
        forwardingTargetForSelector/methodSignatureForSelector+forwardInvocation)
 ```
 
@@ -100,16 +100,16 @@ RE value:
 ### 3.2 class_ro_t / class_rw_t / cache_t
 
 ```
-objc_class ──ISA──> 元类
+objc_class ──ISA──> metaclass
    │ DATA()
    ▼
-class_rw_t(运行时可写)         class_ro_t(编译期只读)
-  flags/版本                     类名/布局
-  methods/properties/protocols   baseMethods(分类合并的底本)
+class_rw_t (runtime writable)     class_ro_t (compile-time read-only)
+  flags/version                     class name/layout
+  methods/properties/protocols       baseMethods (base list for category merging)
   demangledName
   ro ────────────────────────────►
-cache_t: masked buckets(SEL→IMP),高并发读写,
-  逆向时 dump 它 = 拿到「实际被调过的方法表」
+cache_t: masked buckets (SEL→IMP), concurrent reads/writes,
+  Dumping it during analysis reveals the methods actually invoked
 ```
 - Categories merge into `class_rw_t` at runtime via `attachCategories`, so **static Mach-O analysis must scan `__objc_catlist`**, or you miss logic hidden in categories (anti-debug often hides there).
 - Swift classes also bridge through the OC runtime (`swift_unknownObjectRetain` etc.), but method dispatch prefers vtables/static dispatch; see §4.
@@ -134,13 +134,13 @@ Calling convention: Swift passes arguments in registers by default (from x0; sel
 FairPlay encrypts only the on-disk file; the kernel/AMFI decrypts it into physical pages at load. So dumping = **let the app run → dump the decrypted __TEXT from process memory → repair the Mach-O → set cryptid to 0**.
 
 ```
-磁盘 cryptid=1(密文) ──内核加载+AMFI解密──> 内存明文
+On disk: cryptid=1 (ciphertext) ──kernel load+AMFI decryption──> plaintext in memory
                                            │
                     frida attach / debugserver / ptrace
                                            ▼
-              memory read cryptoff~cryptsize → 回写文件同偏移
-              header: cryptid=1→0(否则启动器以为还要解密)
-              (可选)LC_CODE_SIGNATURE 重签/剥离
+              memory read cryptoff~cryptsize → write to the same file offsets
+              header: cryptid=1→0 (otherwise the loader expects further decryption)
+              Optional: re-sign/strip LC_CODE_SIGNATURE
 ```
 
 ### 5.2 Tool matrix
@@ -151,6 +151,7 @@ FairPlay encrypts only the on-disk file; the kernel/AMFI decrypts it into physic
 | frida-dump / frida-ios-dump | frida attach → locate the module via `_dyld_image` → Memory.read the segments | the current mainstream; paired with SSL Kill Switch 2 the capture chain is complete |
 | Clutch | pure native, fast | one command on a jailbroken phone |
 | Bagbak / flexdecrypt etc. | node/CLI wrappers | batch-oriented |
+| vesper (agent platform) | MCP platform + agent skill wrapping SSH/Frida/optional licensed IDA: reused-session frida-ios-dump decryption, UIKit view-tree inspection/screenshots, ObjC runtime headers, batched UI automation, LLDB/Frida debugging, headless-IDA decompile, Theos tweak build/deploy/verify | rootless jailbreaks are the primary target, frida 17.5+ host/device must match; the agent-era one-stop shell over the tools above (`uv pip install` from the repo, macOS/Linux host) |
 
 Flow (frida-ios-dump): on the Mac `python dump.py -H <phone IP>`, frida-server installed on the jailbroken phone; zip the dumped `.app` directly into an analyzable IPA. Isomorphic with Android memory-dumping DEX; methodology cross-linked at `re/techniques/03-unpacking/`. To verify the dump is clean: `otool -l` shows `cryptid 0` + Hopper can disassemble the plaintext `__text`.
 
@@ -172,20 +173,20 @@ Selection: quick class-relationship scan class-dump → medium-depth Hopper → 
 The standard chain on a jailbroken phone (unsigned errors require re-signing debugserver, see §9):
 
 ```
-1) 手机 /usr/lib/debugserver(越狱自带;新系统需把 debugserver 拷出用 ldid
-   签 platform-application+get-task-allow 再放回)
-2) debugserver 127.0.0.1:1234 -a "TargetApp"(attach)或 -w(等待 spawn)
-3) USB 转发:iproxy 1234 1234
+1) Device: /usr/lib/debugserver (bundled on jailbreaks; newer systems require copying it out and using ldid
+   to sign platform-application+get-task-allow before placing it back)
+2) debugserver 127.0.0.1:1234 -a "TargetApp" (attach), or -w to wait for spawn
+3) USB forwarding: iproxy 1234 1234
 4) Mac: lldb → process connect connect://127.0.0.1:1234
 ```
 
 Common command quick reference:
 ```
-image list -o -f        # 模块与 ASLR slide
-br s -a 0x1000+0x1234   # 按slide下断
-br set -n "-[Class sel:]"  # 按OC符号断点(需符号未strip或已class-dump)
-register read / x/32xw 0x...   # 寄存器/内存
-expr -- (void)method...  # 动态调用(OC)
+image list -o -f        # Modules and ASLR slides
+br s -a 0x1000+0x1234   # Breakpoint using the slide
+br set -n "-[Class sel:]"  # Breakpoint on an Objective-C symbol; requires unstripped symbols or class-dump reconstruction
+register read / x/32xw 0x...   # Registers/memory
+expr -- (void)method...  # Dynamic Objective-C invocation
 ```
 Kernel debugging (KDP) and traceless confrontation: file 2 §6 and `../../techniques/07-kernel/cross-platform-kernel.md`. Anti-debug confrontation (sysctl P_TRACED/svc inline ptrace) in full in file 2 §1.
 
@@ -196,10 +197,10 @@ Kernel debugging (KDP) and traceless confrontation: file 2 §6 and `../../techni
 Principle: Mach-O lazy/external symbol references live in `__DATA`'s `__la_symbol_ptr` (lazy)/`__nl_symbol_ptr` and the GOT; at dyld `bind` time real addresses are written per LC_DYLD_INFO. fishhook walks every image's indirect symbol table at runtime, swapping the slots of target symbols (like `open`/`stat`/`sysctl`) for its own functions while saving the originals:
 
 ```
-调用 stat() ──► __DATA,__la_symbol_ptr[idx] ──► (fishhook 重绑)my_stat
-                                      │保存
+Call stat() ──► __DATA,__la_symbol_ptr[idx] ──► my_stat (fishhook rebinding)
+                                      │ save original
                                       ▼
-                              原 libsystem_kernel stat
+                              Original libsystem_kernel stat
 ```
 - It can only hook **external C functions that go through the symbol table** (system-library calls); it cannot hook OC methods/static inlines/direct syscalls — which is also the fundamental reason fishhook gets bypassed (the target calls svc directly; see file 2 §1.3).
 - Typical uses: intercepting file/network checks in a Tweak, covering the jailbreak-detection surface.
@@ -230,12 +231,12 @@ Install frida-server on a jailbroken phone for full functionality: at the OC lay
 ### 9.1 Signature structure
 
 ```
-IPA ── _CodeSignature/CodeResources(资源哈希清单)
+IPA ── _CodeSignature/CodeResources (resource-hash inventory)
   └─ Mach-O LC_CODE_SIGNATURE → CMS blob
-       ├─ CodeDirectory(hash 槽:每 4KB 页的 SHA256)
-       ├─ entitlements(键值:application-identifier/teamid/
+       ├─ CodeDirectory (hash slots: SHA256 for each 4KB page)
+       ├─ entitlements (keys: application-identifier/teamid/
        │    get-task-allow/keychain-access-groups/aps-environment…)
-       └─ 证书链 + Provisioning Profile(embedded.mobileprovision)
+       └─ Certificate chain + Provisioning Profile (embedded.mobileprovision)
 ```
 - `get-task-allow=true` is the debugging switch — mandatory for re-signed debug builds; store packages have it false, and ldid cannot mint equal force (Apple root certificate); the only three real paths are developer certificates/enterprise certificates/AltStore free certificates.
 - entitlements decide the capability boundary (extensions/VPN/multitasking); `CS_KILLED` errors during hooking/debugging are usually missing entitlements.
@@ -273,13 +274,13 @@ Logos syntax (compiles into `_logos_register` + method swizzle/inline hook):
 ```objc
 %hook TargetClass
 - (BOOL)isJailbroken {
-  return NO;                       // 直接改返回值
+  return NO;                       // Change the return value directly
 }
-%new(addGroup)                      // 新增方法
+%new(addGroup)                      // Add a method
 - (void)hookedNewMethod { ... }
 %end
 
-// 构造函数自动注册;ctor 里可做 fishhook/inline 补充
+// Constructor registers automatically; fishhook/inline hooks can supplement the ctor
 %ctor {
   %init(TargetClass);
 }

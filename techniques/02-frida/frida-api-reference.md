@@ -51,7 +51,7 @@ ptr("0x111")
 
 ```javascript
 var heap = Process.getHeap();
-var startAddress = heap.start; // 假设我们从堆的起始地址开始
+var startAddress = heap.start; // Assume scanning starts at the beginning of the heap
 var size = heap.size;
 var endAddress = startAddress.add(size);
 ```
@@ -99,7 +99,7 @@ Memory.protect(ptr("0x12345678"), 4096, 'rwx');
 Allocate memory of a given size and return the start address:
 
 ```javascript
-var ptr = Memory.alloc(1024); // 分配1KB
+var ptr = Memory.alloc(1024); // Allocate 1 KB
 ```
 
 Allocate memory and store a given UTF-8 string in it:
@@ -119,22 +119,22 @@ Memory.free(ptr);
 `Memory.scan(address, size, pattern, options)`: search for a specific pattern within a given address range; `??` wildcards are supported:
 
 ```javascript
-// 进行内存搜索
-// frida的hex
+// Scan memory
+// Frida hexadecimal-pattern syntax
 const searchValue = "66 72 69 64 61"
 const startAddress = ptr(0x7583c0c000)
 const endAddress = ptr(0x7583d1e000)
 Memory.scan(startAddress, endAddress.sub(startAddress).toInt32(), searchValue, {
     onMatch: function(address, size) {
         console.log("找到数据！地址：" + address);
-        // 你可以在这里修改数据，例如：
+        // Modify the matched data here, for example:
     },
     onComplete: function() {
         console.log("搜索完成。");
     }
 });
 
-// 特殊匹配手法
+// Wildcard-pattern matching
 Memory.scan(ptr("0x10000000"), 0x10000, "00 01 02 03 ?? ?? 06 07 08 09 ?? ?? ?? ?? 0e 0f", {
     onMatch: function(address) {
         console.log("找到数据！地址：" + address);
@@ -202,21 +202,21 @@ Write a NOP instruction:
 
 ```javascript
 Memory.patchCode(address, 4, function (code) {
-    // 创建一个字节数组，包含 NOP 指令的机器码
-    code.writeByteArray([0x1F, 0x20, 0x03, 0xD5]);  // 将字节数组写入目标内存
+    // Create a byte array containing the NOP instruction encoding
+    code.writeByteArray([0x1F, 0x20, 0x03, 0xD5]);  // Write the byte array into the target memory
 });
 ```
 
 ### 2.9 Comprehensive memory operation example
 
 ```javascript
-// 创建一个字符串
+// Create a string
 var r = Memory.allocUtf8String("muyang");
 console.log(Memory.readUtf8String(r))
 
-// 创建一个r内存
+// Allocate memory for r
 var newaddress = Memory.alloc(10);
-// 赋值过去
+// Copy the value into the allocated region
 Memory.copy(newaddress,r,10);
 console.log(hexdump(newaddress));
 console.log(hexdump(r,{
@@ -227,11 +227,11 @@ console.log(hexdump(r,{
 }))
 
 var arr = [ 0x6d,0x75,0x79,0x61,0x6e,0x67];
-//申请一个新的内存空间 返回指针 大小是arr.length(改名r2,避免与上面var r重复声明报错)
+// Allocate arr.length bytes and return a pointer; use r2 to avoid redeclaring r above
 const r2 = Memory.alloc(arr.length);
-//将arr数组写入r2地址中
+// Write the arr bytes to r2
 Memory.writeByteArray(r2,arr);
-//输出
+// Print the result
 console.log(hexdump(r2, {
     offset: 0,
     length: arr.length,
@@ -251,30 +251,30 @@ When to use: when the packer scans memory for the `libfrida-agent` string, repla
 
 ```javascript
 function fridaReplace(startAddress, endAddress) {
-    const searchValue = "6c 69 62 66 72 69 64 61 2d 61 67 65 6e 74"; // "libfrida-agent" 的十六进制表示
-    let matchedAddresses = []; // 用于存储匹配的地址
+    const searchValue = "6c 69 62 66 72 69 64 61 2d 61 67 65 6e 74"; // Hexadecimal encoding of "libfrida-agent"
+    let matchedAddresses = []; // Collect the matched addresses
     Memory.scan(startAddress, endAddress.sub(startAddress).toInt32(), searchValue, {
         onMatch: function (address, size) {
             console.log("找到数据！地址：" + address);
-            matchedAddresses.push(address); // 将匹配的地址存储到数组中
+            matchedAddresses.push(address); // Append the matching address to the array
         },
         onComplete: function () {
             console.log("搜索完成，共找到 " + matchedAddresses.length + " 个匹配项。");
-            // 遍历所有匹配的地址并进行修改
+            // Visit and modify every matched address
             matchedAddresses.forEach(function (address) {
                 try {
-                    // 计算所在的页地址，并将权限设置为可写
+                    // Compute the containing page address and make it writable
                     const size = searchValue.split(" ").length
                     Memory.protect(address, size, 'rwx');
-                    // 修改 "frida" 为 "wzdnb"
-                    const replacement = "6c 69 62 77 7a 64 6e 62 2d 61 67 65 6e 74"; // "libwzdnb-agent" 的十六进制表示
+                    // Replace "frida" with "wzdnb"
+                    const replacement = "6c 69 62 77 7a 64 6e 62 2d 61 67 65 6e 74"; // Hexadecimal encoding of "libwzdnb-agent"
                     const bytes = replacement.split(" ").map(byte => parseInt(byte, 16));
                     Memory.writeByteArray(address, bytes);
                     console.log("已将 'frida' 替换为 'wzdnb'，地址：" + address);
-                    // 恢复原始内存权限（可根据需要设置合适的权限）
+                    // Restore the original memory permissions, selecting the appropriate protection for this region
                     Memory.protect(address, size, 'r--');
                 } catch (error) {
-                    // console.error("修改地址 " + address + " 时出错：" + error);
+                    // console.error("Failed to modify address " + address + ": " + error);
                 }
             });
         }
@@ -296,9 +296,9 @@ function readFile(fileName) {
 
 function replaceFrida() {
     const data = readFile("/proc/self/maps");
-    // 马上去除全部hook
+    // Remove all hooks immediately
     Interceptor.detachAll();
-    // 解析出来我们想要的数据位置
+    // Resolve the location of the data to inspect
     let num = 0;
     let startAddress, endAddress;
     data.split("\n").forEach(line => {
@@ -360,7 +360,7 @@ new NativeFunction(address, returnType, argTypes[, abi])
 ```javascript
 Interceptor.replace(module.base.add(0x4421C), new NativeCallback(function () {
     console.log("开始")
-    return 1;  // 返回值对应 'int64' 返回类型(需要 64 位整数字面量时可用 1n,即 BigInt)
+    return 1;  // Match the 'int64' return type; use 1n (BigInt) if a 64-bit integer literal is required
 }, 'int64', ["int64"]));
 ```
 
@@ -371,7 +371,7 @@ Strings are also passed as pointer; with JNI, everything besides the primitive t
 ```javascript
 const _init = new NativeFunction(
     module.findExportByName("Java_lab_galaxy_yahfa_HookMain_init"),
-    'void',   // 如果底层JNI定义是 `static void init(...)`，这里就用 'void'
+    'void',   // Use 'void' when the underlying JNI declaration is static void init(...)
     ['pointer', 'pointer', 'int']
 );
 ```
@@ -389,9 +389,9 @@ void test(){
   console.log("成功");
 }
 `);
-// 使用 NativeFunction 来调用该函数指针
+// Invoke this function pointer through NativeFunction
 const testFunc = new NativeFunction(cm.test, "void", []);
-// 调用 test 函数
+// Call the test function
 testFunc()
 ```
 
@@ -402,18 +402,18 @@ For usage combined with Stalker events see [advanced/stalker.md](advanced/stalke
 ### 5.1 Basic operations
 
 ```javascript
-// 获取 Java 类的引用
+// Obtain a Java class reference
 var ExampleClass = Java.use('com.example.ExampleClass');
-// 使用 new 关键字来创建 ExampleClass 的一个实例
+// Create an ExampleClass instance with new
 var exampleObject = ExampleClass.$new();
-// 使用对象进行一些操作，例如调用其方法
+// Use the instance, for example by invoking its methods
 exampleObject.someMethod();
 
-// 强制转换，obj转String
+// Cast obj to String
 var castValue = Java.cast(obj, Java.use("java.lang.String"))
 
-// 获取对象属性内容，得到的这个对象可以使用.value
-// 也可以直接执行函数，是a.函数，而不是a.value.函数
+// Read an object field; the wrapper supports .value
+// Methods can be called directly as a.method(), rather than a.value.method()
 obj.a.value
 ```
 
@@ -421,28 +421,28 @@ obj.a.value
 
 ```javascript
 const Hook_Log_e = Java.registerClass({
-    name: 'lab.galaxy.yahfa.demoApp.Hook_Log_e', // 类名
+    name: 'lab.galaxy.yahfa.demoApp.Hook_Log_e', // Class name
     methods: {
-        // 重写 Log.e 方法
+        // Override Log.e
         hook: {
             returnType: 'int',
             argumentTypes: ['java.lang.String', 'java.lang.String'],
-            // 方法体实现
+            // Method implementation
             implementation: function (tag, msg) {
-                // 模拟 Log.w
+                // Simulate Log.w
                 Java.use('android.util.Log').w("HookTest", "in Log.e(): " + tag + ", " + msg);
 
-                // 返回模拟值
-                return 1; // 返回 int 类型，模拟 Log.e 方法的行为
+                // Return a simulated result
+                return 1; // Return int to simulate Log.e behavior
             }
         },
-        // 备份方法，模拟 Log.e 逻辑不应出现在这里的警告
+        // Backup method; the simulated Log.e implementation does not belong here
         backup: {
             returnType: 'int',
             argumentTypes: ['java.lang.String', 'java.lang.String'],
             implementation: function (tag, msg) {
                 Java.use('android.util.Log').w("HookTest", "Log.e() should not be here");
-                return 1; // 返回1来模拟 Log.e 方法的默认行为
+                return 1; // Return 1 to simulate the default Log.e behavior
             }
         }
     }
@@ -668,11 +668,11 @@ Interpreting the flag can be non-trivial.
 
 ```javascript
 function getDexFile(artmethod) {
-    // 读取declaring_class_
+    // Read declaring_class_
     const declaring_class_ = ptr(artmethod.readU32())
-    // 读取dex_cache_
+    // Read dex_cache_
     const dex_cache_ = ptr(declaring_class_.add(8 * 2).readU32());
-    // 读取DexFile
+    // Read DexFile
     return dex_cache_.add(16).readPointer()
 }
 ```
@@ -682,14 +682,14 @@ function getDexFile(artmethod) {
 Script notes that may come in handy (special frida usage):
 
 ```text
-// frida主动调用
-// method.call(method, MyApplication, context) ==> 解决receiver是undefined
-// $borrowClassHandle是一个函数，返回的是这个函数的类的jni指针值，也就是jclass
-// $getHandle也是一个函数，在类里面会返回这个函数的实例对象的jni指针值
-// 从jni属性转换为frida js类型，libanon.base.add(0x8A9D8).readPointer()这个的值就是正常的JNI值
+// Proactive invocation through Frida
+// method.call(method, MyApplication, context) supplies the receiver instead of leaving it undefined
+// $borrowClassHandle() returns the class JNI handle (jclass)
+// $getHandle() on an instance wrapper returns that object's JNI handle
+// Convert a JNI handle to a Frida JS wrapper; libanon.base.add(0x8A9D8).readPointer() contains the raw JNI value
 //  var MyApplicationObj = Java.classFactory._getType('com.tyme.digital.ProtectedMyApplication').fromJni(libanon.base.add(0x8A9D8).readPointer());
-// 如果报错了$borrowClassHandle，把全部属性的$borrowClassHandle打出来看看就清楚了
-// 如果出现没有这个的名字，不知道应该使用什么类名字
+// If $borrowClassHandle fails, enumerate the available wrappers and inspect their handles
+// If the expected class name is absent, inspect the available class names before choosing a wrapper
 //         console.log(Instrumentation.$l.list())
 ```
 
@@ -708,7 +708,7 @@ function hook_java() {
     })
 }
 
-// 如果需要更加精细化测试回调，可以参考test2的代码
+// For a more detailed callback test, refer to test2
 ```
 
 ## 8. Reading Files / Reading maps
@@ -726,36 +726,36 @@ readFile("/proc/self/maps")
 ```javascript
 function readMaps() {
     var libc = Module.load("libc.so");
-    const O_RDONLY = 0;  // 只读模式
+    const O_RDONLY = 0;  // Read-only mode
     const MAPS_PATH = "/proc/self/maps";
     const BUFFER_SIZE = 1024;
 
-// 使用 NativeFunction 创建 open、read 和 close 函数
+// Create open, read, and close wrappers with NativeFunction
     var open = new NativeFunction(libc.findExportByName("open"), "int", ["pointer", "int"]);
     var read = new NativeFunction(libc.findExportByName("read"), "ssize_t", ["int", "pointer", "size_t"]);
     var close = new NativeFunction(libc.findExportByName("close"), "int", ["int"]);
-    // 将路径字符串转换为指针
+    // Convert the path string to a native pointer
     var pathPtr = Memory.allocUtf8String(MAPS_PATH);
     var fd = open(pathPtr, O_RDONLY);
     if (fd < 0) {
         console.log("Failed to open /proc/self/maps");
         return;
     }
-    // 创建一个空的字符串来存储读取的数据
+    // Create an empty string for the file contents
     var content = "";
-    // 分配缓冲区来存储读取的数据
+    // Allocate the read buffer
     var buffer = Memory.alloc(BUFFER_SIZE);
-    // 循环读取文件内容，直到文件结束
+    // Read until end of file
     var bytesRead;
     do {
         bytesRead = read(fd, buffer, BUFFER_SIZE);
         if (bytesRead > 0) {
-            // 读取的内容转换为字符串，并拼接到 content
+            // Convert the bytes to a string and append them to content
             var chunk = buffer.readCString();
             content += chunk;
         }
-    } while (bytesRead > 0);  // 直到没有更多数据可以读取
-    // 关闭文件
+    } while (bytesRead > 0);  // Continue until no more bytes can be read
+    // Close the file
     close(fd);
     return content;
 }

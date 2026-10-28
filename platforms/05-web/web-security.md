@@ -8,7 +8,7 @@
 One-liner: website security = attack-surface convergence on every link of the whole request chain "DNS resolution -> CDN -> WAF -> middleware -> application -> database".
 
 - **Basic theory at a glance**: same-origin policy (SOP) and the CORS relaxation boundary, cookie attributes (Secure/HttpOnly/SameSite) and session fixation, CSP content security policy, the three assertion models JWT/OAuth/SAML -> details cross-linked at `~/.zcode/skills/skill/知识库/oauth-jwt-test.md`.
-- **Deployment surface** (recognize the stack before pentesting): middleware (Tomcat/Nginx/IIS/Apache) historical bugs — Tomcat PUT upload (CVE-2017-12615), Nginx parsing bug/alias traversal (CVE-2017-7529 OOB read), IIS short filename/PUT; panels (BaoTa/phpMyAdmin/Adminer); gateways (the admin APIs of APISIX/Kong) -> cross-link `api-gateway-test.md`.
+- **Deployment surface** (recognize the stack before pentesting): middleware (Tomcat/Nginx/IIS/Apache) historical bugs — Tomcat PUT upload (CVE-2017-12615), Nginx parsing bug/alias traversal (CVE-2017-7529 OOB read), IIS short filename/PUT; panels (BaoTa/phpMyAdmin/Adminer); gateways (the admin APIs of APISIX/Kong) -> cross-link `~/.zcode/skills/skill/知识库/api-gateway-test.md`.
 - Hardening baseline: minimal version exposure, directory permissions, default credentials zeroed out, management-plane isolation.
 
 ## 2. Penetration Testing [1000969] — core deep dive of this area
@@ -18,39 +18,39 @@ The knowledge-base node carries the full PTES/OSSTMM-style process. Representati
 ### 2.1 Full-process pipeline (self-drawn ASCII)
 
 ```
-[授权/范围界定]
+[Authorization/scope definition]
       │
       ▼
-①信息收集 ──被动: whois/ICP备案/CT日志(crt.sh)/GitHub泄露/网盘
-│            搜索语法: FOFA/Shodan/Hunter/Quake/Google Dork
-│   主动: 子域(subfinder/OneForAll)→存活(httpx)→端口(nmap/masscan)
-│          →目录(ffuf/dirsearch)→指纹(Wappalyzer/EHole)→JS资产(LinkFinder)
+① Reconnaissance ── Passive: whois/ICP registrations/CT logs (crt.sh)/GitHub exposures/cloud storage
+│                     Search syntax: FOFA/Shodan/Hunter/Quake/Google Dork
+│   Active: subdomains (subfinder/OneForAll) → liveness (httpx) → ports (nmap/masscan)
+│          → directories (ffuf/dirsearch) → fingerprints (Wappalyzer/EHole) → JS assets (LinkFinder)
       │
       ▼
-②漏洞扫描 ── xray/AWVS/W13Scan/nuclei(POC模板) + 手工验证
-│            Burp 全流量代理为工作台
+② Vulnerability scanning ── xray/AWVS/W13Scan/nuclei (PoC templates) + manual verification
+│                           Burp as the full-traffic proxy workbench
       │
       ▼
-③漏洞利用 ── 公开EXP(CVE复现) / 弱口令 / 逻辑洞 / 社工钓鱼拿初始访问
+③ Exploitation ── Public exploits (CVE reproduction) / weak passwords / logic flaws / social engineering and phishing for initial access
       │
       ▼
-④后渗透 ── 权限维持(webshell/内存马/计划任务) → 凭证抓取(mimikatz)
-│           → 内网信息收集 → 代理隧道(frp/Neo-reGeorg/ew) → 横向移动
+④ Post-exploitation ── Persistence (webshell/in-memory webshell/scheduled task) → credential access (mimikatz)
+│                      → internal reconnaissance → proxy tunnels (frp/Neo-reGeorg/ew) → lateral movement
       │
       ▼
-⑤清痕+报告(路径/证据/修复建议)
+⑤ Test cleanup + report (paths/evidence/remediation)
 ```
 
 ### 2.2 Key points per stage
 
-- **Information gathering**: the quality of information gathering decides the efficiency of everything downstream. Subdomains -> same C-segment -> sibling sites -> APIs/keys inside JS -> deep-dive cross-links `~/.zcode/skills/skill/知识库/recon-methodology.md`, `js-reverse-guide.md`, `info-leak-test.md`.
+- **Information gathering**: the quality of information gathering decides the efficiency of everything downstream. Subdomains -> same C-segment -> sibling sites -> APIs/keys inside JS -> deep-dive cross-links `~/.zcode/skills/skill/知识库/recon-methodology.md`, `~/.zcode/skills/skill/知识库/js-reverse-guide.md`, `~/.zcode/skills/skill/知识库/info-leak-test.md`.
   - Passive first (never touching the target): certificate transparency `crt.sh`, ICP-filing reverse lookup, GitHub/Gitee leaks (keys/internal domain names), netpan/wenku document leaks; cyberspace-mapping syntax (FOFA `domain=""`/`icon_hash=""`/`body=""`).
   - Active convergence: subdomain brute force + permutation (mutations) + JS-reference extraction -> liveness (httpx, filtering CDN/wildcard DNS) -> port layering (one full-range masscan pass + nmap top1000 fine scan) -> layered directory-brute-force dictionaries (common + framework-specific) + backup files (`.svn/.git/WEB-INF/web.xml`, `.rar/.tar.gz/.bak`).
   - Fingerprinting decides the playbook: identify framework/middleware/CMS -> strike the known 1day surfaces directly (nuclei tags), an order of magnitude faster than blind testing.
 - **Vulnerability scanning**: passive scanning (proxy mode: Burp+xray chaining, W13Scan) and active scanning (nuclei templates) complement each other; scanner results must be manually re-verified to guard against false positives.
   - Manual mainline: after login, walk the full business flow through the proxy so the traffic passively passes the scanner; then hand-test the high-risk surfaces (payment/recovery/upload/export).
   - API surface: exposed swagger -> object-graph batch id swapping (-> `~/.zcode/skills/api-pentest/知识库/鉴权与对象图.md`).
-- **Exploitation**: public CVEs first (1day against unpatched assets); logic bugs via business-flow comparison -> `../08-business/business-security.md`; combo chains upgrade single bugs -> `h1-组合攻击链短表.md`.
+- **Exploitation**: public CVEs first (1day against unpatched assets); logic bugs via business-flow comparison -> `../08-business/business-security.md`; combo chains upgrade single bugs -> `~/.zcode/skills/skill/知识库/h1-组合攻击链短表.md`.
 - **Post-exploitation**: the intranet is essentially information gathering (the community free-course viewpoint); the four classics of domain penetration (Kerberoasting/AS-REP/Golden/Silver Ticket), NTLM Relay; pick tunnels by protocol (ICMP/DNS/HTTP tunnels); for C2 secondary development see the representative posts "CS 4.4 Secondary-Development Notes: The Basics", "The Enhancements", and "CobaltStrike Analysis 2 - Beacon Parsing".
   - Persistence tiers: webshell (easy to detect) -> memory shell (§7.2) -> scheduled tasks/services (system layer) -> BIOS/Bootkit (hardware layer; in-tree cross-link Windows>Rootkit/BIOS).
   - Lateral movement: credential reuse (password-sync rate), fscan-style one-click subnet sweeping, abuse of management channels such as WSUS/SCCM/PAM.
@@ -66,7 +66,7 @@ The knowledge-base node carries the full PTES/OSSTMM-style process. Representati
 | Depth | Depth within one system | Initial access -> persistence -> lateral movement -> objective | Single bug + combo-chain impact proof |
 | Report | Fix-oriented | Tactical reconstruction + detection gaps | Platform grading |
 
-The knowledge base's penetration-testing node covers the first two perspectives; the SRC perspective (this machine's main workflow) -> `~/.zcode/rules/src-value-hunting.md`, `dig-scope-workflow.md`.
+The knowledge base's penetration-testing node covers the first two perspectives; the SRC perspective (this machine's main workflow) -> `~/.zcode/rules/src-value-hunting.md`, `~/.zcode/rules/dig-scope-workflow.md`.
 
 ### 2.4 Toolchain matrix
 
@@ -89,46 +89,46 @@ A WEB entry point maps to ATT&CK initial access (T1190 exploit public-facing app
 
 | Tree sub-node | ID | One-liner | Cross-link (skill knowledge base) |
 |---|---|---|---|
-| SQL injection | 1000967 | Unsanitized query strings spliced into SQL | `injection-test.md` |
-| XSS | 1000968 | Reflected input echoed back and executed in the browser | `xss-test.md` |
-| Stored XSS | 1001517 | Persisted in the DB, triggers for every visitor | `xss-test.md` |
-| CSRF | 1001515 | Sends cross-site requests riding the user's session | `csrf-test.md` |
-| SSRF | 1001511 | The server issues intranet requests on the attacker's behalf | `ssrf-test.md` + `h1-手法-SSRF信息泄露与配置.md` |
-| Command injection | 1001502 | Spliced into a system command | `rce-面定位.md` |
-| Command execution | 1001510 | Directly invokes execution functions | `rce-面定位.md` |
-| Code execution | 1001514 | eval/dynamic code injection | `ssti-专题.md` |
-| File inclusion | 1001505 | LFI/RFI | `path-traversal-lfi-test.md` |
-| File read | 1001508 | Path traversal reads arbitrary files | `path-traversal-lfi-test.md` |
-| Upload vulnerability | 1001503 | Upload an executable to get a shell | `file-upload-test.md` + `h1-高危害专项-文件上传链.md` |
-| Deserialization | 1001512 | Java/PHP object injection to RCE | `deserialization-test.md` + `deserialization-gadgets.md` (chain analysis -> the code-audit article in this directory) |
-| XXE injection | 1001507 | XML external entity reads files/SSRF | `h1-高危害专项-SQLi反序列化XXE.md` |
-| CORS hijacking | 1001513 | Overly broad cross-origin policy (**local rule: do not hunt**) | `cors-test.md` (reference material only) |
-| JSON hijacking | 1001509 | JSON interfaces readable by third-party pages | `idor-test.md`, object-graph approach reused |
-| Logic vulnerability | 1001506 | Business-flow defect | `../08-business/business-security.md` + `race-condition-test.md` |
+| SQL injection | 1000967 | Unsanitized query strings spliced into SQL | `~/.zcode/skills/skill/知识库/injection-test.md` |
+| XSS | 1000968 | Reflected input echoed back and executed in the browser | `~/.zcode/skills/skill/知识库/xss-test.md` |
+| Stored XSS | 1001517 | Persisted in the DB, triggers for every visitor | `~/.zcode/skills/skill/知识库/xss-test.md` |
+| CSRF | 1001515 | Sends cross-site requests riding the user's session | `~/.zcode/skills/skill/知识库/csrf-test.md` |
+| SSRF | 1001511 | The server issues intranet requests on the attacker's behalf | `~/.zcode/skills/skill/知识库/ssrf-test.md` + `~/.zcode/skills/skill/知识库/h1-手法-SSRF信息泄露与配置.md` |
+| Command injection | 1001502 | Spliced into a system command | `~/.zcode/skills/skill/知识库/rce-面定位.md` |
+| Command execution | 1001510 | Directly invokes execution functions | `~/.zcode/skills/skill/知识库/rce-面定位.md` |
+| Code execution | 1001514 | eval/dynamic code injection | `~/.zcode/skills/skill/知识库/ssti-专题.md` |
+| File inclusion | 1001505 | LFI/RFI | `~/.zcode/skills/skill/知识库/path-traversal-lfi-test.md` |
+| File read | 1001508 | Path traversal reads arbitrary files | `~/.zcode/skills/skill/知识库/path-traversal-lfi-test.md` |
+| Upload vulnerability | 1001503 | Upload an executable to get a shell | `~/.zcode/skills/skill/知识库/file-upload-test.md` + `~/.zcode/skills/skill/知识库/h1-高危害专项-文件上传链.md` |
+| Deserialization | 1001512 | Java/PHP object injection to RCE | `~/.zcode/skills/skill/知识库/deserialization-test.md` + `~/.zcode/skills/skill/知识库/deserialization-gadgets.md` (chain analysis -> the code-audit article in this directory) |
+| XXE injection | 1001507 | XML external entity reads files/SSRF | `~/.zcode/skills/skill/知识库/h1-高危害专项-SQLi反序列化XXE.md` |
+| CORS hijacking | 1001513 | Overly broad cross-origin policy (**local rule: do not hunt**) | `~/.zcode/skills/skill/知识库/cors-test.md` (reference material only) |
+| JSON hijacking | 1001509 | JSON interfaces readable by third-party pages | `~/.zcode/skills/skill/知识库/idor-test.md`, object-graph approach reused |
+| Logic vulnerability | 1001506 | Business-flow defect | `../08-business/business-security.md` + `~/.zcode/skills/skill/知识库/race-condition-test.md` |
 | Java vulnerabilities | 1000994 | Fastjson/Shiro/Log4j etc. | [code-audit.md](code-audit.md) §4 |
-| Information disclosure | 1001504 | Source/keys/backups exposed | `info-leak-test.md` |
-| URL redirect | 1001516 | Open redirect | `open-redirect-test.md` |
-| Others | 1001519 | Prototype pollution/cache poisoning/request smuggling etc. | `prototype-pollution-test.md`, `cache-poisoning-test.md`, `http-smuggling-test.md`, `websocket-test.md`, `subdomain-takeover-test.md`, `webshell-管理.md` |
+| Information disclosure | 1001504 | Source/keys/backups exposed | `~/.zcode/skills/skill/知识库/info-leak-test.md` |
+| URL redirect | 1001516 | Open redirect | `~/.zcode/skills/skill/知识库/open-redirect-test.md` |
+| Others | 1001519 | Prototype pollution/cache poisoning/request smuggling etc. | `~/.zcode/skills/skill/知识库/prototype-pollution-test.md`, `~/.zcode/skills/skill/知识库/cache-poisoning-test.md`, `~/.zcode/skills/skill/知识库/http-smuggling-test.md`, `~/.zcode/skills/skill/知识库/websocket-test.md`, `~/.zcode/skills/skill/知识库/subdomain-takeover-test.md`, `~/.zcode/skills/skill/知识库/webshell-管理.md` |
 
-Combo-chain perspective (chaining multiple bugs for escalation) -> `h1-组合攻击链短表.md` (top priority).
+Combo-chain perspective (chaining multiple bugs for escalation) -> `~/.zcode/skills/skill/知识库/h1-组合攻击链短表.md` (top priority).
 
 ## 4. Protocol Analysis [1001395] — deep dive of this area
 
 ```
-应用层:  GraphQL   HTTP/2   HTTP/1.1   WebSocket
-            │        Frame      报文      │Upgrade握手
+Application layer: GraphQL   HTTP/2   HTTP/1.1   WebSocket
+                       │      Frames   Messages    │ Upgrade handshake
             └────────┴─────────┴──────────┘
-                       TLS 1.3(加密层)
+                         TLS 1.3 (encryption layer)
                           │
-                    HTTP/3 = QUIC(UDP 443,内置 TLS1.3)
+                      HTTP/3 = QUIC (UDP 443, built-in TLS1.3)
 ```
 
-- **HTTP/1.1**: method/status-code semantics, Keep-Alive, why pipelining was abandoned; the root of classic request smuggling (CL/TE ambiguity) -> `http-smuggling-test.md`.
+- **HTTP/1.1**: method/status-code semantics, Keep-Alive, why pipelining was abandoned; the root of classic request smuggling (CL/TE ambiguity) -> `~/.zcode/skills/skill/知识库/http-smuggling-test.md`.
 - **HTTP/2** (RFC 9113): binary framing + multiplexing + HPACK header compression; h2c upgrade smuggling, cleartext h2c-to-backend smuggling; cache-key ambiguity.
 - **HTTP/3 / QUIC** (RFC 9114): UDP transport, 0-RTT replay risk, connection migration (Connection ID); capture requires QUIC decryption (Wireshark support is limited).
 - **TLS 1.3**: 1-RTT handshake, forward secrecy by default; MITM debugging relies on mitmproxy/Charles with a trusted root certificate; app-side SSL-pinning bypass -> `../../techniques/04-evasion/ssl-pinning-bypass.md`.
-- **WebSocket**: Upgrade handshake, missing Origin validation = cross-site WebSocket hijacking (CSWSH), session abuse when auth runs only once -> `websocket-test.md`.
-- **GraphQL**: introspection full-schema leak, batching against rate limits, deep-query DoS, field-level broken access control (an IDOR variant) -> `graphql-test.md` + `~/.zcode/skills/api-pentest/知识库/fuzz与业务逻辑.md`.
+- **WebSocket**: Upgrade handshake, missing Origin validation = cross-site WebSocket hijacking (CSWSH), session abuse when auth runs only once -> `~/.zcode/skills/skill/知识库/websocket-test.md`.
+- **GraphQL**: introspection full-schema leak, batching against rate limits, deep-query DoS, field-level broken access control (an IDOR variant) -> `~/.zcode/skills/skill/知识库/graphql-test.md` + `~/.zcode/skills/api-pentest/知识库/fuzz与业务逻辑.md`.
 - **App-private protocols**: capture and restoration of protobuf/custom encrypted bodies -> `../../techniques/04-evasion/capture-all-scenarios.md`.
 - API panorama (REST/RPC auth matrix, object graph) -> `~/.zcode/skills/api-pentest/知识库/鉴权与对象图.md`.
 
@@ -137,10 +137,10 @@ Combo-chain perspective (chaining multiple bugs for escalation) -> `h1-组合攻
 ### 5.1 WAF form factors and deployment positions (self-drawn ASCII)
 
 ```
-用户 → CDN(云WAF:阿里云盾/腾讯T-Sec/创宇盾) → 反代(软件:ModSecurity/Naxsi/雷池)
-     → 硬件盒子(F5 ASM/Imperva) → 应用侧 RASP(Contrast/JRASP)
+User → CDN (cloud WAF: Alibaba Cloud Shield/Tencent T-Sec/Knownsec) → reverse proxy (software: ModSecurity/Naxsi/SafeLine)
+     → appliances (F5 ASM/Imperva) → application-side RASP (Contrast/JRASP)
                                         │
-              检测引擎:正则/语义分析/机器学习/频次与声誉(树内 1001523 归类为工具)
+              Detection engines: regex/semantic analysis/machine learning/frequency and reputation (tree node 1001523 classifies these as tools)
 ```
 
 ### 5.2 Detection principles and bypass overview
@@ -154,7 +154,7 @@ Combo-chain perspective (chaining multiple bugs for escalation) -> `h1-组合攻
 
 - **Exposed-surface governance**: converge the public exposure of management ports (22/3389/6379/3306/9200), bastion hosts, jump hosts.
 - **Containers and cloud-native**: Docker 2375 unauthenticated access, K8s API 6443 anonymous/etcd 2379/dashboard, the image delivery chain; cross-link `../07-iot/` for the ICS surface and `~/.zcode/skills/ops-pilot/` for the deployment-side perspective.
-- **CI/CD**: Runner command execution, artifact poisoning, secrets leakage -> `insecure-scm-test.md`, `cloud-ide-codex-rce-chain.md`.
+- **CI/CD**: Runner command execution, artifact poisoning, secrets leakage -> `~/.zcode/skills/skill/知识库/insecure-scm-test.md`, `~/.zcode/skills/skill/知识库/cloud-ide-codex-rce-chain.md`.
 - **Configuration audit**: misconfiguration is the top root-cause class (cloud storage buckets, object listing, hardcoded keys); baseline tools (lynis/CIS-CAT).
 - Logging: access-log retention and alerting are the fuel of incident response (§7).
 
@@ -165,23 +165,23 @@ Community representative posts: "Solar Incident-Response Public Monthly CTF, Feb
 ### 7.1 The six PDCERF stages
 
 ```
-准备P → 检测D → 遏制C(断网/封IP/下线) → 根除E(清后门/补洞)
-                          → 恢复R(重部署/改密钥) → 跟踪F(复盘/加固)
+Preparation P → Detection D → Containment C (disconnect/block IP/take offline) → Eradication E (remove backdoors/patch flaws)
+                          → Recovery R (redeploy/rotate keys) → Follow-up F (review/harden)
 ```
 
 ### 7.2 Hunting tree (self-drawn)
 
 ```
-Linux:进程(ps -aux/top 异常CPU;netstat -antp 外连;lsof -p)
- ├─ 计划任务 crontab -l /etc/cron.* / systemd timer
- ├─ 自启 /etc/rc.local / init.d / systemd / ~/.ssh/authorized_keys
- ├─ 文件 find / -mtime -3 -type f;大小异常的 sh/php/jsp
- ├─ 日志 /var/log/secure·auth(爆破)、wtmp/btmp(last/lastb)、history
+Linux: processes (ps -aux/top for abnormal CPU; netstat -antp for outbound connections; lsof -p)
+ ├─ Scheduled tasks: crontab -l /etc/cron.* / systemd timer
+ ├─ Startup: /etc/rc.local / init.d / systemd / ~/.ssh/authorized_keys
+ ├─ Files: find / -mtime -3 -type f; sh/php/jsp files of unusual size
+ ├─ Logs: /var/log/secure·auth (brute force), wtmp/btmp (last/lastb), history
  └─ rootkit: chkrootkit / rkhunter
-Windows:进程(wmic process get)·服务·计划任务·注册表Run键·事件日志(4624/4625登录,4720建号)·IPC$/net user
-Web侧:access log 按 time+uri 聚类还原攻击路径 → 定位 webshell(时间戳/大小/特征)
- ├─ webshell 查杀:D盾/河马/CloudWalker
- └─ 内存马(Java):arthas sc *Filter / javaagent dump class 比对 web.xml 无配置的动态注册类
+Windows: processes (wmic process get), services, scheduled tasks, registry Run keys, event logs (4624/4625 logon, 4720 account creation), IPC$/net user
+Web: cluster access logs by time+uri to reconstruct the attack path → locate webshells (timestamp/size/signatures)
+ ├─ Webshell detection/removal: D-Shield/Hippo/CloudWalker
+ └─ Java in-memory webshells: arthas sc *Filter / javaagent class dumps; identify dynamically registered classes absent from web.xml
 ```
 
 - **Tracing**: replay from the first anomalous request -> the entry point (CVE/weak credentials/upload) -> the lateral path; attribute via IP/UA/tool fingerprints (the default sqlmap UA, etc.).
@@ -197,7 +197,7 @@ Web侧:access log 按 time+uri 聚类还原攻击路径 → 定位 webshell(时�
 | Autostart entries | `chkconfig`/`systemctl list-unit-files`, `cat ~/.ssh/authorized_keys` | Registry Run/RunOnce keys, services via `sc query` |
 | New/modified files | `find / -mtime -3 -type f -size -100k`, `find /var/www -name "*.jsp"` | forfiles by date, Everything sorted by size |
 | Login traces | `last`/`lastb`, `grep Accepted /var/log/secure` | Events 4624/4625/4720, `Log Parser` |
-| Web-log forensics | `grep -E "(select|union|eval|whoami)" access.log \| sort \| uniq -c` | Same as left (IIS: ex*.log) |
+| Web-log forensics | `grep -E "(select\|union\|eval\|whoami)" access.log \| sort \| uniq -c` | Same as left (IIS: ex*.log) |
 
 - **Webshell-locating signatures**: unreferenced orphan files, mtime matching the intrusion window, abnormally small size, encoded obfuscation (long gzip/base64 strings), `ANTSWORD`/`cmd` parameter patterns; when scanner false positives run high, converge manually on the three conditions "time window + directory + size".
 - **Memory-shell hunting (Java sites)**: compare the Filters/Servlets/Listeners registered via web.xml/annotations against the set of classes actually loaded at runtime (arthas `sc`/`sm`, javaagent dump); for the Spring flavor check the RequestMapping annotation table; the Agent flavor requires dumping the post-transform bytecode for comparison.
@@ -216,10 +216,10 @@ Web侧:access log 按 time+uri 聚类还原攻击路径 → 定位 webshell(时�
 | Type | Technique | Technical crossover |
 |---|---|---|
 | Spear phishing | Customized email + macro documents/LNK/HTML redirects | Macro reversing -> `../01-windows/malware.md` malicious scripts |
-| Credential phishing | Fake login page + adversary-in-the-middle (Evilginx-class reverse proxies relaying MFA) | OAuth/sessions -> `oauth-jwt-test.md` |
+| Credential phishing | Fake login page + adversary-in-the-middle (Evilginx-class reverse proxies relaying MFA) | OAuth/sessions -> `~/.zcode/skills/skill/知识库/oauth-jwt-test.md` |
 | Watering hole | Browser exploits planted on sites the target visits often | -> `../06-binary-vuln/` browser section |
 | Vishing/impersonation | Impersonating IT/a vendor to induce an MFA reset | Account security -> `../08-business/business-security.md` §2 |
-| OSINT intelligence | LinkedIn/job boards/Gitee/net drives aggregated into org charts and keys | GitHub dorks -> `insecure-scm-test.md` |
+| OSINT intelligence | LinkedIn/job boards/Gitee/net drives aggregated into org charts and keys | GitHub dorks -> `~/.zcode/skills/skill/知识库/insecure-scm-test.md` |
 
 ### 8.2 Detection and defense
 
@@ -238,11 +238,11 @@ Web侧:access log 按 time+uri 聚类还原攻击路径 → 定位 webshell(时�
 | waf | 1001523 | WAF detection/identification tools (the wafw00f class) + countermeasure scripts |
 | Others | 1001719 | nuclei/xray/ffuf and the modern chain (see §2.4) |
 
-Deep dives on the Burp ecosystem (extension development/batch automation) and AI assistance -> `token-spray-ai-dast.md`.
+Deep dives on the Burp ecosystem (extension development/batch automation) and AI assistance -> `~/.zcode/skills/skill/知识库/token-spray-ai-dast.md`.
 
 ## 10. Remaining nodes in one line
 
-- **Code analysis [1001382]**: static/dynamic analysis of source-less targets to locate bugs, JS decompilation and restoration -> `js-reverse-guide.md`; the binary surface -> `../06-binary-vuln/`.
+- **Code analysis [1001382]**: static/dynamic analysis of source-less targets to locate bugs, JS decompilation and restoration -> `~/.zcode/skills/skill/知识库/js-reverse-guide.md`; the binary surface -> `../06-binary-vuln/`.
 - **Experience sharing [1001498]**: scattered posts, already merged into each section's representative posts.
 - **CTF Web**: hangs in the tree under CTF writeup>Web [1001262]; the training-ground perspective (ssti/deserialization/JS library bugs) cross-links `../02-android/malware-and-ctf.md` §CTF.
 

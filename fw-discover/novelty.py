@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-# Kill-gate ② novelty dedupe: component/product name → NVD keywordSearch, with local cache and rate limiting
+"""Search NVD keywords for disclosure deduplication; zero hits do not prove novelty.
+
+Usage: python3 novelty.py <component> [extra terms ...]
+"""
+# Evidence gate ②: cached keyword search with rate limiting
 # Usage: python3 novelty.py bpalogin [fstools openwrt ...]
-# Output: per keyword hit count + CVE list; overall verdict: NEW (all 0) / KNOWN (hits, manual semantic comparison)
+# Output: keyword hit counts/CVEs; NEW means no keyword matches, not proof of novelty. ERR takes precedence when any query is incomplete.
 import json, sys, time, urllib.request, urllib.parse
 from pathlib import Path
 
@@ -13,9 +17,15 @@ OPENER = urllib.request.build_opener(urllib.request.ProxyHandler(PROXY))
 
 def nvd(keyword):
     CACHE.mkdir(parents=True, exist_ok=True)
-    cp = CACHE / (keyword.replace(" ", "_") + ".json")
+    safe_keyword = keyword.replace(" ", "_")
+    if any(value in safe_keyword for value in ("/", "\\", "..")):
+        safe_keyword = __import__("hashlib").sha256(keyword.encode()).hexdigest()
+    cp = CACHE / (safe_keyword + ".json")
     if cp.exists():
-        return json.loads(cp.read_text())
+        try:
+            return json.loads(cp.read_text())
+        except (OSError, ValueError):
+            print(f"NVD-CACHE-ERR {keyword}: invalid cache; querying again")
     url = "https://services.nvd.nist.gov/rest/json/cves/2.0?" + urllib.parse.urlencode({"keywordSearch": keyword})
     req = urllib.request.Request(url, headers=UA)
     for _ in range(3):
@@ -32,6 +42,15 @@ def nvd(keyword):
     return None
 
 
+def summarize_verdict(verdicts):
+    """A failed keyword search must never be promoted to a novelty conclusion."""
+    if not verdicts or "ERR" in verdicts:
+        return "ERR (incomplete search; manual recheck required)"
+    if "KNOWN" in verdicts:
+        return "KNOWN (keyword matches; manual root-cause/affected-version comparison needed)"
+    return "NEW (no keyword matches; novelty is not established)"
+
+
 def main():
     words = sys.argv[1:]
     if not words:
@@ -44,11 +63,24 @@ def main():
             print(f"{w}: query failed (network), manual recheck")
             verdicts.append("ERR")
             continue
-        n = data.get("totalResults", 0)
-        ids = [v["cve"]["id"] for v in data.get("vulnerabilities", [])][:8]
+        n = data.get("totalResults") if isinstance(data, dict) else None
+        if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+            print(f"{w}: incomplete/malformed NVD result; manual recheck")
+            verdicts.append("ERR")
+            continue
+        entries = data.get("vulnerabilities")
+        valid_entries = isinstance(entries, list) and all(
+            isinstance(entry, dict) and isinstance(entry.get("cve"), dict)
+            and isinstance(entry["cve"].get("id"), str) and entry["cve"]["id"].strip()
+            for entry in entries)
+        if not valid_entries or bool(n) != bool(entries) or len(entries) > n:
+            print(f"{w}: malformed/incomplete vulnerability list; manual recheck")
+            verdicts.append("ERR")
+            continue
+        ids = [entry["cve"]["id"] for entry in entries[:8]]
         print(f"{w}: hits {n} {ids}")
         verdicts.append("KNOWN" if n else "NEW")
-    print("verdict:", "KNOWN (manual semantic comparison needed)" if "KNOWN" in verdicts else ("NEW" if "NEW" in verdicts else "ERR"))
+    print("verdict:", summarize_verdict(verdicts))
 
 
 if __name__ == "__main__":

@@ -36,7 +36,7 @@ In one sentence: the three monetization schools of Android malware (traffic frau
 
 Main nodes: decompilers [1001292] / debuggers [1001293] / AXML parsing [1001295] / repackaging tools [1001359] / analysis systems (TaintDroid [1001642]) / Wallbreaker [1001663].
 
-3-line summary: decompiler shoot-out (jadx/IDA/Ghidra/JEB/CFR/Vineflower + version pitfalls), APKiD packer identification, DexKit queries, Androguard scripting — fully covered by the techniques library `../../techniques/05-toolbox/static-analysis-tools.md` (270 lines) + `../../techniques/05-toolbox/recon-and-specials.md` (the first minute after taking over an unfamiliar APK); the 100+ tool master table is at `../../techniques/05-toolbox/tool-master-table.md`. Historical tools in the tree (Andbug/eclipse/Wallbreaker) have been replaced by the jadx+frida ecosystem and are only of archaeological interest. **See the techniques library (same skill, re/techniques).**
+3-line summary: decompiler comparison (jadx/IDA/Ghidra/JEB/CFR/Vineflower + version pitfalls), APKiD packer identification, DexKit queries, Androguard scripting — fully covered by the techniques library `../../techniques/05-toolbox/static-analysis-tools.md` (270 lines) + `../../techniques/05-toolbox/recon-and-specials.md` (the first minute after taking over an unfamiliar APK); the 100+ tool master table is at `../../techniques/05-toolbox/tool-master-table.md`. Historical tools in the tree (Andbug/eclipse/Wallbreaker) have been replaced by the jadx+frida ecosystem and are only of archaeological interest. **See the techniques library (same skill, re/techniques).**
 
 ## 6. CTF [1001296] — techniques library has only an index, dug into depth here
 

@@ -17,10 +17,10 @@
 **Call chain**
 
 ```
-用户态 ioctl(fd, BINDER_WRITE_READ, &bwr)
+Userspace ioctl(fd, BINDER_WRITE_READ, &bwr)
   → binder_ioctl()                     // drivers/android/binder.c
-    → binder_thread_write()            // 解析 BC_TRANSACTION 等命令
-      → binder_transaction()           // 核心:分配 buffer、拷贝数据、fixup 引用
+    -> binder_thread_write()            // Parse BC_TRANSACTION and related commands
+      -> binder_transaction()           // Allocate buffers, copy data, and fix up references
 ```
 
 Source (android-mainline):
@@ -28,12 +28,12 @@ Header: `include/uapi/linux/android/binder.h` (same repo).
 **Key data structure** `struct binder_transaction_data` (uapi; when reversing, watch layout differences between 32/64-bit and binder.h versions):
 
 ```c
-union { __u32 handle; binder_uintptr_t ptr; } target; // 目标:handle(代理)或 ptr(本地节点)
-binder_uintptr_t cookie;      // 本地对象的私有数据
-__u32 code;                   // 方法号(AIDL 里的 transaction code)
+union { __u32 handle; binder_uintptr_t ptr; } target; // Target: handle for a proxy, or ptr for a local node
+binder_uintptr_t cookie;      // Private data for the local object
+__u32 code;                   // Method number (AIDL transaction code)
 __u32 flags;                  // TF_ONE_WAY / TF_ACCEPT_FDS ...
-pid_t sender_pid; uid_t sender_euid;   // 内核回填的发送者身份
-binder_size_t data_size; binder_size_t offsets_size;  // flat_binder_object 偏移数组
+pid_t sender_pid; uid_t sender_euid;   // Sender identity filled in by the kernel
+binder_size_t data_size; binder_size_t offsets_size;  // Offsets array for flat_binder_object entries
 union { struct { binder_uintptr_t buffer; binder_uintptr_t offsets; } ptr;
         __u8 buf[8]; } data;
 ```
@@ -71,10 +71,10 @@ union { struct { binder_uintptr_t buffer; binder_uintptr_t offsets; } ptr;
 **Scenario A: tracing pure native C++ functions (uprobe)**
 
 ```bash
-# app 的 so 里函数符号(未 strip 时):
+# Function symbols in the application's shared object, if not stripped:
 bpftrace -e 'uprobe:/data/app/.../libtarget.so:decryptkey { printf("arg0=%s\n", str(arg0)); }'
-# strip 过:用 IDA 里函数偏移,uprobe:libtarget.so:0x1234(ARM64:x0-x7=arg0-arg7,栈上其余)
-# 追系统进程/框架:
+# If stripped, use the IDA function offset: uprobe:libtarget.so:0x1234; ARM64 x0-x7 carry arg0-arg7, with remaining arguments on the stack
+# Trace system processes and framework functions:
 bpftrace -e 'uprobe:/system/lib64/libart.so:_ZN3art3JNI21GetStringUTFCharsEP7_JNIEnvP8_jstringPh* {...}'
 ```
 
@@ -96,7 +96,7 @@ ARM64 calling convention: x0-x7 pass arguments in order, return value in x0; bpf
 
 ```bash
 bpftrace -e 'kprobe:binder_transaction { $t=(struct binder_transaction*)arg2;
-  printf("target_handle? code=%d\n", $t->code); }'   # 需 BTF;无 BTF 用手算偏移+probe_read_kernel
+  printf("target_handle? code=%d\n", $t->code); }'   # Requires BTF; without BTF, compute offsets and use probe_read_kernel
 ```
 
 **Division of labor between kernel-layer trace and frida**: Java argument contents -> frida (convenient); algorithms/timing inside a so -> uprobe; cross-process/binder/syscalls -> kprobe/tracepoint; for stealth -> see the next piece.
@@ -124,16 +124,16 @@ bpftrace -e 'kprobe:binder_transaction { $t=(struct binder_transaction*)arg2;
 ## 8. Appendix A: from boot.img to a symbol table (production-device static analysis walkthrough)
 
 ```bash
-# 1. 拉 boot 分区(root)
+# 1. Read the boot partition (root required)
 adb shell su -c "dd if=/dev/block/by-name/boot$(adb shell getprop ro.boot.slot_suffix) of=/sdcard/boot.img"
-# 2. 解包
-magiskboot unpack boot.img          # 得到 kernel(可能 gz/lz4 压缩)
-magiskboot decompress kernel kernel.raw   # 按打印的压缩格式
-# 3. 提符号(三选一)
-vmlinux-to-elf kernel.raw vmlinux  # 社区标准工具
-# KernelPatch 工具链(自带符号提取,arm64 最准):
-#   https://github.com/bmax121/KernelPatch  tools/ 下 extra_symbol
-# 4. 进 IDA/Ghidra:找补丁月比对(GKI 安全公告 vs 目标 build 日期)
+# 2. Unpack
+magiskboot unpack boot.img          # Produces kernel, possibly compressed with gzip or lz4
+magiskboot decompress kernel kernel.raw   # Use the compression format reported by the tool
+# 3. Extract symbols (choose one route)
+vmlinux-to-elf kernel.raw vmlinux  # Common community tool
+# KernelPatch toolchain includes symbol extraction; strongest fit for arm64
+# https://github.com/bmax121/KernelPatch: extra_symbol under tools/
+# 4. Load into IDA/Ghidra and compare patch months: GKI security bulletin versus target build date
 ```
 
 Verdict rule: if the target's security patch level (SPL, `getprop ro.build.version.security_patch`) is older than the month the fix landed in android-common -> the bug is most likely present.
@@ -160,7 +160,7 @@ bpftrace -e '
 #include <linux/android/binder.h>
 kprobe:binder_transaction
 /comm == "target_app"/
-{ $d = (struct binder_transaction_data*)arg3;   // 布局随内核版本,先在 IDA 对 binder.h
+{ $d = (struct binder_transaction_data*)arg3;   // The structure layout varies by kernel version; verify binder.h in IDA first
   printf("code=%d data_size=%d\n", $d->code, $d->data_size);
   printf("first16: %r\n", buf($d->data.ptr.buffer, 16)); }'
 ```
@@ -171,15 +171,15 @@ kprobe:binder_transaction
 ```bash
 bpftrace -e 'uprobe:/data/local/tmp/target/libcrypt.so:0x27A4C
 { printf("key=%r in=%r\n", buf(arg1,32), buf(arg2,64)); }'
-# IDA 定位:§4 特征表(AES S-box `63 7C 77 7B` 常量交叉引用)
+# IDA locating: signature table in Section 4, using AES S-box bytes 63 7C 77 7B as cross-reference anchors
 ```
 
 **C3. Reading kernel pointers with KASLR bypass on a rooted device (probe_read_kernel family)**
 
 ```bash
 bpftrace -e 'kprobe:do_sys_openat2 { printf("path=%s\n", str(arg1)); }'
-# 深读内核结构:一律 kptr/(@[kaddr]) 语法触发 probe_read_kernel;
-# slide 反推:已知 kprobe 命中符号运行时地址 - boot.img 静态地址 = slide,后续符号全部 +slide
+# For deep kernel-structure reads, use kptr/(@[kaddr]) syntax to trigger probe_read_kernel
+# Compute slide = runtime address observed by kprobe minus static boot.img address; apply +slide to subsequent symbols
 ```
 
 ## 11. Appendix D: futex PI chain mechanism details (what you need to understand GhostLock)
@@ -205,12 +205,12 @@ bpftrace -e 'kprobe:do_sys_openat2 { printf("path=%s\n", str(arg1)); }'
 **Common kernel debug parameters (cmdline/bootconfig, for self-built kernels)**:
 
 ```
-nokaslr                    # 关地址随机化,GDB 断点地址才稳
-kgdboc=ttyMS0,115200       # KGDB over 串口(真机)
-kgdbwait                   # 启动时等待 GDB 连接
-earlycon=uart8250,mmio32,0x...   # 早期串口
-initcall_debug ignore_loglevel   # 日志全开
-audit=0                    # 关 audit 少噪声
+nokaslr                    # Disable address randomization to stabilize GDB breakpoint addresses
+kgdboc=ttyMS0,115200       # KGDB over a physical device's serial port
+kgdbwait                   # Wait for a GDB connection during boot
+earlycon=uart8250,mmio32,0x...   # Early serial console
+initcall_debug ignore_loglevel   # Enable verbose logs
+audit=0                    # Disable audit to reduce noise
 ```
 
 **GDB remote in three steps**:
@@ -218,8 +218,8 @@ audit=0                    # 关 audit 少噪声
 ```
 (gdb) set architecture aarch64
 (gdb) file vmlinux
-(gdb) target remote /dev/ttyUSB0     # 或 hvc/kgdb nmi 途径
-(gdb) b binder_transaction           # 符号来自附录 A 提取
+(gdb) target remote /dev/ttyUSB0     # Or connect through hvc/KGDB NMI
+(gdb) b binder_transaction           # Symbols extracted through Appendix A
 ```
 
 **SELinux kernel-side notes** (for post-root containment): the enforcing toggle is the `selinux_state` (new) or `selinux_enforcing` (old) global; the avc decision cache avc_cache can be "poisoned" to bypass (advanced); the user-space equivalent is `setenforce 0`.

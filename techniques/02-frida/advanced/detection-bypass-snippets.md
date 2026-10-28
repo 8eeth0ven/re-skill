@@ -92,9 +92,9 @@ cat /proc/mounts | grep -i -e ksu -e magisk -e zygisk -e apatch -e overlay
 ### 7.5 VPN / proxy detection bypass
 
 ```javascript
-// Hook用于绕过VPN和代理检测
+// Hooks for VPN and proxy detection bypass
 Java.perform(function () {
-    // Hook检查VPN的类和方法
+    // Hook the classes and methods that inspect VPN state
     var ConnectivityManager = Java.use('android.net.ConnectivityManager');
     ConnectivityManager.getNetworkInfo.overload('int').implementation = function (networkType) {
         console.log('Bypassing VPN detection...');
@@ -106,7 +106,7 @@ Java.perform(function () {
         return result;
     };
 
-    // Hook检查代理的类和方法
+    // Hook the classes and methods that inspect proxy state
     var System = Java.use('java.lang.System');
     System.getProperty.overload('java.lang.String').implementation = function (key) {
         console.log('Bypassing proxy detection for key: ' + key);
@@ -117,7 +117,7 @@ Java.perform(function () {
         return this.getProperty(key);
     };
 
-    // Hook检查代理的其他方法，如getDefaultProxy
+    // Hook other proxy accessors, such as getDefaultProxy
     var Proxy = Java.use('android.net.Proxy');
     Proxy.getDefaultHost.implementation = function () {
         console.log('Bypassing proxy detection in getDefaultHost...');
@@ -126,7 +126,7 @@ Java.perform(function () {
 
     Proxy.getDefaultPort.implementation = function () {
         console.log('Bypassing proxy detection in getDefaultPort...');
-        return -1; // 返回无效端口
+        return -1; // Return an invalid port
     };
 
     console.log('VPN and Proxy detection hooks installed.');
@@ -176,7 +176,7 @@ If you cannot move the certificate into the system directory, use the certificat
 If the above finds nothing (the obfuscated class name does not match), use this code to help locate the key certificate-pinning code:
 
 ```javascript
-//SSLpinning helper 帮助定位证书绑定的关键代码a
+// SSL pinning helper: locate the key certificate-pinning code
 Java.perform(() => {
     Java.use("java.io.File").$init.overload('java.io.File', 'java.lang.String').implementation = function (file, cert) {
         var result = this.$init(file, cert)

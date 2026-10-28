@@ -11,7 +11,7 @@ Seed queue (DD-WRT betas, real router firmware + OpenWrt factory images as the u
   → download (curl; DD-WRT sits behind the Anubis anti-bot, must go through curl's default UA — urllib gets blocked by the challenge page)
   → magic-number scan (TRX HDR0 / uImage / squashfs four byte-orders / gzip, strip at most 3 layers)
   → unsquashfs 4.7.5 unpack (old modified lzma variants won't unpack → flagged and skipped; sasquatch no longer builds on macOS, dropped)
-  → six analyzer rule classes → findings.jsonl + ledger
+  → the analyzer rule classes below → findings.jsonl + ledger
 ```
 
 ## Discovery rules (all local rules; a hit is a candidate)
@@ -35,7 +35,7 @@ python3 fw.py --once     # process a small batch: download → unpack → discov
 python3 fw.py --status   # progress
 ```
 
-Data lives in `../data/fw-discover/` (queue / findings / ledger / firmware and unpack trees). Target is 100 entries, **half-hour keepalive**: `keepalive-fw.sh` (runs `--once` while below 100; once the target is hit it announces the move to the manual/subagent screening stage and wraps up).
+Data lives in `../data/fw-discover/` (queue / findings / ledger / firmware and unpack trees). The initial milestone is 100 candidate entries. **Half-hour keepalive**: `keepalive-fw.sh` dispatches incremental `--once` batches 1800s apart, for at most 40 rounds (~20 hours). The current stop gate is queue exhaustion after one seed refresh, rather than the candidate count: reaching 100 starts the screening milestone but does not discard pending firmware. The loop then exits and hands the accumulated candidates to manual/subagent screening. Run only when requested or from an already configured host schedule; the script does not install a schedule.
 
 ## Screening stage (mandatory after hitting the target; human or subagent)
 

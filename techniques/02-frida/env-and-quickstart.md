@@ -24,7 +24,7 @@ npm i @types/frida-gum
 First write a minimal runnable script to check whether the environment works:
 
 ```javascript
-// 最小脚本:验证 Java 层可用
+// Minimal script: verify that the Java layer is available
 function main(){
     Java.perform(()=>{
         console.log("成功运行")
@@ -38,7 +38,7 @@ setImmediate(main)
 ### 3.1 spawn mode (-f pulls the process up from scratch)
 
 ```bash
-frida -U -f 包名 -l 脚本.js
+frida -U -f com.example.app -l script.js
 ```
 
 Here `-U` selects the device (a USB device), and `-f` launches in spawn mode. In spawn mode the script takes effect at the app's earliest stage, which suits hooking Application, packer initialization, JNI_OnLoad, and other early logic.
@@ -46,7 +46,7 @@ Here `-U` selects the device (a USB device), and `-f` launches in spawn mode. In
 ### 3.2 attach mode (-F attaches to the foreground app)
 
 ```bash
-frida -H 192.168.0.100:14725 -F -l 脚本.js
+frida -H 192.168.0.100:14725 -F -l script.js
 ```
 
 `-F` launches in attach mode, and `-H` connects to that address; the frida-server side must also be switched to the matching port.
@@ -81,7 +81,7 @@ All Java-layer hooks must be wrapped in `Java.perform` to run (executed once the
 
 ```javascript
 Java.perform(function () {
-    // 这里拿类、改 implementation
+    // Resolve classes here and replace their implementation
     var ExampleClass = Java.use('com.example.ExampleClass');
 });
 ```

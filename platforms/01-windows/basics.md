@@ -441,7 +441,7 @@ Best practice = combine both + cross-validation (capstone supports per-instructi
 | W32Dasm | 1000119 | Veteran static + simple dynamic; intuitive string/import cross-references (a teaching classic) |
 | Hiew | 1000122 | Hex + embedded assembly patching; the patching essential of its day |
 | Ghidra | 1001389 | NSA open source; free decompiler alternative; scripting (1001490)/practical tips (1001491) |
-| angr | 1001369 | Symbolic execution platform (VEX IR); automatic path-constraint solving (a keygen-solving weapon) |
+| angr | 1001369 | Symbolic execution platform (VEX IR); automatic path-constraint solving (a tool for solving keygen constraints) |
 | Miasm | 1001455 | French CEA symbolic execution/JIT framework |
 | 010 Editor | 1001524 | Binary templates (syntax-highlighted parsing of PE/ELF/custom formats) |
 | Data-flow analysis | 1001709 | Taint/data flow, automated tracking |

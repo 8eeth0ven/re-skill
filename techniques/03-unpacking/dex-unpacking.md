@@ -134,7 +134,7 @@ function dump_dex() {
     for (var index = 0; index < symbols.length; index++) {
         var symbol = symbols[index];
         var symbol_name = symbol.name;
-        //这个DefineClass的函数签名是Android9的
+        // This DefineClass signature is for Android 9
         //_ZN3art11ClassLinker11DefineClassEPNS_6ThreadEPKcmNS_6HandleINS_6mirror11ClassLoaderEEERKNS_7DexFileERKNS9_8ClassDefE
         if (symbol_name.indexOf("ClassLinker") >= 0 &&
             symbol_name.indexOf("DefineClass") >= 0 &&
@@ -213,7 +213,7 @@ function loadDex(dexPath, optimizedDirectory, librarySearchPath, parent) {
     return DexClassLoader.$new(dexPath, optimizedDirectory, librarySearchPath, parent);
 }
 
-// 加载两个so
+// Load both shared libraries
 function main() {
     Java.perform(() => {
         var cl = loadDex( "/data/data/th.co.truemoney.wallet/files/hook.dex", "/data/data/th.co.truemoney.wallet/cache", null, Java.classFactory.loader);
@@ -230,11 +230,11 @@ If you already hold an ArtMethod pointer, you can chain straight to the DexFile 
 
 ```javascript
 function getDexFile(artmethod) {
-    // 读取declaring_class_
+    // Read declaring_class_
     const declaring_class_ = ptr(artmethod.readU32())
-    // 读取dex_cache_
+    // Read dex_cache_
     const dex_cache_ = ptr(declaring_class_.add(8 * 2).readU32());
-    // 读取DexFile
+    // Read DexFile
     return dex_cache_.add(16).readPointer()
 }
 ```

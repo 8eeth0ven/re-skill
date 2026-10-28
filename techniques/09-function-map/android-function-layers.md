@@ -70,11 +70,11 @@ Memory mnemonic: java.lang→libart, crypto→libjavacrypto, android.*→libandr
 ```
 new FileInputStream("/sdcard/a.dat").read(buf)
   → L1  FileInputStream.read(byte[])                    [libcore Java]
-  → L2  Java_java_io_FileInputStream_readBytes          [libjavacore.so 导出]
-  → L3  openat() / read()                               [libc.so 导出]
-  → L4  svc #0,x8=56(openat)/ x8=63(read)              [指令级]
+  -> L2  Java_java_io_FileInputStream_readBytes          [libjavacore.so export]
+  -> L3  openat() / read()                               [libc.so export]
+  -> L4  svc #0,x8=56(openat)/ x8=63(read)              [instruction level]
   → L5  sys_openat → do_sys_openat2 → do_filp_open;
-        ksys_read → vfs_read → 文件系统 read_iter       [kernel]
+        ksys_read -> vfs_read -> filesystem read_iter    [kernel]
 ```
 
 Read it alongside the fallback doc: hook L1 detected → L2 exported symbols → L3 libc (mind byte verification) → L4 svc (mind app direct calls) → L5 (needs root).

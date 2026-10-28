@@ -18,14 +18,14 @@ HAP = a **signed ZIP** (same idea as APK; unzip directly):
 
 ```
 xxx.hap (zip)
-├── pack.info                 # 打包元信息(module 列表)
-├── module.json               # ≈ AndroidManifest.json:ability/权限/API 版本
-├── assets/ 或 ets/           # 前端资源
-│   └── modules.abc           # ★ ArkTS 编译产物(方舟字节码,本篇主角)
-├── libs/{arm64-v8a,...}/     # native .so(NAPI,C/C++ 产物,标准 ELF)
+├── pack.info                 # Package metadata (module list)
+├── module.json               # Similar to AndroidManifest.json: abilities/permissions/API version
+├── assets/ or ets/           # Frontend resources
+│   └── modules.abc           # ArkTS compiler output (Ark bytecode; the main analysis target here)
+├── libs/{arm64-v8a,...}/     # Native .so (NAPI, C/C++ output, standard ELF)
 │   └── libentry.so / libace_napi.z.so ...
-├── resources/                # 资源索引(resources.index)
-└── META-INF/                 # 签名块(CERT.SF 系,华为证书链)
+├── resources/                # Resource indexes (resources.index)
+└── META-INF/                 # Signature block (CERT.SF family, Huawei certificate chain)
 ```
 
 Companion packages: .har (static shared package, ≈AAR), .hsp (dynamic shared package), .app (the multi-HAP aggregation upload format). There must be exactly one Entry-type HAP; Feature types can be split.
@@ -41,9 +41,9 @@ Companion packages: .har (static shared package, ≈AAR), .hsp (dynamic shared p
 ### 3.1 The compile chain
 
 ```
-ArkTS(.ets) → [ArkTS 编译器(tsc 扩展)] → 方舟字节码 .abc(Panda/Ark IR)
-                                   └→ AOT/JIT 运行时:方舟 RTS(ArkCompiler Runtime,ets_runtime)
-C/C++ → NAPI → .so(ELF,标准工具链,但链接 bionic 替代品 musl 系)
+ArkTS(.ets) → [ArkTS compiler (tsc extension)] → Ark bytecode .abc (Panda/Ark IR)
+                                              └→ AOT/JIT runtime: Ark RTS (ArkCompiler Runtime, ets_runtime)
+C/C++ → NAPI → .so (ELF, standard toolchain, linked against a musl-family replacement for bionic)
 ```
 
 - The `.abc` file: magics of the `pandasm`/`0sA0` family `[to-verify: current-version magic]`, containing the literal pool + records (record ≈ class) + method bytecode;
@@ -137,14 +137,14 @@ HarmonyOS's signature feature = cross-device networking (phones/tablets/automoti
 ## §8 Quick-start checklist (the first ten minutes with a hap)
 
 ```
-1. file xxx.hap → unzip -d hap_out/                     # 解包
-2. 读 module.json:ability 清单/权限列表/debuggable 标志
-3. ls libs/*/ → .so 清单(第三方 SDK 指纹:加固/风控/统计)
-4. abc2txt assets/ets/modules.abc > abc.txt             # 字节码 dump(或 abc-decompiler)
-5. grep 字符量池:url/key/token/签名盐 → 定位网络与加密层
-6. .so 进 IDA/r2:NAPI 导出(napi_module_register 起)→ 常规 ELF 流
-7. 动态:DevEco 模拟器装包 + hdc 日志;抓包先试系统代理(ohos 支持 HTTP 代理设置)
-8. 不通 → 切同 app Android 包逆向(双框架同源),结论回灌
+1. file xxx.hap → unzip -d hap_out/                     # Unpack
+2. Read module.json: ability list / permission list / debuggable flag
+3. ls libs/*/ → .so inventory (third-party SDK fingerprints: packing/risk control/analytics)
+4. abc2txt assets/ets/modules.abc > abc.txt             # Bytecode dump (or use abc-decompiler)
+5. Search the literal pool for url/key/token/signature salts → locate networking and cryptographic layers
+6. Load .so into IDA/r2: NAPI exports (start at napi_module_register) → standard ELF workflow
+7. Dynamic: install in the DevEco emulator + inspect hdc logs; try the system proxy first (ohos supports HTTP proxy settings)
+8. If unavailable, reverse the Android build of the same app (shared dual-framework code) and feed the findings back
 ```
 
 ## §9 The open-source cognitive base: using the OpenHarmony repos

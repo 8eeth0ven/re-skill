@@ -58,8 +58,8 @@
 ### Driver Protection — Analysis of EAC's Kernel-Debug Detection (orig: 驱动保护-EAC内核调试检测分析)
 (Anakin) EAC's anti-kernel-debug trio plus the generic solution: (1) an active TF single-step exception (`pushfq;bts rax,8;popfq`) — windbg `gn` (ignore) passes; (2) an active CC breakpoint: if the debugger takes it, `KdEnterDebugger` writes `KdEnteredDebugger`, triggering an EAC-preset hardware write breakpoint (dr0); the exception recurs into the debugger → resource exhaustion runs `KeBugCheckEx`, which triggers the dr1 hardware execute breakpoint → deadlock with no dump generated; the solution = suspend the VM, vmss2core to a dump, NOP `nt!KdEnterDebugger+0x131` (the mov writing KdEnteredDebugger) and `nt!KdExitDebugger+0x6`; (3) zeroing `KdDebuggerEnabled` to cut off the debugging machine. **The generic solution (works equally against TP-class detection)**: move `KdDebuggerEnabled/KdDebuggerNotPresent` elsewhere (e.g. +2); IDA xrefs or windbg hardware breakpoints find every referencing instruction, each `eb`-patched for the new addressing offset; the original address keeps a faked "disabled" state to feed the detection. Careful not to touch `ExpQuerySystemInformation`, or NtQuerySystemInformation gives you away instead.
 ```
-# Win10 17763 示例:eb nt!KdDebuggerEnabled 01 00 01 00;再对 KdPollBreakIn/KdEnterDebugger/KdExitDebugger/KdpSendWaitContinue/KdpCreateRemoteFile 等各引用点 +2/+3 逐条 eb 改字节
-# (省略:12 条具体 eb 偏移清单,按 xref 找齐引用即可复现)
+# Win10 17763 example: eb nt!KdDebuggerEnabled 01 00 01 00; then patch the +2/+3 bytes at references in KdPollBreakIn/KdEnterDebugger/KdExitDebugger/KdpSendWaitContinue/KdpCreateRemoteFile with individual eb commands
+# Omitted: the 12 specific eb offsets; locate all references by xref to reproduce
 ```
 ### Hide your DebugPort in ring0 (orig: Hide your DebugPort in ring0)
 (wowelf) **The DebugPort switcheroo** (XP): every kernel instruction accessing DebugPort has the form `8b89bc000000 mov ecx,[ecx+0BCh]`; change the offset byte 0xBC to 0x70 (CreateTime — the system never writes it after process creation) — **one byte fixes one reference**; functions involved: PspCreateProcess/MmCreatePeb/DbgkCreateThread/KiDispatchException/DbgkForwardException/DbgkpQueueMessage/PspExitThread/DbgkExitThread/DbgkExitProcess/DbgkMapViewOfSection/DbgkUnMapViewOfSection/DbgkpSetProcessDebugObject/DbgkpMarkProcessPeb; signature-locating these unexported functions is the bulk of the work — on a given system, windbg `uf` to copy addresses and hardcode is fastest; NOP the code around `PS_CROSS_THREAD_FLAGS_HIDEFROMDBG` (ThreadHideFromDebugger) and thread hiding dies too.
@@ -87,10 +87,10 @@
 ### The FUTo rootkit, Introduced (orig: FUTo rootkit 简介)
 (Ptero) **The standard teaching of DKOM process hiding**: Blacklight's detection = PID blasting (OpenProcess over 0..0x4E1C) ∩ the CreateToolhelp32Snapshot diff; OpenProcess→NtOpenProcess→PsLookupProcessByProcessId→`ExMapHandleToPointer(PspCidTable,PID)` — hiding = unlinking the PspCidTable entry. Locating the unexported PspCidTable: disassemble PsLookupProcessByProcessId for the first call's (ExMapHandleToPointer) argument; the sturdier Opc0de way = the KPCR's KdVersionBlock points at KDDEBUGGER_DATA32, which holds PsLoadedModuleList/PsActiveProcessHead/PspCidTable, the whole unexported-variable set. **Pitfall**: after nulling a handle entry, the system grabs NULL from the table at process exit and blue-screens — register PsSetCreateProcessNotifyRoutine and, in the process-destroy callback, restore the object pointer before letting the system finish the exit.
 ```c
-// PspCidTable 摘项核心(两地址未导出,硬编码或按 KdVersionBlock 动态定位)
+// Core PspCidTable entry removal; both addresses are unexported, so hardcode for the version or locate via KdVersionBlock
 e = ExMapHandleToPointer((PHANDLE_TABLE)PspCidTable, LongToHandle(*(DWORD*)(eproc+PIDOFFSET)));
-if (e) e->Object = 0;   // 该 PID 从此"不存在"
-// (省略:函数指针类型定义与版本化地址获取)
+if (e) e->Object = 0;   // This PID no longer resolves through the table
+// Omitted: function-pointer type declarations and version-specific address lookup
 ```
 > Same approach: "ring0 Detecting Hidden Processes", "Hiding Processes at ring0 Without a Driver", "Finding Hidden Drivers", "DKOM Hiding Drivers", "Hidden-Driver Gadget", "pspcidtable Fully Explained", "PspCidTable Miscellany", "A Simple Algorithm Walking the PspCidTable Handle Table", "Changes to PspCidTable in Windows8/8.1", "A Journey into pspcidtable (Getting the Address via KPCR)", "X64 REMOVE PSPCIDTABLE", "Thoughts and Explorations from PspCidTable", "Driver Development: Enumerating the PspCidTable Handle Table in the Kernel", "Locating PspCIdTable Without Hardcoded Searches" (KdSystemDebugControl(SysDbgQueryVersion)→DBGKD_GET_VERSION64.DebuggerDataList→KDDEBUGGER_DATA64), "ring0 Memory-Search Thread Enumeration", "Enumerating Processes: ring3->ring0"
 ### Analysis of a Driver Trojan (orig: 一个驱动木马的分析)

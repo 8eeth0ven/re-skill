@@ -72,7 +72,7 @@ Interceptor.attach(module.base.add(0x4b614), {
         onEnter: function (args) {
             var curTid = Process.getCurrentThreadId();
             Stalker.follow(curTid, {
-                // 直接创建block块，什么都不做
+                // Emit the basic block without additional instrumentation
                 transform: function (iterator) {
                     while (true){
                         if (iterator.next() === null){
@@ -164,13 +164,13 @@ transform: function (iterator) {
 ### 1.6 Common APIs
 
 ```javascript
-// 排除这个区域
+// Exclude this address range
 Stalker.exclude({base,size});
-// 停止对某个基本块的跟踪
+// Stop tracking the specified basic block
 Stalker.unfollow();
-// 清理 Stalker 使用的内存和资源
+// Release the memory and resources used by Stalker
 Stalker.garbageCollect();
-// 强制 Stalker立即清空这个缓冲区
+// Force Stalker to flush its buffer immediately
 Stalker.flush()
 ```
 
@@ -256,9 +256,9 @@ iterator.putCallout((context) => {
 ### 1.10 Changing register values
 
 ```javascript
-context.x8 = 0x12345678;  // 修改 x8 寄存器
-context.x0 = 0x9abcdef0;  // 修改 x0 寄存器
-context.pc = context.pc.add(4);  // 修改 pc 寄存器，跳过当前指令（示例）
+context.x8 = 0x12345678;  // Modify register x8
+context.x0 = 0x9abcdef0;  // Modify register x0
+context.pc = context.pc.add(4);  // Advance pc past the current instruction (example)
 ```
 
 

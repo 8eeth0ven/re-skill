@@ -4,10 +4,10 @@
 ## 1. The CAN Bus
 
 ```
-节点(ECU) ──┐
-节点(网关) ──┼── CAN_H/CAN_L(差分,120Ω 双端)── 广播无地址
-节点(仪表) ──┘   仲裁:ID 小优先级高;无认证无加密
-帧: [SOF|ID(11/29)|RTR|DLC|DATA(0-8B)|CRC|ACK|EOF]
+Node (ECU) ──────┐
+Node (gateway) ──┼── CAN_H/CAN_L (differential, 120Ω at both ends) ── address-free broadcast
+Node (cluster) ──┘   Arbitration: lower ID has higher priority; no authentication or encryption
+Frame: [SOF|ID(11/29)|RTR|DLC|DATA(0-8B)|CRC|ACK|EOF]
 ```
 
 - "CAN protocol analysis" (message structure and experimental methods)
@@ -35,7 +35,7 @@ A simulation environment approaching a real domain architecture, with no physica
 - Architecture: the VCU vehicle-control domain (BDCAN body + ASCAN autonomous driving, joined by a cangw gateway) + the HU infotainment domain (ICCAN instrument cluster + CAMCAN cameras), the domains interconnected over Ethernet; the two Ethernet links are VLAN-separated by security level (ADAS messages and ordinary control messages in separate broadcast domains).
 - Vehicle functions simulated with ICSim: `./icsim vcanic` drives the instrument cluster, `./controls vcanbd` simulates body components emitting CAN frames; create the vcan:
 ```
-sudo ip link add name vcanic type vcan && sudo ip link set dev vcanic up   # vcanbd 同理
+sudo ip link add name vcanic type vcan && sudo ip link set dev vcanic up   # Repeat the same setup for vcanbd
 ```
 - CAN-ETH cross-domain bridging with cannelloni (SocketCAN over UDP; a single machine tells the domains apart by port):
 ```

@@ -1,8 +1,8 @@
-# Breach Table — Open-Source C/C++ (CVE Grinding at the Component Layer)
+# Vulnerability Validation Table — Open-Source C/C++ (Component-Level Vulnerability Research)
 
 > The master table is at `../breach-tables-cve.md` (the index); this table expands the open-source C/C++ surface, same format as the master. The open-source rhythm: **target selection (parsing surfaces nobody fuzzes) → hotspot localization (fix diffs/complexity/integer arithmetic) → AFL++ runs → ASAN triage → minimal PoC → GitHub SA/email embargo**. CVE-worthy = policy violation + exploitability proof + impact scope (see `../disclosure-cve.md`).
 
-| What to recognize | Where to hit | What counts as a hit | False leads |
+| Recognition signal | Validation action | Confirmation criteria | Exclusions and false positives |
 | --- | --- | --- | --- |
 | A candidate project absent from the OSS-Fuzz coverage list | Clone the oss-fuzz repo, `ls projects/`, check the target name; absent + has a file/network parsing surface = blank zone; start an AFL++ container: `docker run -v $PWD:/src aflplusplus/aflplusplus`. Engine choice in `../platforms/06-binary-vuln/vuln-types-exploitation.md` §7 | ASAN reporting controllable memory corruption + a minimal PoC | The project claims "internal fuzzing" that doesn't cover the target parsing branch (check the CI config for real coverage) |
 | The project has a recent security-fix commit (a minor-version bump) | `git log -p --grep="fix\|overflow\|bounds\|CVE-"` for the fix diff; check whether the fixed function's **same-pattern call sites** (`rg "<function name>" -t c`) remain unfixed; a fix that only adds one if is usually a local patch | Incomplete patch: the patch fixes one spot, another same-pattern site still triggers = a new CVE | The fix was a full rewrite (the same-pattern sites are gone); the new bug shares the old root cause and gets merged (state the differences proactively when filing) |

@@ -4,11 +4,11 @@
 ## 1. The SDR On-Ramp
 
 ```
-rtl-sdr(2832U+R820T2,~100元) → GNURadio(流图) → 分析/重放
+rtl-sdr (2832U+R820T2, ~CNY 100) → GNURadio (flowgraph) → analysis/replay
    │                            │
    ▼                            ▼
-433/315 遥控抄表            inspectrum 看时频
-HackRF One(发射+宽带)        Universal Radio Hacker(解调/重放 GUI)
+433/315 remote controls/meter reading    inspectrum for time-frequency inspection
+HackRF One (transmit + wideband)          Universal Radio Hacker (demodulation/replay GUI)
 ```
 
 ## 2. The SDR Community Thread Cluster
@@ -26,11 +26,11 @@ Typical flow: `rtl_sdr` capture → eyeball the pulses in inspectrum → URH aut
 ### 3.1 The System and Attack Surface
 
 ```
-手机 ── IMSI(明文,GSM/部分LTE) ──► 基站
-        A3/A8 COMP128(卡侧)          │
-        A5/1 A5/2 空口加密(弱)       ▼
-                          伪基站(IMSI catcher):伪造小区强制驻留→下发短信/吸费
-5G:SUCI 加密 IMSI(公钥隐藏)+ 网络对卡鉴权增强 → 伪基站大幅失效,但降级(5G→2G)仍是现实面
+Phone ── IMSI (plaintext, GSM/some LTE) ──► Base station
+         A3/A8 COMP128 (SIM side)          │
+         A5/1 A5/2 radio encryption (weak) ▼
+                        Rogue base station (IMSI catcher): spoof cell → force camping → deliver SMS/charge fraud
+5G: SUCI encrypts the IMSI (public-key concealment) + stronger network authentication by the SIM → reduces rogue-base-station effectiveness; downgrade (5G→2G) remains an attack surface
 ```
 
 ### 3.2 Thread Cluster and Methods

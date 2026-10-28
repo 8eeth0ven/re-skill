@@ -8,15 +8,15 @@
 ## 0. The global picture: how the five chains string together
 
 ```
-链1 进程诞生            链2 so加载                 链4 内存分配
+Chain 1: process creation    Chain 2: SO loading             Chain 4: memory allocation
 AMS → zygote fork  →   System.loadLibrary     ←   malloc/new
-  (kernel_clone)         → dlopen → mmap         → scudo → mmap(链5补页)
+  (kernel_clone)         → dlopen → mmap         → scudo → mmap (chain 5: demand paging)
        │                     │ relocate            │
        ▼                     ▼ init_array          ▼
-Application.onCreate     JNI_OnLoad ←──────── 缺页第一次访问(链5)
-  │ Thread.start(链3)       │
+Application.onCreate     JNI_OnLoad ←──────── first-access page fault (chain 5)
+  │ Thread.start(chain 3)   │
   ▼                         ▼
-Activity.onCreate      RegisterNatives / 自解密 / 自检
+Activity.onCreate      RegisterNatives / self-decryption / integrity checks
 ```
 
 One-sentence version: fork builds the shell (the address space inherits zygote via COW), dlopen lays the road (segment mapping + relocation), init_array/JNI_OnLoad starts the race (the packer's self-checks and decryption usually live here), malloc/faults feed the runtime (all dynamic behavior ultimately lands on the two kernel entrances vm_mmap_pgoff / do_page_fault).
@@ -29,60 +29,60 @@ One-sentence version: fork builds the shell (the address space inherits zygote v
 system_server(AMS)
 └─ ActivityManagerService.startProcessLocked
    └─ Process.start() → ZygoteProcess.start
-      └─ 写 /dev/socket/zygote(本地 socket,非 binder;binder 面见 07 区 eBPF 篇)
-         请求体:uid/gid/gids、seinfo、niceName、ABI、rlimit、seccomp policy、mountMode…
-zygote(64 位主 zygote;32 位 app 走 secondary zygote)
-└─ ZygoteServer.runSelectLoop(epoll 等 socket)
+      └─ Write /dev/socket/zygote (local socket, not binder; binder coverage: area 07 eBPF article)
+         Request body: uid/gid/gids, seinfo, niceName, ABI, rlimit, seccomp policy, mountMode…
+zygote (64-bit primary zygote; 32-bit apps use secondary zygote)
+└─ ZygoteServer.runSelectLoop (epoll waits for socket)
    └─ ZygoteConnection.runOnce
-      ├─ 读参数列表、校验 uid
+      ├─ Read argument list and validate uid
       └─ forkAndSpecialize
          └─ nativeForkAndSpecialize(com_android_internal_os_Zygote.cpp)
-            └─ bionic fork()(libc/bionic/fork.cpp:先跑 pthread_atfork prepare 链)
-               └─ svc __NR_clone(220),flags 仅 SIGCHLD   ←★ 不是 CLONE_VM!
-                  └─ sys_clone → kernel_clone(kernel/fork.c v5.10:2415 行,实测核对)
-                     ├─ copy_process(2456 行)
-                     │  ├─ dup_task_struct(slab 分配 task_struct,复制父进程字段)
-                     │  ├─ copy_creds:fork 无 CLONE_THREAD → 新 cred(此刻仍同 zygote)
-                     │  ├─ copy_files:无 CLONE_FILES → 复制 fd 表
-                     │  ├─ copy_mm(1379 行):无 CLONE_VM → dup_mm → dup_mmap
-                     │  │  └─ copy_page_range(593 行):逐 VMA 复制 PTE,可写页只读化 = COW
-                     │  │     (zygote 预加载的类/资源页从此父子共享,app 启动快的根因)
-                     │  ├─ copy_thread:设子进程返回上下文(子进程 fork 返回 0)
-                     │  ├─ sched_fork:初始化调度实体(CFS/EEVDF)
-                     │  └─ 分配 pid/tid
-                     ├─ trace_sched_process_fork(2466 行)   ←★ eBPF tracepoint 挂点
-                     └─ wake_up_new_task(2480 行)→ 入运行队列
-   ───────────── 内核返回,父子分道 ─────────────
-子进程(仍带 zygote 全部权限)
+            └─ bionic fork() (libc/bionic/fork.cpp: pthread_atfork prepare chain runs first)
+               └─ svc __NR_clone(220), flags only SIGCHLD   ←★ not CLONE_VM!
+                  └─ sys_clone → kernel_clone(kernel/fork.c v5.10:2415, checked against the tested source)
+                     ├─ copy_process(line 2456)
+                     │  ├─ dup_task_struct(slab allocates task_struct; copy parent fields)
+                     │  ├─ copy_creds: fork without CLONE_THREAD → new cred (still matching zygote)
+                     │  ├─ copy_files: no CLONE_FILES → copy fd table
+                     │  ├─ copy_mm(line 1379): no CLONE_VM → dup_mm → dup_mmap
+                     │  │  └─ copy_page_range(line 593): copy PTEs per VMA, make writable pages read-only = COW
+                     │  │     (Parent and child share zygote-preloaded class/resource pages; this speeds app startup)
+                     │  ├─ copy_thread: set child return context (fork returns 0 in child)
+                     │  ├─ sched_fork: initialize scheduling entity (CFS/EEVDF)
+                     │  └─ Allocate pid/tid
+                     ├─ trace_sched_process_fork(line 2466)   ←★ eBPF tracepoint
+                     └─ wake_up_new_task(line 2480)→ enqueue runnable task
+   ───────────── Return from kernel; parent and child diverge ─────────────
+Child process (still has all zygote privileges)
 └─ ZygoteConnection.handleChildProc / specializeAppProcess
    ├─ SpecializeCommon(native):
-   │  ├─ setgroups / setresgid / setresuid(降权到目标 uid)
-   │  ├─ setrlimit(ASLR 位域、内存上限)
-   │  ├─ capset 丢弃多余 capabilities
-   │  ├─ 安装 seccomp filter(按 seccomp policy;io_uring 即在此被 app 域封)
-   │  ├─ prctl(PR_SET_PDEATHSIG, SIGKILL)(zygote 死则子进程陪葬)
-   │  ├─ SELinux setcon(切到 untrusted_app 域;具体调用序随版本,待验证)
-   │  └─ 按 mountMode:unshare(CLONE_NEWNS)+ 存储 remount(细节待验证)
+   │  ├─ setgroups / setresgid / setresuid(drop to target uid)
+   │  ├─ setrlimit(ASLR bit fields, memory limits)
+   │  ├─ capset drops surplus capabilities
+   │  ├─ Install seccomp filter according to policy (the app domain blocks io_uring here)
+   │  ├─ prctl(PR_SET_PDEATHSIG, SIGKILL)(child dies if zygote dies)
+   │  ├─ SELinux setcon(switch to untrusted_app domain; call order is version-dependent, verify)
+   │  └─ According to mountMode: unshare(CLONE_NEWNS) + storage remount (verify details)
    ├─ ZygoteInit.childZygoteInit / RuntimeInit.commonInit
    └─ findStaticMain(ActivityThread.main)→ MethodAndArgsCaller.run()
       └─ ActivityThread.main
          ├─ Looper.prepareMainLooper
-         └─ attach → binder 调 AMS.attachApplication(IActivityManager)
-            (AMS 侧 attachApplicationLocked → 把 bindApplication/activity 队列推回来)
-app 主线程(handleBindApplication)
+         └─ attach → binder calls AMS.attachApplication(IActivityManager)
+            (AMS attachApplicationLocked sends the bindApplication/activity queue back)
+App main thread (handleBindApplication)
 └─ ActivityThread.handleBindApplication
-   ├─ LoadedApk / ContextImpl 构建
-   ├─ createAppClassLoader → PathClassLoader(BaseDexClassLoader)  ← so 的可见域由它定
+   ├─ Construct LoadedApk / ContextImpl
+   ├─ createAppClassLoader → PathClassLoader(BaseDexClassLoader)  ← determines SO visibility
    ├─ makeApplication → new Application → app.attach(context)
-   │  └─ Application.attachBaseContext   ←★ 检测 SDK 最早 init 点(比 onCreate 早)
-   ├─ installContentProviders → ContentProvider.onCreate  ←★ 同样早于 Application.onCreate
-   │    (不少安全 SDK 在 provider 里起检测线程,别只盯 Application)
+   │  └─ Application.attachBaseContext   ←★ earliest detection-SDK initialization point (before onCreate)
+   ├─ installContentProviders → ContentProvider.onCreate  ←★ also before Application.onCreate
+   │    (Many security SDKs start detection threads in providers; do not inspect only Application)
    └─ Instrumentation.callApplicationOnCreate
       └─ Application.onCreate
-         └─ static { System.loadLibrary("xxx") } 或 onCreate 里首次 loadLibrary
-            └─ → 链2:dlopen → init_array → JNI_OnLoad(见 §2)
-AMS 侧 scheduleTransaction → app 主线程
-└─ Activity.onCreate(在 Application.onCreate 之后;JNI_OnLoad 通常更早)
+         └─ static { System.loadLibrary("xxx") } or first loadLibrary in onCreate
+            └─ → chain 2: dlopen → init_array → JNI_OnLoad (see §2)
+AMS scheduleTransaction → app main thread
+└─ Activity.onCreate(after Application.onCreate; JNI_OnLoad usually occurs earlier)
 ```
 
 ### 1.2 Key ruling: is the zygote fork a "special fork"?
@@ -123,40 +123,40 @@ AMS 侧 scheduleTransaction → app 主线程
 ### 2.1 Timeline diagram
 
 ```
-Java 层
+Java layer
 └─ System.loadLibrary("native-lib")
-   └─ Runtime.loadLibrary0 → ClassLoader.findLibrary(so 名→全路径)
+   └─ Runtime.loadLibrary0 → ClassLoader.findLibrary(SO name → full path)
       └─ Runtime.nativeLoad → libart JavaVMExt::LoadNativeLibrary
-         └─ android_dlopen_ext(path, RTLD_NOW, &extinfo)(libdl.so 只是转发壳)
-libdl → linker64(bionic linker,自实现,非 glibc ld.so)
+         └─ android_dlopen_ext(path, RTLD_NOW, &extinfo)(libdl.so is only a forwarding wrapper)
+libdl → linker64(bionic's own linker, distinct from glibc ld.so)
 └─ __loader_android_dlopen_ext → do_dlopen
-   ├─ 解析 caller 的 linker namespace(classloader 命名空间,Android 7+ 隔离)
+   ├─ Resolve caller's linker namespace (classloader namespace; isolation since Android 7+)
    └─ find_library_internal
-      ├─ 已在 solist(全局 so 链表)→ 命中缓存直接返回 handle
+      ├─ Already in solist(global SO list)→ cache hit returns handle directly
       └─ load_library
-         ├─ openat(svc 56)打开 so 文件 → 读 ELF header / phdr
-         ├─ mmap(svc 222)总跨度 reserve(PROT_NONE)
-         ├─ phdr_table_load_segments:逐 PT_LOAD mmap(按 PF_R/W/X 分离:
-         │    r--(rodata/relro)、r-x(text)、rw-(data/bss);file offset 页对齐;
-         │    bss 尾部匿名补零映射)             ←★ 段权限在这里定型
-         ├─ 分配 soinfo、记 soname/base/大小,链入 namespace solist
-         └─ 递归处理 DT_NEEDED(依赖 so 同样流程;zygote 预加载的走缓存)
-   ──────────── 重定位(relocate,soinfo::relocate)────────────
-   ├─ 遍历 .rela.dyn / .rela.plt(RELR/RELA 按版本)
-   ├─ 每个符号经 soinfo_do_lookup:查本 so + 依赖链 dynsym/dynstr
-   ├─ patch GOT 表项 / 直接重定位目标地址      ←★ "patchelf 过程"的运行时版
-   └─ phdr_table_protect_gnu_relro:mprotect(svc 226)把 RELRO 区改 r--
-   ──────────── 构造函数(call_constructors)────────────
-   └─ soinfo::call_constructors(libc++ demangle 后符号 __dl__ZN6soinfo17call_constructorsEv)
-      ├─ 先跑全部依赖 so 的构造(依赖先于本体)
-      ├─ 执行 DT_INIT(init 函数,老式)
-      └─ 执行 DT_INIT_ARRAY:按地址升序逐个调用
-         └─ ★壳的自检/解密/反调试线程常驻此;也是抢注入的黄金窗口
-   ──────────── 返回 Java 层 ────────────
-└─ dlopen 返回 handle(libart 侧)
+         ├─ openat(svc 56)opens SO file → read ELF header / phdr
+         ├─ mmap(svc 222)reserves total span with PROT_NONE
+         ├─ phdr_table_load_segments: mmap each PT_LOAD, separating PF_R/W/X:
+         │    r--(rodata/relro), r-x(text), rw-(data/bss); page-align file offset;
+         │    anonymous zero-fill mapping at bss tail)   ←★ segment permissions are established here
+         ├─ Allocate soinfo, record soname/base/size, link into namespace solist
+         └─ Recursively process DT_NEEDED (same process for dependencies; zygote-preloaded SOs use cache)
+   ──────────── Relocation (relocate, soinfo::relocate)────────────
+   ├─ Iterate .rela.dyn / .rela.plt (RELR/RELA depends on version)
+   ├─ For each symbol, soinfo_do_lookup searches this SO + dependency-chain dynsym/dynstr
+   ├─ Patch GOT entries / directly relocate target address ←★ runtime counterpart of the "patchelf process"
+   └─ phdr_table_protect_gnu_relro: mprotect(svc 226)changes RELRO to r--
+   ──────────── Constructors (call_constructors)────────────
+   └─ soinfo::call_constructors(libc++ demangled symbol: __dl__ZN6soinfo17call_constructorsEv)
+      ├─ Run all dependency constructors first (dependencies before the main SO)
+      ├─ Execute DT_INIT (legacy init function)
+      └─ Execute DT_INIT_ARRAY: invoke entries in ascending address order
+         └─ ★Packer self-checks/decryption/anti-debug threads often start here; an important early-injection window
+   ──────────── Return to Java layer ────────────
+└─ dlopen returns handle (libart side)
    └─ dlsym(handle, "JNI_OnLoad")
-      └─ 调用 JNI_OnLoad(JavaVM*, void*)   ←★ 在所有 init_array 之后
-         └─ 动态注册:RegisterNatives(02 区 1.14 的 hook 点)
+      └─ Call JNI_OnLoad(JavaVM*, void*)   ←★ after all init_array entries
+         └─ Dynamic registration: RegisterNatives (hook point in area 02, §1.14)
 ```
 
 Key points:
@@ -172,14 +172,14 @@ Key points:
 ### 2.3 The "inject before the packer's self-check" timeline (the basis of the playbook)
 
 ```
-早 ←───────────────────────────────────────────→ 晚
-zygisk(zygote fork 后立刻,fork 前 agent 已在地址空间)
- > frida spawn(进程在,app 代码未跑,gating 挂起注入)
- > gadget(作为依赖 so 排在目标 so 前加载,init_array 先跑)
- > hook android_dlopen_ext onEnter(目标 so 还没进 load_library)
- > hook call_constructors onEnter(段已映射、重定位未完,02 区 1.15)
- > hook init 函数首地址(壳自检函数第一行)
- > attach(onCreate 后,只能收尸)
+Early ←───────────────────────────────────────────→ Late
+zygisk (immediately after zygote fork; agent is already in address space before fork)
+ > frida spawn (process exists, app code has not run; gating suspends for injection)
+ > gadget (loaded as a dependency before target SO; its init_array runs first)
+ > hook android_dlopen_ext onEnter (target SO has not entered load_library)
+ > hook call_constructors onEnter (segments mapped, relocation incomplete; area 02, §1.15)
+ > hook init function entry (first instruction of packer self-check)
+ > attach (after onCreate; early initialization has already finished)
 ```
 
 ### 2.4 Observation points (chain 2)
@@ -198,28 +198,28 @@ zygisk(zygote fork 后立刻,fork 前 agent 已在地址空间)
 ### 3.1 Timeline diagram
 
 ```
-Java 层
+Java layer
 └─ Thread.start()
    └─ ART JVM_StartThread → Thread::CreateNativeThread
       └─ pthread_create(libc/bionic/pthread_create.cpp)
-         ├─ mmap(svc 222, RW, ANON|STACK)分配线程栈 + TLS 块
-         ├─ guard page:mprotect 一页 PROT_NONE(栈溢出保护)
+         ├─ mmap(svc 222, RW, ANON|STACK)allocates thread stack + TLS block
+         ├─ guard page: mprotect one page PROT_NONE (stack-overflow protection)
          └─ clone(__pthread_start, child_stack, flags, …)
             flags = CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND
                   | CLONE_THREAD|CLONE_SYSVSEM
                   | CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID
             └─ svc __NR_clone(220)
                └─ sys_clone → kernel_clone → copy_process
-                  ├─ CLONE_VM → copy_mm 走共享分支(get_mm,引用计数,不复制页表)
-                  ├─ CLONE_FILES → copy_files 共享 fd 表
-                  ├─ CLONE_THREAD → 加入父线程组:tgid 不变,tid 新分配
-                  ├─ copy_creds:CLONE_THREAD → 直接共享 cred(无新 cred)
-                  ├─ copy_thread:CLONE_SETTLS → 设 tpidr_el0(TLS 寄存器)
-                  ├─ ctid 记录(CLONE_CHILD_CLEARTID:线程退出时内核清 *ctid
-                  │   并 futex-wake —— pthread_join 的底层)
+                  ├─ CLONE_VM → shared copy_mm branch (get_mm, reference count, no page-table copy)
+                  ├─ CLONE_FILES → copy_files shares fd table
+                  ├─ CLONE_THREAD → join parent's thread group: same tgid, newly allocated tid
+                  ├─ copy_creds: CLONE_THREAD → share cred directly (no new cred)
+                  ├─ copy_thread: CLONE_SETTLS → set tpidr_el0 (TLS register)
+                  ├─ Record ctid (CLONE_CHILD_CLEARTID: kernel clears *ctid on thread exit
+                  │   and futex-wakes waiters; underlying mechanism of pthread_join)
                   └─ wake_up_new_task + tracepoint sched_process_fork
-                     └─ ret_from_fork → 返回用户态 __pthread_start
-                        └─ 跑 start_routine(routine(arg))→ 结束 pthread_exit → exit
+                     └─ ret_from_fork → return to user-space __pthread_start
+                        └─ Run start_routine(routine(arg))→ finish with pthread_exit → exit
 ```
 
 ### 3.2 Direct clone calls bypassing pthread hooks (parameter differences, citing area 09 case 6)
@@ -256,32 +256,32 @@ The full playbook of area 09 case 6: getdents64 filtering /proc/self/task entrie
 ### 4.1 Timeline diagram
 
 ```
-Java 对象
-└─ new → ART heap 自己的空间(region space / bump 指针 TLAB;
-   │     card table 记跨代引用写屏障 + 并发拷贝 GC,一句话带过,不走 malloc)
-   └─(仅 off-heap/direct buffer/Bitmap 像素数据等)→ 进 native 分配
+Java objects
+└─ new → ART heap's own space (region space / bump-pointer TLAB;
+   │     card-table write barrier records cross-generation references + concurrent-copying GC; bypasses malloc)
+   └─(Only off-heap/direct buffer/Bitmap pixel data, etc.)→ native allocation
 native
 └─ malloc / new / operator new(libc/bionic)
-   └─ scudo(bionic 默认分配器,Android 11 起;A10 及以前 jemalloc)
+   └─ scudo(bionic default allocator since Android 11; jemalloc on A10 and earlier)
       ├─ CombinedAllocator::allocate
-      │  ├─ 小分配(阈值随配置,约 ≤64KiB,待验证)→ Primary
+      │  ├─ Small allocation(config-dependent threshold, approximately ≤64KiB; verify)→ Primary
       │  │   SizeClassAllocator64:
-      │  │   - 按 size class 分 region(启动时一次性预留巨大 VA,同样走 mmap,
-      │  │     但只 reserve;用多少 commit 多少 → 缺页按需给物理页,见链5)
-      │  │   - 每 chunk 前带 header:校验和(cookie)+class id+state+offset
-      │  │     (打包约 8 字节,位域随版本,待验证)
-      │  └─ 大分配 → Secondary(LargeMmapAllocator):
-      │      每次分配单独 mmap(svc 222 → sys_mmap → vm_mmap_pgoff → mmap_region),
-      │      头部放页前的元数据;释放 = munmap
-      │      ※ Android 堆基本不用 brk(svc 214);观测堆活动盯 mmap 别盯 brk
-      ├─ MTE 设备(Android 12+)上分配时打 tag
-      └─ 返回用户指针
+      │  │   - Regions by size class (reserve large VA once at startup through mmap,
+      │  │     reserve only; commit as used → physical pages on demand faults, chain 5)
+      │  │   - Header before each chunk: checksum(cookie)+class id+state+offset
+      │  │     (Packed into about 8 bytes; bit fields depend on version, verify)
+      │  └─ Large allocation → Secondary(LargeMmapAllocator):
+      │      Separate mmap for each allocation(svc 222 → sys_mmap → vm_mmap_pgoff → mmap_region),
+      │      metadata before the page; free = munmap
+      │      ※ Android heaps rarely use brk(svc 214); observe mmap for heap activity
+      ├─ Apply tags on allocation on MTE devices (Android 12+)
+      └─ Return user pointer
 free(ptr)
 └─ scudo Deallocate
-   ├─ 校验 header(防破坏/UAF 的一部分)
-   └─ 进 quarantine(隔离区延迟复用,防 UAF:释放块先雪藏,
-      │  按随机递减计数/容量上限逐批回池;期间内容可能被毒化)
-      └─ 到点归还 Primary 对应 region / Secondary 直接 munmap
+   ├─ Validate header (part of corruption/UAF protection)
+   └─ Enter quarantine(delayed reuse against UAF: hold freed chunks temporarily,
+      │  return batches by randomized countdown/capacity cap; contents may be poisoned meanwhile)
+      └─ At expiry, return to matching Primary region / directly munmap Secondary
 ```
 
 ### 4.2 The detection view and the dump view
@@ -314,40 +314,40 @@ free(ptr)
 ### 5.1 The fault timeline (arm64)
 
 ```
-用户态 EL0
-└─ 第一次 load/store/取指一个刚 mmap 的地址(如新 so 的 text)
-   └─ MMU 页表 walk:PTE 不存在(或权限不符)
-      └─ 触发 Data Abort / Instruction Abort,陷入 EL1
-         └─ 异常向量表 el0t_64_sync → el0_da(entry-common.c;6.x 拆 handler,名随版本待验证)
-            └─ do_mem_abort(按 ESR.EC 分发:0x24=data abort low EL)
-               └─ do_page_fault(mm/memory.c 一族)
-                  ├─ 读 far_el 拿出错地址、ESR 拿读写/指令信息
-                  ├─ 找 VMA(lock_mm_and_find_vma);无 VMA → SIGSEGV
-                  └─ handle_mm_fault → handle_pte_fault,按 PTE/VMA 状态分派:
-                     ├─ 匿名 VMA、PTE 空、只读访问
-                     │  └─ do_anonymous_page:映射全局共享零页(只读零页,
-                     │     物理上全机共享,写到才分真页)
-                     ├─ 匿名 VMA、写访问
-                     │  └─ do_anonymous_page:alloc 新物理页(清零)→ set_pte_at
-                     ├─ 文件 VMA(如 so text/rw 段)
+User space EL0
+└─ First load/store/instruction fetch at a newly mmap'ed address(e.g. new SO text)
+   └─ MMU page-table walk: PTE absent (or permission mismatch)
+      └─ Trigger Data Abort / Instruction Abort; trap to EL1
+         └─ Exception vector el0t_64_sync → el0_da(entry-common.c; handlers split in 6.x; verify version-specific names)
+            └─ do_mem_abort(dispatch by ESR.EC: 0x24=data abort from lower EL)
+               └─ do_page_fault(mm/memory.c family)
+                  ├─ Read fault address from far_el, access/instruction information from ESR
+                  ├─ Find VMA(lock_mm_and_find_vma); no VMA → SIGSEGV
+                  └─ handle_mm_fault → handle_pte_fault; dispatch by PTE/VMA state:
+                     ├─ Anonymous VMA, empty PTE, read-only access
+                     │  └─ do_anonymous_page: map global shared zero page (read-only,
+                     │     physically shared system-wide; allocate a real page only on write)
+                     ├─ Anonymous VMA, write access
+                     │  └─ do_anonymous_page: allocate new zeroed physical page → set_pte_at
+                     ├─ File VMA(e.g. SO text/rw segment)
                      │  └─ do_read_fault/do_write_fault → filemap_fault:
-                     │     查 page cache(xarray),miss 则发起实际磁盘/flash 读
-                     │     → 建映射(文件页缓存,多进程共享同一物理页)
-                     ├─ COW(do_wp_fault):写只读页 → 复制页(zygote 共享页在此分家)
-                     └─ swap(do_swap_page,app 域 zram 常见)
-                  └─ PTE 写入页表 + TLB 无该项 → 返回用户态
-                     └─ ★同一指令重新执行,这次页表命中
+                     │     Look up page cache(xarray); on miss issue actual disk/flash read
+                     │     → Establish mapping(file page cache; processes share the physical page)
+                     ├─ COW(do_wp_fault): write read-only page → copy page(zygote-shared pages separate here)
+                     └─ swap(do_swap_page; zram common in app domain)
+                  └─ Write PTE to page table + no TLB entry → return to user space
+                     └─ ★Re-execute the same instruction; page-table lookup now succeeds
 ```
 
 ### 5.2 The mprotect chain
 
 ```
-frida Memory.protect / 壳改页权限
+frida Memory.protect / packer page-permission changes
 └─ libc mprotect → svc __NR_mprotect(226)
    └─ sys_mprotect → do_mprotect_pkey
       └─ mprotect_fixup → change_protection
-         ├─ 拆/合并 VMA,逐 PTE 改 R/W/X 位
-         └─ flush_tlb_range 刷旧映射
+         ├─ Split/merge VMAs; change R/W/X bits in each PTE
+         └─ flush_tlb_range invalidates old mappings
 ```
 - frida's `Memory.protect(addr, size, 'rwx')` followed by patchCode is, at the kernel level, exactly this chain - **it necessarily leaves traces**: sys_mprotect events and page-table bit changes.
 - Packers keeping code pages RX with periodic CRC checks: the check itself is an ordinary read (no exception-chain involvement), but self-decryption necessarily shows the `mprotect(RW)->write->mprotect(RX)` sequence -> **kprobe do_mprotect_pkey watching prot changes is a low-noise probe for catching self-decryption timing**.

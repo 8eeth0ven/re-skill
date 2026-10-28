@@ -49,7 +49,7 @@
 ### Parsing the Principle of delta.apk, the Runtime Self-Tampering of dalvik Bytecode (orig: 运行时自篡改dalvik字节码delta.apk原理解析)
 (Xbalien) The bluebox DalvikBytecodeTampering demo: the static constructor block loads libnet.so calling readmem→search:native scans memory page by page for the `dex\n035` magic→per the dex structural index (string_ids→type_ids→method_ids→class_def→class_data→DexMethod→DexCode) locates the target method's insns→mprotect changes permissions→memcpy rewrites the bytecode. The DexCode struct:
 ```c
-struct DexCode { u2 registersSize, insSize, outsSize, triesSize; u4 debugInfoOff, insnsSize; u2 insns[1]; };  // insns=要改的目标
+struct DexCode { u2 registersSize, insSize, outsSize, triesSize; u4 debugInfoOff, insnsSize; u2 insns[1]; };  // insns is the modification target
 ```
 **Runtime self-modification of dex at the native layer = the progenitor of self-modifying protection** and the template for the later shells' memory-patch methods; the outer layer pairs with zip fake-encryption against unzip (§IX).
 > Same approach: "The Android Security Analysis Challenge: Tampering with Dalvik Bytecode at Runtime" (170381, the same-challenge post).
@@ -118,7 +118,7 @@ Capabilities: dex memory dumps, **memory BackSmali based on Dalvik key pointers*
 (currwin/F8LEFT) **The founding of the active-call school** (against extraction shells): modify Android source burying an interface; when the app starts and matches the config (/data/local/tmp/FUpk3.txt), load libFupk3.so (the so is swappable for hot bugfixes); dex enumeration = the native layer walking the `gDvm.userDexFiles` hash table directly (the source exports dvmGetUserDexFiles), bypassing the java-layer loader's parent-delegation complexity; header repair (after the shell strips the header, back-derive from runtime pointers):
 ```c
 mDexHeader.stringIdsOff = (u4)((u1*)pDexFile->pStringIds - (u1*)pDexFile->pHeader);
-// (省略:typeIds/fieldIds/methodIds/protoIds/classDefs 五表同式回填)
+// Omitted: fill typeIds/fieldIds/methodIds/protoIds/classDefs using the same pattern
 ```
 **Method-level active invocation**: the source builds `fupkInvokeMethod` (internally dvmInvokeMethod using 0xF88FF88F as a magic self) + the dvmInterpret entry checking the magic and switching to ExportMethod — **manually walking and triggering every function's restoration point** (extraction shells restore only when a function executes), the extraction-shell nemesis; FART later inherited this as "function-granularity active invocation + code_item collection".
 ### FDex2 and the fart Family (orig: FDex2 与 fart 系)

@@ -22,56 +22,56 @@
 
 ```
 new FileInputStream("/sdcard/a.dat")                      ← L1 libcore(Java)
-  └─ open0(path, O_RDONLY)                                ← L1 FileInputStream.open0(native 声明)
-      └─ Java_java_io_FileInputStream_open0               ← L2 libjavacore.so(JNI 注册于 libcore Register.cpp)
-          └─ libcore IoBridge 打开包装(内部最终走 libc open)
-              └─ open(path, flags)                        ← L3 libc.so 导出
-                  └─ bionic open 实现:转 __openat(AT_FDCWD,...)   【核:bionic libc/bionic/open.cpp,文件级细节待验证】
-                      └─ svc #0, x8=56(__NR_openat)       ← L4 指令级(arm64)
-                          └─ sys_openat(SYSCALL_DEFINE4)  ← L5 内核入口
-                              └─ do_sys_open              【核:fs/open.c@master】
+  └─ open0(path, O_RDONLY)                                ← L1 FileInputStream.open0(native declaration)
+      └─ Java_java_io_FileInputStream_open0               ← L2 libjavacore.so(JNI registered in libcore Register.cpp)
+          └─ libcore IoBridge open wrapper(eventually calls libc open)
+              └─ open(path, flags)                        ← L3 libc.so export
+                  └─ bionic open implementation: forwards to __openat(AT_FDCWD,...) [source: bionic libc/bionic/open.cpp; verify file-level details]
+                      └─ svc #0, x8=56(__NR_openat)       ← L4 instruction level(arm64)
+                          └─ sys_openat(SYSCALL_DEFINE4)  ← L5 kernel entry
+                              └─ do_sys_open              [source: fs/open.c@master]
                                   └─ do_sys_openat2
-                                      ├─ build_open_flags(解析 flags/O_CREAT 等)
-                                      └─ do_filp_open(旧名;master 已改名 do_file_open)
+                                      ├─ build_open_flags(parse flags/O_CREAT, etc.)
+                                      └─ do_filp_open(old name; renamed do_file_open on master)
                                           └─ path_openat(fs/namei.c)
                                               ├─ path_init → link_path_walk → walk_component
-                                              │   └─ lookup_fast(dcache)/lookup_slow(真实查找)
-                                              ├─ may_open(权限/类型检查)
+                                              │   └─ lookup_fast(dcache)/lookup_slow(actual lookup)
+                                              ├─ may_open(permission/type checks)
                                               └─ do_open
                                                   └─ vfs_open(path, file)
-                                                      └─ do_dentry_open           【核:fs/open.c@master】
-                                                          ├─ f->f_op = fops_get(inode->i_fop)  ★ f_op 在此赋值
-                                                          └─ f_op->open(如 ext4_file_open/f2fs_file_open)
-                          → fd 装入 fdtable,返回用户态
+                                                      └─ do_dentry_open           [source: fs/open.c@master]
+                                                          ├─ f->f_op = fops_get(inode->i_fop)  ★ f_op assigned here
+                                                          └─ f_op->open(e.g. ext4_file_open/f2fs_file_open)
+                          → Install fd in fdtable; return to user space
 
 fis.read(buf)                                             ← L1
-  └─ readBytes(byte[],off,len)                            ← L1 FileInputStream 私有 native
+  └─ readBytes(byte[],off,len)                            ← L1 FileInputStream private native
       └─ Java_java_io_FileInputStream_readBytes           ← L2 libjavacore.so
           └─ read(fd, buf, count)                         ← L3 libc.so
               └─ svc #0, x8=63(__NR_read)                 ← L4
-                  └─ sys_read(SYSCALL_DEFINE3) → ksys_read        【核:fs/read_write.c@master】
+                  └─ sys_read(SYSCALL_DEFINE3) → ksys_read        [source: fs/read_write.c@master]
                       └─ vfs_read(file, buf, count, pos)
-                          ├─ 检查 FMODE_READ/FMODE_CAN_READ
-                          ├─ rw_verify_area → security_file_permission(LSM/SELinux 钩子)
-                          ├─ access_ok(用户缓冲区)
-                          └─ 分派:
-                              ├─ f_op->read(legacy 驱动用,常规文件无)
+                          ├─ Check FMODE_READ/FMODE_CAN_READ
+                          ├─ rw_verify_area → security_file_permission(LSM/SELinux hook)
+                          ├─ access_ok(user buffer)
+                          └─ Dispatch:
+                              ├─ f_op->read(legacy drivers; absent for regular files)
                               └─ new_sync_read
-                                  ├─ init_sync_kiocb + iov_iter_ubuf(包装同步 kiocb)
-                                  └─ f_op->read_iter          ★ 文件系统真正入口
-                                      ├─ ext4_file_read_iter   【核:fs/ext4/file.c@master】
+                                  ├─ init_sync_kiocb + iov_iter_ubuf(wrap synchronous kiocb)
+                                  └─ f_op->read_iter          ★ actual filesystem entry
+                                      ├─ ext4_file_read_iter   [source: fs/ext4/file.c@master]
                                       │   └─ generic_file_read_iter → filemap_read(mm/filemap.c)
-                                      ├─ f2fs_file_read_iter   【核:fs/f2fs/file.c(搜索结果,主文件截断)】
-                                      │   ├─ fscrypt/压缩 inline 分支
+                                      ├─ f2fs_file_read_iter   [source: fs/f2fs/file.c; search result, main file was truncated]
+                                      │   ├─ fscrypt/compression inline branches
                                       │   └─ filemap_read / generic_file_read_iter
-                                      └─ erofs_file_read_iter 【核:fs/erofs/data.c@master】
-                                          └─ filemap_read(DAX/DIO 分支除外)
-                              filemap_read 循环:
-                                ├─ filemap_get_folio(查 address_space->i_pages/XArray)
-                                │   ├─ 命中且 uptodate → copy_folio_to_iter → copy_to_user ★数据回用户态
-                                │   └─ 未命中 → page_cache_sync_ra(readahead)
-                                │       └─ a_ops->read_folio / 提交块 IO → 页变 uptodate
-                                └─ folio_unlock,返回拷贝字节数
+                                      └─ erofs_file_read_iter [source: fs/erofs/data.c@master]
+                                          └─ filemap_read(except DAX/DIO branches)
+                              filemap_read loop:
+                                ├─ filemap_get_folio(look up address_space->i_pages/XArray)
+                                │   ├─ Hit and uptodate → copy_folio_to_iter → copy_to_user ★ data returns to user space
+                                │   └─ Miss → page_cache_sync_ra(readahead)
+                                │       └─ a_ops->read_folio / submit block IO → page becomes uptodate
+                                └─ folio_unlock; return copied byte count
 ```
 
 **The /sdcard special case** [version-dependent]: on Android 11+ external storage (`/storage/emulated/0`) is mounted via kernel FUSE, so read_iter lands on `fuse_file_read_iter` with data supplied by the **user-space MediaProvider daemon** - the observation point must move up to the FUSE daemon; `/data/app` is a direct partition (f2fs/ext4) without this layer. EROFS (read-only system partitions) has no write path; reads are isomorphic to the above.
@@ -107,34 +107,34 @@ fis.read(buf)                                             ← L1
 ### 2.1 The full /proc/self/status sequence
 
 ```
-open("/proc/self/status")                        ← L3(app 自己读,多为 native 直读)
+open("/proc/self/status")                        ← L3(app's own read; usually direct native read)
   └─ svc #0, x8=56
       └─ sys_openat → do_filp_open → path_openat
-          └─ procfs 路径解析(/proc 挂载的 proc_super_block)
-              └─ proc_get_inode(fs/proc/inode.c)          【核:fs/proc/inode.c@master】
-                  └─ status 由 base.c 的 ONE("status", S_IRUGO, proc_pid_status) 注册
+          └─ procfs path resolution(proc_super_block mounted at /proc)
+              └─ proc_get_inode(fs/proc/inode.c)          [source: fs/proc/inode.c@master]
+                  └─ status registered by ONE("status", S_IRUGO, proc_pid_status) in base.c
                       → inode->i_fop = proc_single_file_operations
-          └─ do_dentry_open: f_op 就位
-              └─ f_op->open = proc_single_open            【核:fs/proc/base.c@master】
+          └─ do_dentry_open: f_op established
+              └─ f_op->open = proc_single_open            [source: fs/proc/base.c@master]
                   └─ single_open(filp, proc_single_show, ...)  ← fs/seq_file.c
 read(fd, buf, n)
   └─ svc #0, x8=63
       └─ sys_read → ksys_read → vfs_read
-          └─ f_op->read = seq_read                         【核:fs/seq_file.c@master】
-              └─ seq_read_iter                             ★核心循环
+          └─ f_op->read = seq_read                         [source: fs/seq_file.c@master]
+              └─ seq_read_iter                             ★ main loop
                   ├─ m->op->start(single_start)
-                  ├─ m->op->show = proc_single_show        【核:fs/proc/base.c@master】
+                  ├─ m->op->show = proc_single_show        [source: fs/proc/base.c@master]
                   │   └─ PROC_I(inode)->op.proc_show(m, ns, pid, task)
-                  │       └─ proc_pid_status(fs/proc/array.c)   【核:fs/proc/array.c@master】
+                  │       └─ proc_pid_status(fs/proc/array.c)   [source: fs/proc/array.c@master]
                   │           ├─ proc_task_name("Name:")
                   │           ├─ task_state("Tgid:/Pid:/PPid:/TracerPid:/Uid:")
-                  │           │   ★ TracerPid 由 ptrace_parent(task) 取 tracer 的 pid
+                  │           │   ★ TracerPid uses ptrace_parent(task) to obtain tracer pid
                   │           │     (seq_put_decimal_ull(m, "\nTracerPid:\t", tpid))
-                  │           ├─ task_mem(VmRSS 等,遍历 mm_struct)
+                  │           ├─ task_mem(VmRSS, etc.; traverse mm_struct)
                   │           ├─ task_sig(SigPnd/ShdPnd/Blocked)
                   │           └─ task_seccomp / task_cap / ...
                   ├─ m->op->next/stop
-                  └─ copy_to_iter(m->buf, m->count) ← ★此时才从内核态拷到用户缓冲
+                  └─ copy_to_iter(m->buf, m->count) ← ★ actual copy from kernel to user buffer
 ```
 
 ### 2.2 The full /proc/self/maps sequence
@@ -142,20 +142,20 @@ read(fd, buf, n)
 ```
 open("/proc/self/maps")
   └─ sys_openat → ... → proc_get_inode
-      └─ maps 由 task_mmu.c 注册:proc_pid_maps_operations     【核:fs/proc/task_mmu.c@master】
+      └─ maps registered by task_mmu.c: proc_pid_maps_operations [source: fs/proc/task_mmu.c@master]
           (.open=pid_maps_open, .read=seq_read, .release=proc_map_release,
-           新内核另有 .ioctl=procfs_procmap_ioctl 支持 PROCMAP_QUERY 免解析整表)
-          └─ pid_maps_open → proc_maps_open(无 do_maps_open 这个中间层;task_mmu.c 只此两级)
-              ├─ __seq_open_private(分配 proc_maps_private)
-              └─ proc_mem_open(inode, PTRACE_MODE_READ)→ mm 引用(拿 mm_struct)
+           newer kernels also expose .ioctl=procfs_procmap_ioctl for PROCMAP_QUERY, avoiding whole-table parsing)
+          └─ pid_maps_open → proc_maps_open(no intermediate do_maps_open; only these two levels in task_mmu.c)
+              ├─ __seq_open_private(allocate proc_maps_private)
+              └─ proc_mem_open(inode, PTRACE_MODE_READ)→ mm reference(obtain mm_struct)
 read(fd, buf, n)
   └─ sys_read → vfs_read → seq_read → seq_read_iter
       └─ seq_operations = proc_pid_maps_op{.start=m_start,.next=m_next,.stop=m_stop,.show=show_map}
-          ├─ m_start: vma_iter_init(对 mm 的 maple tree 建 VMA 迭代器)→ proc_get_vma
-          └─ show_map → show_map_vma                          【核:fs/proc/task_mmu.c@master】
+          ├─ m_start: vma_iter_init(create VMA iterator over mm maple tree)→ proc_get_vma
+          └─ show_map → show_map_vma                          [source: fs/proc/task_mmu.c@master]
               ├─ show_vma_header_prefix(start,end,flags,pgoff,dev,ino)
-              │   ★ 权限串 "rwxp" 由 vma->vm_flags(VM_READ/VM_WRITE/VM_EXEC/VM_SHARED)翻译
-              └─ get_vma_name:文件路径 seq_path / "[heap]" "[stack]" "[vdso]" "[anon:...]"
+              │   ★ Permission string "rwxp" derived from vma->vm_flags(VM_READ/VM_WRITE/VM_EXEC/VM_SHARED)
+              └─ get_vma_name: file path seq_path / "[heap]" "[stack]" "[vdso]" "[anon:...]"
 ```
 
 **The proc_reg layer clarified** (a common confusion): `proc_reg_open/proc_reg_read` (fs/proc/inode.c) serves only legacy nodes registered via `proc_create` + `struct proc_ops`; **status goes through proc_single_*, maps through proc_pid_maps_operations - neither passes through the proc_reg layer**. [checked: fs/proc/inode.c@master - proc_reg_file_ops and pde->proc_ops dispatch]
@@ -189,25 +189,25 @@ Corollaries:
 ### 3.1 The read chain (zero syscalls)
 
 ```
-System.getProperty(key)                    ← Java 系统属性(System 属性表,与 Android property 两套,别混)
-SystemProperties.get("ro.build.tags")      ← framework @hide,反射调用(L1)
-  └─ native_get                            ← L2 JNI(libandroid_runtime,android_os_SystemProperties.cpp,文件级待验证)
-      └─ __system_property_get(name, value)   ← L3 libc.so 导出【核:bionic libc/bionic/system_property_api.cpp@main】
-          └─ SystemProperties::Get(name,value)  【核:bionic libc/system_properties/system_properties.cpp@main】
+System.getProperty(key)                    ← Java system properties(System table; distinct from Android properties)
+SystemProperties.get("ro.build.tags")      ← framework @hide; reflection call(L1)
+  └─ native_get                            ← L2 JNI(libandroid_runtime, android_os_SystemProperties.cpp; verify file)
+      └─ __system_property_get(name, value)   ← L3 libc.so export[source: bionic libc/bionic/system_property_api.cpp@main]
+          └─ SystemProperties::Get(name,value)  [source: bionic libc/system_properties/system_properties.cpp@main]
               └─ Find(name)
                   └─ contexts_->GetPropAreaForName(name)
-                      └─ ContextsSerialized:按 /dev/__properties__/property_info
-                        (序列化 contexts + SELinux 规则)定位目标 prop_area
+                      └─ ContextsSerialized: use /dev/__properties__/property_info
+                        (serialized contexts + SELinux rules)to locate target prop_area
                           └─ prop_area::find(name)
-                              └─ find_property               【核:bionic libc/system_properties/prop_area.cpp@main】
-                                  ├─ 名字按 '.' 分段("ro.build.tags" → ro→build→tags)
-                                  ├─ find_prop_trie_node:同层兄弟按 left/right 二叉搜索
-                                  └─ 沿 children 逐段下降 → 命中 prop_info
+                              └─ find_property               [source: bionic libc/system_properties/prop_area.cpp@main]
+                                  ├─ Split name at '.' ("ro.build.tags" → ro→build→tags)
+                                  ├─ find_prop_trie_node: binary search siblings by left/right
+                                  └─ Descend children segment by segment → match prop_info
                               └─ Read(pi):
-                                  ├─ serial acquire 读 → 拷贝 value(dirty 位则读 backup 区)
-                                  ├─ 再读 serial 比对,变化则重试(无锁一致性)
-                                  └─ "ro." 前缀短路(只读属性不走重试循环)
-                          → 返回值,全程无 svc ★
+                                  ├─ Read serial with acquire semantics → copy value(use backup area if dirty bit set)
+                                  ├─ Read serial again and compare; retry on change(lock-free consistency)
+                                  └─ "ro." prefix short-circuits(read-only properties bypass retry loop)
+                          → Return value; no svc anywhere in the read path ★
 ```
 
 Initialization (once per process): `__libc_init_common -> __system_properties_init -> SystemProperties::Init -> InitContexts -> ContextsSerialized::Initialize -> map_fd_ro`: fstat validation (uid0/gid0/non-group-writable/size sane) -> `mmap(PROT_READ)` `/dev/__properties__/*` -> validate `PROP_AREA_MAGIC/VERSION`. From then on a property read = a pure shared-memory access. [checked: prop_area.cpp@main - map_fd_ro; map_prop_area_rw (init side, O_RDWR|O_CREAT|O_EXCL + fsetxattr SELinux label, ftruncate to PA_SIZE)]
@@ -215,32 +215,32 @@ Initialization (once per process): `__libc_init_common -> __system_properties_in
 ### 3.2 The write chain (over a unix socket, never entering a kernel property subsystem - the kernel has no property system at all)
 
 ```
-__system_property_set(key, value)          ← L3 libc【核:bionic libc/bionic/system_property_set.cpp@main】
+__system_property_set(key, value)          ← L3 libc[source: bionic libc/bionic/system_property_set.cpp@main]
   └─ PropertyServiceConnection
-      ├─ socket(AF_LOCAL, SOCK_STREAM|SOCK_CLOEXEC)     ← 阻塞式
-      ├─ connect("/dev/socket/property_service")         ← __NR_connect(203);sys.powerctl 特权路径另走
-      ├─ 协议版本探测:读 ro.property_service.version
+      ├─ socket(AF_LOCAL, SOCK_STREAM|SOCK_CLOEXEC)     ← blocking
+      ├─ connect("/dev/socket/property_service")         ← __NR_connect(203); sys.powerctl uses a separate privileged path
+      ├─ Detect protocol version: read ro.property_service.version
       └─ v2:SocketWriter.writev { uint32 PROP_MSG_SETPROP2 | len+key | len+value }
-          └─ RecvInt32 阻塞等回执(v1 老协议:定长 prop_msg,250ms poll 后即认为成功)
+          └─ RecvInt32 blocks for acknowledgment(v1: fixed-size prop_msg; assumes success after 250ms poll)
 
-init 进程侧:
-StartPropertyService → StartThread(/dev/socket/property_service + for_system 两个监听)
-  └─ PropertyServiceThread(epoll)                          【核:system_core init/property_service.cpp@main】
+init process side:
+StartPropertyService → StartThread(two listeners: /dev/socket/property_service + for_system)
+  └─ PropertyServiceThread(epoll)                          [source: system_core init/property_service.cpp@main]
       └─ handle_property_set_fd
-          ├─ accept4 + SO_PEERCRED(拿调用方 uid/pid)
+          ├─ accept4 + SO_PEERCRED(obtain caller uid/pid)
           └─ PROP_MSG_SETPROP2 → HandlePropertySet
               ├─ CheckPermissions:CheckMacPerms(getpeercon + selinux_check_access)
-              ├─ "ctl.*" → SendControlMessage(转 init 主循环控制服务)
+              ├─ "ctl.*" → SendControlMessage(forward to init main loop for service control)
               ├─ "persist.*"/"next_boot.*" → WritePersistentProperty(/data/property)
-              └─ 其他 → PropertySet
+              └─ Other keys → PropertySet
                   ├─ __system_property_find
-                  │   ├─ 已存在 → __system_property_update(ro.* 重写被拒绝)
-                  │   └─ 不存在 → __system_property_add
-                  └─ serial 递增(release 语义)+ __futex_wake(INT32_MAX)
+                  │   ├─ Existing → __system_property_update(rewriting ro.* rejected)
+                  │   └─ Absent → __system_property_add
+                  └─ Increment serial(release semantics)+ __futex_wake(INT32_MAX)
 
-广播?没有。所有进程共享同一份 mmap 区,serial 变化后:
-  等待方 SystemProperties::Wait(__futex_wait) 被唤醒;普通读者下次读自然看到新值。
-fork 继承:zygote/app 进程的映射来自父进程,init 改内存 = 全体立刻可见 ★
+No broadcast: all processes share the same mmap area. When serial changes:
+  SystemProperties::Wait(__futex_wait)waiters wake; ordinary readers see the new value on their next read.
+fork inheritance: zygote/app mappings come from the parent; init's memory update becomes visible to all immediately ★
 ```
 
 The `getprop` command: toybox -> `__system_property_foreach` -> `prop_area::foreach_property` (recursive in-order: left->prop->children->right over the trie) -> print. Likewise zero syscalls.
@@ -276,17 +276,17 @@ The `getprop` command: toybox -> `__system_property_foreach` -> `prop_area::fore
 ### 4.1 Chain sequence (file-level encryption by packers/fortifiers)
 
 ```
-壳 loader(常驻 JNI_OnLoad / .init_array / Application.attachBaseContext)
-  └─ 定位加密资源(APK 内 assets/so 或独立 .dat)
-      └─ openat(密文路径)                    ← svc 56(壳常直调绕 libc hook)
-          └─ sys_openat → ...(同链1)
-      └─ read / pread64(密文)                ← svc 63/67
-          └─ 密文进入用户态缓冲
-      └─ 解密函数(纯用户态:RC4/XOR 流/AES-ECB·CBC;密钥常硬编码或由路径/包名派生)
-          └─ 明文(malloc 缓冲或 mmap 匿名区)
-              ├─ dlopen 内存 so(shadow load)/ InMemoryDexClassLoader
-              └─ 或写临时文件再走链1
-ART DexFile 使用明文(见链5 mmap)
+Packer loader(commonly in JNI_OnLoad / .init_array / Application.attachBaseContext)
+  └─ Locate encrypted resource(APK assets/SO or separate .dat)
+      └─ openat(ciphertext path)                    ← svc 56(packers often call directly to bypass libc hooks)
+          └─ sys_openat → ...(same as chain 1)
+      └─ read / pread64(ciphertext)                 ← svc 63/67
+          └─ Ciphertext enters user-space buffer
+      └─ Decryption function(user space only: RC4/XOR stream/AES-ECB·CBC; key often hardcoded or derived from path/package)
+          └─ Plaintext(malloc buffer or anonymous mmap area)
+              ├─ dlopen in-memory SO(shadow load)/ InMemoryDexClassLoader
+              └─ Or write a temporary file, then follow chain 1
+ART DexFile consumes plaintext(see chain 5 mmap)
 ```
 
 The kernel sees only ciphertext the whole way - **encryption/decryption has no syscall** (area 09 special case 3), so kernel-side observation can only get "ciphertext + behavior"; plaintext must be harvested in user space.
@@ -320,48 +320,48 @@ The kernel sees only ciphertext the whole way - **encryption/decryption has no s
 ### 5.1 Mapping-creation sequence
 
 ```
-mmap(NULL, len, PROT_READ|PROT_EXEC, MAP_PRIVATE, fd, off)    ← L3 libc(薄包装)
-  └─ svc #0, x8=222(__NR_mmap;arm32 用 mmap2=192,页粒度 off)
-      └─ SYSCALL_DEFINE6(mmap_pgoff) → ksys_mmap_pgoff(fget(fd) 取 file)【核:mm/mmap.c@master】
-          └─ vm_mmap_pgoff(拿 mmap_lock 写锁)
+mmap(NULL, len, PROT_READ|PROT_EXEC, MAP_PRIVATE, fd, off)    ← L3 libc(thin wrapper)
+  └─ svc #0, x8=222(__NR_mmap; arm32 uses mmap2=192 with page-granular off)
+      └─ SYSCALL_DEFINE6(mmap_pgoff) → ksys_mmap_pgoff(fget(fd) obtains file)[source: mm/mmap.c@master]
+          └─ vm_mmap_pgoff(acquire mmap_lock write lock)
               └─ do_mmap
                   ├─ calc_mmap_flags(prot/flags → vm_flags:VM_READ/VM_WRITE/VM_EXEC/VM_SHARED)
-                  ├─ __get_unmapped_area(找空洞;尾部 security_mmap_addr)
-                  ├─ security_mmap_file(LSM/SELinux:文件 label × 进程 label × prot)
+                  ├─ __get_unmapped_area(find gap; security_mmap_addr at end)
+                  ├─ security_mmap_file(LSM/SELinux: file label × process label × prot)
                   └─ mmap_region
-                      ├─ vm_area_alloc + maple tree 插入(新 VMA)
-                      ├─ vfs_mmap(file, vma)   ← master 新名;Android 5.15~6.6 为 call_mmap
+                      ├─ vm_area_alloc + insert into maple tree(new VMA)
+                      ├─ vfs_mmap(file, vma)   ← name on master; call_mmap on Android 5.15~6.6
                       │   └─ file->f_op->mmap:
-                      │       ├─ ext4_file_mmap(旧名;master 已改 .mmap_prepare=ext4_file_mmap_prepare,
-                      │       │    入参变 struct vm_area_desc*)→ vma->vm_ops = ext4_file_vm_ops
+                      │       ├─ ext4_file_mmap(old name; master uses .mmap_prepare=ext4_file_mmap_prepare,
+                      │       │    argument now struct vm_area_desc*)→ vma->vm_ops = ext4_file_vm_ops
                       │       │    (.fault=filemap_fault, .map_pages=filemap_map_pages)
-                      │       ├─ f2fs_file_mmap → f2fs_file_vm_ops(.fault=f2fs_filemap_fault[旧 filemap_fault],
+                      │       ├─ f2fs_file_mmap → f2fs_file_vm_ops(.fault=f2fs_filemap_fault[formerly filemap_fault],
                       │       │    .map_pages=filemap_map_pages, .page_mkwrite=f2fs_vm_page_mkwrite)
-                      │       └─ EROFS:generic_file_readonly_mmap_prepare(只读映射)【核:fs/erofs/data.c@master】
-                      ├─ 匿名映射(fd==-1):f_op 为空,vm_ops 为空 → fault 时 do_anonymous_page
-                      └─ vma_set_page_prot(vm_flags→vm_page_prot)→ 返回 addr
+                      │       └─ EROFS:generic_file_readonly_mmap_prepare(read-only mapping)[source: fs/erofs/data.c@master]
+                      ├─ Anonymous mapping(fd==-1): f_op and vm_ops are null → do_anonymous_page on fault
+                      └─ vma_set_page_prot(vm_flags→vm_page_prot)→ return addr
 ```
 
 ### 5.2 On-demand loading at first access (page fault)
 
 ```
-访问映射页(load/exec 指令,数据在内存尚无 PTE)
-  └─ EL0 Data/Instruction Abort(硬件异常)
-      └─ do_mem_abort → esr_to_fault_info 按 ESR FSC 分派   【核:arch/arm64/mm/fault.c@master】
-          └─ do_translation_fault(用户地址 is_ttbr0_addr)
+Access mapped page(load/exec instruction; no PTE for data yet)
+  └─ EL0 Data/Instruction Abort(hardware exception)
+      └─ do_mem_abort → esr_to_fault_info dispatches by ESR FSC [source: arch/arm64/mm/fault.c@master]
+          └─ do_translation_fault(user address is_ttbr0_addr)
               └─ do_page_fault
-                  ├─ 快路径:lock_vma_under_rcu(per-VMA lock 无锁查 VMA)
-                  │   └─ handle_mm_fault(FAULT_FLAG_VMA_LOCK)失败则回退
-                  └─ 慢路径:lock_mm_and_find_vma → handle_mm_fault
+                  ├─ Fast path: lock_vma_under_rcu(per-VMA lock; lock-free VMA lookup)
+                  │   └─ handle_mm_fault(FAULT_FLAG_VMA_LOCK); fall back on failure
+                  └─ Slow path: lock_mm_and_find_vma → handle_mm_fault
                       └─ __handle_mm_fault → handle_pte_fault
-                          └─ do_read_fault(读缺页)
+                          └─ do_read_fault(read fault)
                               └─ __do_fault → vma->vm_ops->fault = filemap_fault
-                                  ├─ filemap_get_folio(RCU 查 i_pages)
-                                  │   ├─ pagecache 命中:
-                                  │   │   filemap_map_pages(around-fault:相邻已缓存页批量建 PTE)
-                                  │   │   → alloc_set_pte ★ PTE 建立,后续访问零开销
-                                  │   └─ 未命中:do_sync_mmap_readahead → page_cache_sync_ra
-                                  │       → 块 IO 装页 → read_folio → 再建 PTE
+                                  ├─ filemap_get_folio(RCU lookup in i_pages)
+                                  │   ├─ Page-cache hit:
+                                  │   │   filemap_map_pages(around-fault: batch PTEs for adjacent cached pages)
+                                  │   │   → alloc_set_pte ★ establish PTE; subsequent access has no fault overhead
+                                  │   └─ Miss: do_sync_mmap_readahead → page_cache_sync_ra
+                                  │       → Block IO loads page → read_folio → establish PTE
 ```
 
 ART-side tie-in: DexFile opens .dex/.vdex with `mmap(PROT_READ, MAP_PRIVATE)` and faults on demand (art dex_file_loader, exact function name) - **the "landing moment" of a dex dump = after first execution/fault completion**, matching area 03's active ClassLoader-walk fault-triggering strategy.

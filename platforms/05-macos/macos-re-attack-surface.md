@@ -7,11 +7,11 @@
 ## §0 Quick Start: size up a mac in five minutes
 
 ```bash
-sw_vers                          # 版本(Build 号决定内核结构偏移)
-uname -m                         # arm64:注意 arm64e(指针认证)全面启用
-csrutil status                   # SIP 状态(逆向机是否已解除限制)
+sw_vers                          # Version; the build number determines kernel-structure offsets
+uname -m                         # arm64: account for arm64e pointer authentication
+csrutil status                   # SIP state: whether restrictions have already been disabled on the analysis machine
 spctl --status                   # Gatekeeper
-sysctl sysctl.proc_translated    # 1=进程跑在 Rosetta 下(分析 Intel 样本时的坑)
+sysctl sysctl.proc_translated    # 1 means this process runs under Rosetta; relevant when analyzing Intel samples
 ```
 
 The macOS↔iOS relationship: **the same XNU + Mach-O + ObjC/Swift + LLDB/Frida**; the difference is that a mac can install any tools, disable SIP, and do two-machine kernel debugging — "a debuggable amplified iOS" for research purposes. The migration table from Android is in the cross-platform kernel quick ref §3.3.
@@ -26,12 +26,12 @@ Using the system binary /usr/bin/file as the example (universal, 3 architectures
 $ otool -L /usr/bin/file
 	/usr/lib/libbz2.1.0.dylib (compatibility version 1.0.0, current version 1.0.8)
 	/usr/lib/libz.1.dylib    /usr/lib/liblzma.5.dylib
-	/usr/lib/libSystem.B.dylib          ← LC_LOAD_DYLIB 逐条列出(≈ ldd)
+	/usr/lib/libSystem.B.dylib          ← LC_LOAD_DYLIB entries, listed individually (similar to ldd)
 
 $ codesign -dv /usr/bin/file
 	Format=Mach-O universal (x86_64 arm64e arm64)
 	CodeDirectory v=20400 flags=0x0(none) hashes=10+2
-	Platform identifier=26            ← 平台二进制标志(dyld 环境变量豁免的判定依据,§2)
+	Platform identifier=26            ← Platform-binary flag used to determine dyld environment-variable exemptions (§2)
 	Signed Time=Aug 1, 2026 ...
 ```
 
@@ -58,7 +58,7 @@ Locally verified: /usr/bin/file's __TEXT segment contains an `__auth_stubs` sect
 ```
 $ file /usr/bin/file
 Mach-O universal binary with 3 architectures: [x86_64] [arm64] [arm64e]
-$ lipo -thin arm64 /usr/bin/file -o /tmp/file_arm64   # 抽单架构再进 IDA/Ghidra/r2
+$ lipo -thin arm64 /usr/bin/file -o /tmp/file_arm64   # Extract one architecture before opening in IDA/Ghidra/r2
 ```
 
 For Intel-emulator/sample analysis, mind Rosetta: a process running translated has `sysctl sysctl.proc_translated=1`; breakpoint behavior and memory layout differ.
@@ -66,7 +66,7 @@ For Intel-emulator/sample analysis, mind Rosetta: a process running translated h
 ### 1.4 Symbols and ObjC/Swift metadata
 
 ```
-$ nm -undefined-only /usr/bin/file      # 导入符号(defined=0:系统二进制 strip 过)
+$ nm -undefined-only /usr/bin/file      # Imported symbols; defined=0 because the system binary was stripped
                  U _BZ2_bzDecompress / ___assert_rtn / ___chkstk_darwin ...
 ```
 
@@ -98,9 +98,9 @@ Conclusion to memorize: **DYLD_INSERT_LIBRARIES ≈ LD_PRELOAD, but the exemptio
 ### 2.3 Practical injection/diagnostic commands
 
 ```bash
-DYLD_PRINT_LIBRARIES=1 ./target           # 打印加载的每个库(比 otool -L 多算 dlopen 的)
-DYLD_PRINT_ENV=1 ./target                 # dyld 收到的环境+是否被剥离
-DYLD_INSERT_LIBRARIES=./inter.dylib ./t   # interpose 注入(见 2.1)
+DYLD_PRINT_LIBRARIES=1 ./target           # Print every loaded library, including dlopen loads omitted by otool -L
+DYLD_PRINT_ENV=1 ./target                 # Environment received by dyld and whether variables were stripped
+DYLD_INSERT_LIBRARIES=./inter.dylib ./t   # Interpose injection (see 2.1)
 ```
 
 Alternative injection routes (when the target is blocked by library validation): Frida (goes task_for_pid + entitlement, runs directly on macOS, one notch lower barrier than iOS research)/patch the binary then re-sign with `codesign -f -s -`/LLDB attach. For trace-grade observation see `../../techniques/13-trace/trace-practice.md` (incl. macOS spawn pitfalls).
@@ -123,9 +123,9 @@ Alternative injection routes (when the target is blocked by library validation):
 ### 3.2 One r2 flow, tested `[local-tested]`
 
 ```
-$ r2 -q -c 'ie; iM' /bin/ls          # 入口
+$ r2 -q -c 'ie; iM' /bin/ls          # Entry points
 0x00010960 0x100000960 ... program   # entry0
-$ rabin2 -I /bin/ls                  # 二进制指纹
+$ rabin2 -I /bin/ls                  # Binary fingerprints
 bintype mach0  class MACH064  machine arm64e  compiler clang
 canary true  nx true  pic true  stripped true  os macos
 ```
@@ -146,10 +146,10 @@ $ lldb --batch \
     -o 'continue' -- /tmp/hello_mac
 Breakpoint 1: where = hello_mac`check_license, address = 0x0000000100003eac
 * thread #1, stop reason = breakpoint 1.1
-      x0 = 0x000000016fdff26f            ← ARM64 第一参数
-0x16fdff26f: "BADKEY-123"                 ← memory read -f s 直接吐字符串
-(lldb) thread return 1                    ← 强制函数返回 1:license 恒过
-input=BADKEY-123 result=1                 ← 校验被短路
+      x0 = 0x000000016fdff26f            ← ARM64 first argument
+0x16fdff26f: "BADKEY-123"                 ← memory read -f s displays the string directly
+(lldb) thread return 1                    ← Force the function to return 1, bypassing the license check
+input=BADKEY-123 result=1                 ← Verification was bypassed
 ```
 
 Flow essentials (macOS-specific):
@@ -179,7 +179,7 @@ Verified: tccd runs as dual resident instances (one in the system domain, one in
 ### 4.2 XPC service-endpoint enumeration `[local-tested]`
 
 ```
-$ launchctl list | wc -l        # 本机 534 行:label+pid+最后退出码
+$ launchctl list | wc -l        # 534 lines in the recorded local run: label + pid + last exit code
 $ launchctl print system/com.apple.tccd.system | grep -E "program|state"
 	program = /System/Library/PrivateFrameworks/TCC.framework/Support/tccd
 $ launchctl print gui/$(id -u)/com.apple.tccd | grep -A5 endpoints
@@ -210,11 +210,11 @@ $ spctl --status     # assessments enabled
 ### 4.5 Closing the attack surface: a desktop-chain quick table
 
 ```
-投放(quarantine dmg/pkg/浏览器) → Gatekeeper/公证首关
-  → 用户态落地:LaunchAgent 持久化(§4.2 落点)
-  → 提权/免杀:XPC 特权 daemon 校验缺失(§4.2)→ root
-  → 收割:TCC 授权诱导(§4.1)/钥匙串/浏览器数据
-  → 长驻:LaunchDaemon(root)+ 客户端伪造面
+Delivery (quarantined dmg/pkg/browser download) → initial Gatekeeper/notarization check
+  → User-mode execution: LaunchAgent persistence (§4.2 locations)
+  → Privilege escalation/detection evasion: missing checks in a privileged XPC daemon (§4.2) → root
+  → Data access: induced TCC grants (§4.1)/keychain/browser data
+  → Persistence: LaunchDaemon (root) + client-identity spoofing surfaces
 ```
 Detection handles per link: what the EDR (§6) sees = persistence footholds + outbound traffic; what forensics sees = TCC.db authorization records + launchctl state.
 

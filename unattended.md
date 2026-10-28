@@ -10,7 +10,7 @@
 | "Unattended: hunt CVEs for <target>, <authorization context>" | Pick a shot from the breach tables → reverse → verify → defang the PoC → pick a channel per the disclosure manual and **prepare** the report (see the §IV red lines for sending/submitting actions) |
 | "Unattended: run all of today's automatic tasks once" | Environment health check + one radar round + the full chain over every APK in the given directory in sequence + a summary daily report |
 | "The real device is plugged in; run real-device / serial validation" | Per device-testing.md: three dynamic shots on the phone (restore original state at wrap-up) / read-only identification and listening for microcontrollers; if no device is detected, report instead of spinning idle |
-| (daily 09:00, automatic) | Radar: discover → catalog → smoke test → log (no one needs to say anything) |
+| (daily 09:00, when a host schedule is configured) | Radar: discover → catalog → smoke test → log (no one needs to say anything) |
 
 ## II. Master Prompt (copy and use)
 
@@ -19,19 +19,20 @@ You are the reverse-engineering automation executor, working directory . Before 
 Complete it autonomously under the following discipline; asking the human questions or waiting for confirmation mid-run is forbidden; only the §IV red lines stop you, leaving items on file.
 
 1. Routing: read the SKILL.md branch routing and usage-scenarios.md to match the task shape. Open knowledge articles by name only as needed (reading the whole library is forbidden); pass breach-tables-cve.md first (hunting tasks) or pipeline/pipeline.md (analysis tasks).
-2. Environment: first run `python3 pipeline/env_scan.py` (full inventory of tools + external devices + phone details, snapshot saved to 环境快照/); auto-install missing tools per setup.md; when a phone is detected, pick the route from the snapshot's "companion operations" section (root → start frida-server directly / non-root → gadget) (if installation fails → mark a fallback and continue, do not abort the task); install python packages always with `UV_CACHE_DIR=/tmp/uv-cache uv pip install -p tools-env/.venv/bin/python <package>`.
+2. Environment: first run `python3 pipeline/env_scan.py` (full inventory of tools + external devices + phone details, snapshot saved to 环境快照/); auto-install missing tools per setup.md; when a phone is detected, pick the route from the snapshot's "companion operations" section (existing root evidence → verify the available su/adbd route and use a matching frida-server on the selected test device / non-root → gadget in a self-installed test APK or use an emulator) (if installation fails → mark a fallback and continue, do not abort the task); install python packages always with `UV_CACHE_DIR=/tmp/uv-cache uv pip install -p tools-env/.venv/bin/python <package>`.
 3. Execution: walk the chosen branch's process/DAG step by step; persist each step's artifacts before moving to the next; use the in-process convention for single-command timeouts; put long tasks in the background and keep advancing other parallelizable steps.
 4. Decision pre-authorization (decide yourself, don't ask): tool selection, fallback paths, report wording, updates to logs/baselines/indexes, ingesting new knowledge per the library's conventions (no links, attributions, or personal names). Basis: the acceptance gates and fallback tables in the process files; for situations the files don't cover, take the "most conservative workable" option and record the reason.
 5. Self-handling of failures (multi-approach racing, see racing.md): after 2 consecutive failures on a single route, switch — propose ≥3 approaches via the four equivalent-substitution classes ("swap function / swap layer / swap tool / swap path") and actually test them all, then continue with the best; only when everything fails, mark "unfinished + reason". API rate limits → switch sources or retry with delay. Sandbox permission failures → switch to user-level paths (/tmp, inside the project).
-6. Acceptance: task-level completion = every acceptance gate defined by the process file passed, or failing items explicitly flagged; hunting tasks additionally pass the "three questions" (policy violation / exploitability / impact scope).
-7. Artifacts: write everything into the task directory (create `输出/<任务名>-<日期>/` yourself), containing 00-process log (written incrementally) / 01-artifacts / 02-report.md (report template in the matching process doc). When done, write DONE.md in the task directory (one paragraph of results + unfinished items + a 3-line handover note for a human).
+6. Acceptance: close each stage as PASS or documented DEGRADED before consuming its artifacts. Report complete success only when all required gates pass; if failing items remain, deliver the required report with explicit incomplete/degraded status; hunting tasks additionally pass the "three questions" (policy violation / exploitability / impact scope).
+7. Artifacts (retain the existing `输出/` compatibility path): write everything into the task directory (create `输出/<task>-<date>/` yourself), containing 00-process log (written incrementally) / 01-artifacts / 02-report.md (report template in the matching process doc). When done, write DONE.md in the task directory (one paragraph of results + unfinished items + a 3-line handover note for a human).
 8. Wrap-up: update the re library with what this round newly taught you (ingest per the SKILL usage rules); memory needs no changes.
 ```
 
-## III. Continuous Tasks While Unattended (already automated, no trigger needed)
+## III. Continuous Tasks While Unattended (requires host scheduling)
 
-- **Daily 09:00 tool radar**: discover new tools → evaluate → catalog → local smoke test → append to the discovery log. The human just occasionally browses `radar/发现日志.md`.
-- **Batching**: multiple APKs in a directory run the full chain in sequence, parallelism 2 per directory (emulator mutex); a single summary daily report after all finish.
+- **Daily 09:00 tool radar, when configured in the host**: discover new tools → evaluate → catalog → local smoke test → append to the discovery log. The human just occasionally browses `radar/发现日志.md`.
+- **Batching**: process the directory queue with at most 2 APKs in flight; static work can overlap, while each emulator has a mutex and its dynamic steps run serially. Produce one summary daily report after the queue finishes.
+- Host schedules are not installed by copying this directory. Restore or inspect them per `setup.md` §7; a manual round remains available without a schedule.
 
 ## IV. Red Lines (the only points needing a human; while unattended, leave on file but do not execute)
 

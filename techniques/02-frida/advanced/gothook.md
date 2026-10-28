@@ -314,12 +314,12 @@ function create_android_dlopen_ext() {
     const android_dlopen_ext_ptr = Module.findExportByName(null, "android_dlopen_ext");
     const android_dlopen_ext = new NativeFunction(
         android_dlopen_ext_ptr,
-        'pointer', // 返回类型
-        ['pointer', 'int', 'pointer'] // 参数类型
+        'pointer', // Return type
+        ['pointer', 'int', 'pointer'] // Argument types
     );
     return new NativeCallback((parg0, parg1, parg2) => {
         console.log("android_dlopen_ext hook成功")
-        // 成功的返回值是0
+        // A successful call returns 0
         return android_dlopen_ext(parg0, parg1, parg2)
     }, "pointer", ["pointer", "int", "pointer"])
 }
@@ -349,8 +349,8 @@ function test_load() {
     console.log(LoadSharedLibraryPtr);
     const LoadSharedLibrary = new NativeFunction(
         LoadSharedLibraryPtr,
-        'pointer', // 返回类型
-        ['pointer', 'pointer', 'pointer'] // 参数类型
+        'pointer', // Return type
+        ['pointer', 'pointer', 'pointer'] // Argument types
     );
 
     const libraryPath = Memory.allocUtf8String("/system/lib64/libc.so");
@@ -376,34 +376,34 @@ function getPltAddr(so_name, funcName) {
     if (!soInfo) {
         throw new Error("not find soinfo " + so_name)
     }
-    // // so地址
+    // Shared-object base address
     // console.log(soInfo.getRealpath());
     //
-    // // init段
+    // Initialization section
     // console.log(soInfo.init_array.sub(soInfo.base));
     //
-    // // plt R_AARCH64_GLOB_DAT段，本身全局会用到
+    // PLT R_AARCH64_GLOB_DAT relocations used by global references
     // console.log(soInfo.rela.sub(soInfo.base))
     // console.log(soInfo.rela.sub(soInfo.base).add(soInfo.rela_count * 0x18))
     //
-    // // plt R_AARCH64_JUMP_SLOT段，import导入会用到
+    // PLT R_AARCH64_JUMP_SLOT relocations used by imported functions
     // console.log(soInfo.plt_rela.sub(soInfo.base))
     // console.log(soInfo.plt_rela.sub(soInfo.base).add(soInfo.plt_rela_count * 0x18))
 
-    // // 字符串
+    // String table
     // console.log(soInfo.strtab.sub(soInfo.base))
 
-    // // 符号信息
+    // Symbol information
     // console.log(soInfo.symtab.sub(soInfo.base))
 
     let elf64Rela = null;
     for (let i = 0; i < soInfo.plt_rela_count; i++) {
-        // console.log("elf64Rela偏移: " + soInfo.plt_rela.add(i * 0x18).sub(soInfo.base))
+        // console.log("elf64Rela offset: " + soInfo.plt_rela.add(i * 0x18).sub(soInfo.base))
         const _elf64Rela = parseElf64_Rela(soInfo.plt_rela.add(i * 0x18));
-        // 右移32位，得到的就是第
+        // Shift right by 32 bits to obtain the symbol-table index
         const _offset = Number(BigInt(_elf64Rela.r_info) >> 32n)
         const _elf64SymAddr = soInfo.symtab.add(_offset * 0x18)
-        // console.log("elf64Sym偏移: " + _elf64SymAddr.sub(soInfo.base))
+        // console.log("elf64Sym offset: " + _elf64SymAddr.sub(soInfo.base))
         const _elf64Sym = parseElf64_Sym(_elf64SymAddr);
         const _funcName = soInfo.strtab.add(_elf64Sym.st_name).readUtf8String()
         if (_funcName.indexOf(funcName) !== -1) {
@@ -425,7 +425,7 @@ GotHook: point the GOT entry at the new function:
 function GotHook(so_name, funcName, newFuncAddr) {
     let gotAddress = getPltAddr(so_name, funcName)
     console.log("gotAddress:", gotAddress)
-    // 函数替换
+    // Replace the function
     Memory.protect(gotAddress, 8, "rw-")
     gotAddress.writePointer(newFuncAddr)
     console.log("gotAddress hook after", gotAddress.readPointer())
@@ -466,7 +466,7 @@ function soListRemove(so_name) {
     }
 }
 
-// 删除注入的so
+// Unlink the injected shared object
 
 rpc.exports = {
     getSoInfo,

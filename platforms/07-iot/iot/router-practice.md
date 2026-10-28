@@ -17,7 +17,7 @@ The pattern: front-end parameter -> cgi -> `sprintf` assembles the shell string 
 | Tenda | CVE-2023-27216 |
 | Cisco | CVE-2023-20073 (arbitrary file upload; plus a compiled-kernel reproduction post) |
 
-Hunting recipe (community consensus): (1) `strings` the cgi binary for `iptables|reboot|ping|wget` command templates; (2) walk the xrefs back from `system` to find the unfiltered parameters; (3) fire the packet in the emulated environment to verify.
+Hunting recipe (community consensus): (1) `strings` the cgi binary for `iptables|reboot|ping|wget` command templates; (2) walk the xrefs back from `system` to find the unfiltered parameters; (3) send the packet in the emulated environment to verify.
 
 ## 2. Stack overflow (MIPS/ARM)
 

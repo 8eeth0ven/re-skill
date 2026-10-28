@@ -19,9 +19,9 @@
 ### How Memory Keygens Work, with masm Source (orig: 内存注册机的工作原理及masm源码)
 - The essence is a micro-debugger: CreateProcess launches the target DEBUG-style → write INT3 at the address where the real code is computed → WaitForDebugEvent suspends → ReadProcessMemory/GetThreadContext fetches the real code for display; works on packed targets too (the shell unpacks and the code lands at its address, then you break). Skeleton:
 ```asm
-; (省略:CreateProcess(..., DEBUG_PROCESS, ...) 启动与 .while TRUE 外框)
+; Omitted: CreateProcess(..., DEBUG_PROCESS, ...) startup and the outer .while TRUE loop
 .if DBEvent.dwDebugEventCode == EXCEPTION_DEBUG_EVENT && dword ptr [DBEvent.u.Exception.ExceptionRecord.ExceptionAddress] == 断点地址
-    invoke ReadProcessMemory, pi.hProcess, 真码地址, addr buffer, len, NULL  ; 先恢复原字节/写 EIP-1
+    invoke ReadProcessMemory, pi.hProcess, 真码地址, addr buffer, len, NULL  ; Restore the original byte / set EIP-1 first
 .endif
 invoke ContinueDebugEvent, DBEvent.dwProcessId, DBEvent.dwThreadId, DBG_CONTINUE
 ```
@@ -101,9 +101,9 @@ for (i = 0; i < 4; *(i + pLastFour - 1) = g_szAlphabetTable[v5 % 26]) {
 ### Using RSA to Prevent Illegal Keygens (orig: 浅谈利用RSA算法防止非法注册机的制作)
 - The forward design: the program embeds the public key (n,e); the vendor computes `SN = m^d mod n` with the private key (n,d) and issues it; the program verifies `c = SN^e mod n`, comparing c against the registration name — **it compares the registration name, not the serial** — forging an SN can't produce a signature over an arbitrary username, hence no universal keygen; Name length ≤ Keysize/8 guarantees m<n; the software side symmetrically does `powmod(m,e,n,c); big_to_bytes(...)` then compares against the Name; the cracking preconditions: n too short (128-bit demo grade) is factorable (RSATool/toolchains); n≥512 bits → switch to the public-key-replacement route (next entry) (Vegeta). The keygen side's four core Miracl functions:
 ```c
-mip->IOBASE = 16; bytes_to_big(namelen, Name, c);   // 16 进制模式;用户名转大数
-cinstr(n,"963251DC5A9C90D9F203A03C363BA411");       // 模数n
-cinstr(d,"56157D29A89D77BF2F669A8F0B123CC9");       // 私钥d
+mip->IOBASE = 16; bytes_to_big(namelen, Name, c);   // Hexadecimal mode; convert the username to a bignum
+cinstr(n,"963251DC5A9C90D9F203A03C363BA411");       // Modulus n
+cinstr(d,"56157D29A89D77BF2F669A8F0B123CC9");       // Private key d
 powmod(c,d,n,m); cotstr(m,SN);                      // m = c^d mod n → SN
 ```
 > Same approach: preventing software Keygen with the RSA1024 algorithm (jackozoo); the Arila Sound Recorder (RSA) analysis
@@ -114,11 +114,11 @@ powmod(c,d,n,m); cotstr(m,SN);                      // m = c^d mod n → SN
 - A self-contained bignum as a 2^32-base unsigned long array (BI_MAXLEN=40 → 1280-bit ceiling), longhand add/sub/mul/div / Euclid Euc for modular inverse / Montgomery Mon for modular exponentiation — the self-contained math layer for RSA keygens, no Miracl dependency; a 1024-bit bignum = a 32-element array, loop scale under 32 (afanty). The class interface:
 ```cpp
 #define BI_MAXLEN 40
-class CBigInt {   // 2^32 进制大数:m_nSign 符号 + m_nLength 位数(0-40) + m_ulvalue[BI_MAXLEN]
+class CBigInt {   // Base-2^32 bignum: m_nSign sign + m_nLength digit count (0–40) + m_ulvalue[BI_MAXLEN]
 public:
-    // (省略:Mov/Cmp/Add/Sub/Mul/Div/Mod 及 10/16 进制串互转 InPutFromStr/OutPutToStr)
-    CBigInt Euc(CBigInt& A);    // 欧几里德:Y=X.Euc(A),YX mod A=1
-    CBigInt Mon(CBigInt& A, CBigInt& B); // 蒙哥马利:Y=X.Mon(A,B),X^A mod B=Y
+    // Omitted: Mov/Cmp/Add/Sub/Mul/Div/Mod and decimal/hexadecimal string conversion InPutFromStr/OutPutToStr
+    CBigInt Euc(CBigInt& A);    // Euclidean inverse: Y=X.Euc(A), YX mod A=1
+    CBigInt Mon(CBigInt& A, CBigInt& B); // Montgomery exponentiation: Y=X.Mon(A,B), X^A mod B=Y
 };
 ```
 > Same approach: the RSA algorithm (pediy50349), the RSA computing tool, the theory and application of the DSA algorithm, learning the DSA algorithm, implementing an rsa-based digital-signature scheme
@@ -181,9 +181,9 @@ DWORD __stdcall GetRecvKey(DWORD k) {
 - sqlcipher's parameters in full: the file's first 16 bytes = salt; the PC edition PBKDF2-HMAC-SHA1 iterates 64000/page 4096, the Android edition 4000/1024 and **no HMAC**; mac_key = salt XOR 0x3a then derived (2 iterations); reserve = IV(16)+HMAC(20) aligned to 16; each page is independent AES-256-CBC with the IV in the page-tail reserve and the page number entering the HMAC; after decrypting the first page, restore the "SQLite format 3" header; the common reason sqlcipher fails is wrong iteration/page-size parameters (tongzeyu). The core calls (straight OpenSSL, no sqlcipher hunting):
 ```c
 memcpy(salt, pDbBuffer, 16); for (i=0;i<16;i++) mac_salt[i] = salt[i] ^ 0x3a;
-PKCS5_PBKDF2_HMAC_SHA1(pass, 32, salt, 16, 64000, 32, key);    // 安卓:4000
+PKCS5_PBKDF2_HMAC_SHA1(pass, 32, salt, 16, 64000, 32, key);    // Android uses 4000
 PKCS5_PBKDF2_HMAC_SHA1(key, 32, mac_salt, 16, 2, 32, mac_key);
-// 每页: EVP aes-256-cbc, iv=页尾reserve处16字节;HMAC(mac_key,页数据+页号) 对比页尾20字节
+// Per page: EVP aes-256-cbc; iv is the 16-byte page-tail reserve; compare HMAC(mac_key,page data+page number) against the final 20 bytes
 ```
 > Same approach: the AliWangwang database decryption algorithm; the DingTalk PC-edition database decryption algorithm; a certain "360" browser's database algorithm reversed (Plus)
 ### Chatting About mysql's Password Algorithm (orig: 唠一唠mysql的口令算法)
@@ -196,7 +196,7 @@ for (; password < password_end; password++) {
     nr2 += (nr2 << 8) ^ nr;
     add += (long)(char)*password;
 }
-result[0]=nr&0x7FFFFFFF; result[1]=nr2&0x7FFFFFFF;   // 输出 "%08lx%08lx" 两段拼接
+result[0]=nr&0x7FFFFFFF; result[1]=nr2&0x7FFFFFFF;   // Concatenate two output segments formatted as "%08lx%08lx"
 ```
 > Same approach: the QQ password-encryption principle / brute-forcing the QQ local-password file; getting QQ's HASH password; the QQ remember-password MD5 reader
 ### The QQ 2005 New-Year Edition's Login Password Encryption Algorithm (orig: QQ 2005贺岁版登录口令加密算法)

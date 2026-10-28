@@ -1,69 +1,80 @@
-\---  
-name: re  
-description: |  
-Unified reverse engineering skill (single entry · multiple branches): one entry routing to platform taxonomy / technique systems / fully automated execution / tool radar.  
-Branches: ① Platforms (Windows/Android/Linux/iOS/WEB/binary vulnerabilities/smart devices/business/AI/blockchain/root-cause analysis)  
-② Techniques (frida/unpacking/attack-and-evasion/traffic capture/pure algorithm restoration/kernel-level/function panorama/syscall chains/bypass decisions/AI RE)  
-③ Automated execution (input APK → report with zero human effort) ④ Tool radar (discover new tools daily and smoke-test them).  
-Trigger this skill when the user mentions any of the following keywords:  
-reverse engineering, Android RE, iOS RE, IoT, frida, hook, unpacking, traffic capture,  
-SSL pinning, anti-debugging, root detection, app packers, OLLVM, obfuscation, VMP, algorithm restoration, risk control,  
-RPC, syscall, eBPF, kernel hook, bypass, RASP, pwn, CTF, vulnerability root cause,  
-unidbg, full-chain execution, tool radar, MCP tools such as frida-mcp/jadx-mcp/ghidra-mcp.  
-Trigger even when the user only says "look at this app's encryption", "how do I reverse this .so", or "run the pipeline".  
-\---
+---
+name: re
+description: >-
+  Unified reverse engineering for Windows, Android, Linux, iOS, WEB, binary vulnerabilities,
+  smart devices, business, AI, blockchain, and root-cause analysis. Routes platform knowledge,
+  techniques, cases, APK automation, CVE research, and tool discovery.
+  Use for reverse engineering, Android RE, iOS RE, IoT, frida, hook, unpacking, traffic capture,
+  SSL pinning, anti-debugging, root detection, app packers, OLLVM, obfuscation, VMP,
+  algorithm restoration, risk control, RPC, syscall, eBPF, kernel hook, bypass, RASP,
+  pwn, CTF, vulnerability root cause, unidbg, full-chain execution, tool radar,
+  frida-mcp, jadx-mcp, ghidra-mcp, attack-and-evasion, and AI RE.
+  Also use for "look at this app's encryption", "how do I reverse this .so", or "run the pipeline".
+---
 
-# Unified Reverse Engineering Skill re (Single Entry · Multiple Branches)
+# Reverse Engineering: One Entry, Task-Based Routing
 
-One entry, four branches. **First ask "what situation am I in" — for the scenario-driven full usage guide see [`usage-scenarios.md`](usage-scenarios.md) (6 SRC field scenarios / 3 attack-and-evasion scenarios / 3 audit-assist scenarios / 3 learning scenarios / 3 automation commands / the boundary where re is NOT used)**; then pick a branch by need, enter the branch INDEX and open articles by name (full reads are forbidden).
+Use this skill to inspect binaries, observe runtime behavior, restore algorithms and protocols,
+validate vulnerability hypotheses, and select working tools. Choose the task below first.
+If the situation is unclear, match it in [usage-scenarios.md](usage-scenarios.md).
+The branch INDEX is its authoritative file list: open the relevant one or two articles by name,
+then follow additional references only as needed. Do not read the whole library by default.
 
-**Real-device testing**: once a phone/microcontroller is plugged in, say "run real-device / serial validation" → it follows `device-testing.md` autonomously (full chain including protection discipline: no flashing, no firmware burning, no touching system partitions; frida-server for three architectures is prepared under tools-env/frida-server/).
+## Select the Workflow
 
-**Unattended mode**: just say "unattended: reverse <apk> / hunt CVEs for <target>" and it runs end to end fully automatically — the master task brief and red lines are in [`unattended.md`](unattended.md).
+| Task or available input | Start here | Continue with |
+|---|---|---|
+| APK analysis or "run the full chain" | [pipeline/pipeline.md](pipeline/pipeline.md) | Five-stage DAG, acceptance gates, and fallbacks; artifact layout in [pipeline/README.md](pipeline/README.md) |
+| Find a CVE or investigate a vulnerability hypothesis | [breach-tables-cve.md](breach-tables-cve.md) | Recognition → verification → acceptance → false-positive exclusions; [re-to-cve-audit.md](re-to-cve-audit.md) for research and [disclosure-cve.md](disclosure-cve.md) for disclosure preparation |
+| Match components against known CVEs | [cve-hunter/README.md](cve-hunter/README.md) | Version-match candidates and the N-day ledger; a version match alone is not a confirmed vulnerability |
+| Discover candidates in publicly released router firmware | [fw-discover/README.md](fw-discover/README.md) | Firmware extraction, static rules, and candidate triage; rule hits are hypotheses pending verification |
+| Look up platform or domain knowledge | [platforms/INDEX.md](platforms/INDEX.md) | Windows, Android, Linux, iOS, macOS, WEB, binary vulnerabilities, IoT/hardware, business, AI, blockchain, and root causes |
+| Choose a technique or solve a runtime obstacle | [techniques/INDEX.md](techniques/INDEX.md) | Use the direct technique routes below for frequent tasks |
+| Find a concrete case, legacy technique, or historical evolution | [corpus/INDEX.md](corpus/INDEX.md) | Consult [corpus/coverage-ledger.md](corpus/coverage-ledger.md) before assuming coverage is complete; original-source lookup uses the data index |
+| Discover or fill a tool gap | [radar/README.md](radar/README.md) | [Tool selection table](techniques/05-toolbox/tool-master-table.md); discovery → catalog → smoke test → log |
+| Initialize a new machine | [setup.md](setup.md) | Inventory first, install missing dependencies, then run the cross-platform health check |
 
-**One-sentence summary**: stuck at "can't see it (no app traffic) / can't get in (packers · detection) / can't compute it (signature encryption) / being countered (hooks killed)" → use this skill; "got an API, test it for bugs" → skill; "got the source code" → secure-code-audit.
+An API-only vulnerability assessment belongs to the separate `skill` skill;
+a source-code audit belongs to `secure-code-audit`. Use RE here when runtime visibility,
+packing, detection, signatures, or binary behavior blocks that work.
 
-## Branch Routing (the single entry decision table; if unsure which branch, read usage-scenarios.md first and match your situation)
-
-| What you want to do | Which branch | Entry |
-| -------------- | ----- | ------------------------------------------------------------------------------------ |
-| **Learn or look things up by platform/domain** (Windows/Android/iOS/Linux/WEB/binary vulnerabilities/smart devices/business/AI/blockchain, plus the cross-domain "root-cause analysis of vulnerabilities") | Platforms branch | `platforms/INDEX.md` (11 zones, every article tagged "when to open it") |
-| **Work by technique** (hook/unpacking/evasion/traffic capture/algorithm restoration/offline RPC/kernel-level/bypass decisions/chain timing/AI RE) | Techniques branch | `techniques/INDEX.md` (11 zones) + the "quick technique picker" below |
-| **Look up concrete cases / old techniques / era evolution** (how to unpack a given packer / packer evolution history / some program's registration algorithm / family samples / protocol restoration cases) | Corpus branch | `corpus/INDEX.md` (all 18915 articles semantically deduped and distilled, nine categories, entry = chapter name + author) |
-| **Automated work**: produce a report from an APK, zero human effort | Execution branch | `pipeline/pipeline.md` (five-stage DAG with acceptance gates and fallbacks; environment health check `pipeline/env_check.sh`) |
-| **Want a CVE / find bugs fast against a target** | First open `breach-tables-cve.md` (recognize the signature → one shot → hit criteria → false leads; 6 forms, 19 rows) | Branch capability: `re-to-cve-audit.md`; disclosure: `disclosure-cve.md`; **local batch candidate grinding**: `cve-hunter/README.md` (known CVE × version matching, N-day ledger) + `fw-discover/README.md` (**autonomous discovery**: unpack public router firmware → six rule classes mining 0day candidates, 30-minute keepalive) |
-| **Find/fill in tools**, or see what new tools the daily automation discovered | Radar branch | `radar/README.md` (process) + `radar/发现日志.md` (daily 09:00 automatic: discover → catalog → local smoke test) + `techniques/05-toolbox/tool-master-table.md` |
-| **First use on a new machine** | Environment init | Run [`setup.md`](setup.md) first |
-
-## Quick Technique Picker (direct routes for high-frequency tasks; see techniques/INDEX.md for details)
+## Direct Technique Routes
 
 | Task | Open first |
-|------|------|
-| **A function is detected / one line of thinking fails** | `techniques/12-bypass/bypass-playbook.md` (detection points × multiple bypass routes × applicability) |
-| Writing a frida hook | `techniques/02-frida/java-layer` + `techniques/02-frida/native-hook-cheatsheet.md` (call up by domain/topic) |
-| Unpacking | `techniques/03-unpacking/` (frida → eBPF progression) |
-| Traffic capture (generic → per-vendor) | `techniques/04-evasion/capture-all-scenarios.md` → `techniques/04-evasion/vendor-capture-countermeasures.md` (key functions for 16 vendors incl. ByteDance/Alibaba/WeChat/Meituan) |
-| Defeating risk control / device fingerprinting | `techniques/04-evasion/device-fingerprint-risk.md` |
-| Pure algorithms / white-box / deobfuscation / offline RPC | the three articles in `techniques/10-algo-restore/` |
-| Hook killed; find a deeper function | `techniques/09-function-map/` (five-layer mapping + fallback chain) |
-| The full call chain down to the kernel | wrap up with `techniques/11-syscall-chain/observation-matrix.md` |
-| Why the bug exists at all (root cause) | `platforms/11-root-cause/` (six major classes + ten kernel cases + mapping table) |
+|---|---|
+| A hook is detected or an approach fails | [Bypass decision playbook](techniques/12-bypass/bypass-playbook.md) |
+| Write a Java or native frida hook | [Frida section in the index](techniques/INDEX.md#02-frida) and [native hook reference](techniques/02-frida/native-hook-cheatsheet.md); Java snippets are under `techniques/02-frida/java-layer/` |
+| Unpack DEX or native code | [DEX unpacking](techniques/03-unpacking/dex-unpacking.md), then [eBPF unpacking](techniques/03-unpacking/ebpf-unpacking-deep.md) or [SO repair and dumping](techniques/03-unpacking/so-repair-dump.md) as applicable |
+| Capture traffic | [General scenarios](techniques/04-evasion/capture-all-scenarios.md) → [vendor-specific countermeasures](techniques/04-evasion/vendor-capture-countermeasures.md) |
+| Understand device fingerprinting or risk controls | [Device fingerprinting and risk controls](techniques/04-evasion/device-fingerprint-risk.md) |
+| Restore algorithms, white-box logic, obfuscated code, or offline RPC | [Algorithm restoration methodology](techniques/10-algo-restore/algo-restoration-methodology.md), then the matching article in `techniques/10-algo-restore/` |
+| A hook is terminated; locate an equivalent observation point | [Android function layers](techniques/09-function-map/android-function-layers.md) → [hook fallback playbook](techniques/09-function-map/hook-fallback-playbook.md) |
+| Follow calls down to the kernel | [Observation matrix](techniques/11-syscall-chain/observation-matrix.md), then the relevant syscall-chain article |
+| Explain the vulnerability's root cause | [Root-cause mapping](platforms/11-root-cause/root-cause-to-technique-map.md) |
+| Locate common functions, NOP encodings, or simple bug patterns | [Quick reference](techniques/16-quick-ref/quick-reference.md) |
+| Use AI/MCP or coordinate an RE workflow | [RE orchestration](techniques/01-methodology/llm-reverse-orchestration.md) and [AI-assisted workflows](techniques/08-ai-re/ai-re-workflows.md) |
 
-| **Locate common functions in 30 s / NOP patches / simple bug patterns** | `techniques/16-quick-ref/quick-reference.md` (16-row locating table + patch bytes for five architectures, self-verified on this machine) |
+## Execution Modes and Essential Constraints
 
-## Tool Environment (shared by branches 3/5)
+- **Real devices:** follow [device-testing.md](device-testing.md) for "run real-device / serial validation". No flashing, bootloader unlocking, firmware writes, or system-partition changes. Use only the permitted temporary test artifacts and self-installed test APKs. Microcontroller work is read-only; host kernel experiments belong in VMs. If no device is detected, record that result.
+- **Unattended execution:** follow [unattended.md](unattended.md) for "unattended: reverse ..." or "unattended: hunt CVEs ...". Persist incremental evidence, follow acceptance gates, and use [racing.md](racing.md) when an approach fails. Keep the existing boundaries for outbound submission, spending, irreversible changes, scope, and physical actions.
+- **Test values and cleanup:** follow [test-values.md](test-values.md): `[RE]` / `[REPROBE]`, `0x52455052`, `REPROBE-<date>-<seq>`, and device names prefixed with `re_`. High-collision probes such as `0x42` and `deadbeef` are forbidden. Check the value families at wrap-up and remove only the current task's temporary device state; retain labeled evidence.
+- **Scheduled radar:** daily 09:00 execution depends on a configured host schedule. A copied directory does not install a scheduler. See [setup.md](setup.md) and [radar/README.md](radar/README.md) for migration or manual execution.
 
-- CLI: jadx/apktool/radare2 (r2)/adb/7z (brew family)
-- The python stack lives in `tools-env/.venv` (frida 17.x/unicorn/capstone/androguard/ropper/apkid/apkleaks); **installing packages requires**: `UV_CACHE_DIR=/tmp/uv-cache uv pip install -p tools-env/.venv/bin/python <package>` (the sandbox forbids ~/.cache; the venv has no pip)
-- For live MCP status see `radar/MCP测试报告.md` (android-emulator is automatable; IDA needs the plugin started manually; FOFA has no key; iOS has no Xcode)
+## Tool Environment
 
-## Usage Rules
+- Common CLI tools: `jadx`, `apktool`, `r2`, `adb`, and `7z`; detect availability before use.
+- Python environment: `tools-env/.venv`. On this machine, use `UV_CACHE_DIR=/tmp/uv-cache uv pip install -p tools-env/.venv/bin/python <package>`; the venv has no pip and this cache path avoids known sandbox cache failures. Windows equivalents are in [setup.md](setup.md).
+- Prefer `python3 pipeline/env_check.py` for cross-platform health checks. Keep `pipeline/env_check.sh` as the legacy macOS Bash fallback.
+- Optional local MCP observations: `radar/MCP测试报告.md`; tool observations: `radar/工具测试报告.md`. These machine-local records are excluded from Git and may be absent in a fresh clone. They are dated observations, not a live capability guarantee. Check the installed client/server version and architecture before a dynamic session; prepared server binaries are under `tools-env/frida-server/` when installed.
 
-1. After picking a branch from the single entry, use that branch's INDEX as the router and open 1-2 articles by name; full reads are forbidden
-2. Body-text conventions: ideas and code only, no external links / attributions / personal names; corpus attributions go through the data/ index
-3. Saying "run the full chain" to an APK enters the pipeline branch (see `pipeline/README.md` for the reference artifact structure)
-4. All test values / hook output / probes follow `test-values.md` ([RE] prefix / 0x52455052 magic value / REPROBE-date sequence numbers; high-collision values like 0x42/deadbeef are forbidden); at wrap-up, grep the value family to confirm zero residue
-5. Ingesting new knowledge: techniques → the matching techniques/ zone, platforms → the matching platforms/ zone, new tools → the master table + radar baseline (a smoke test is mandatory on ingestion)
-5. The library's known legacy-defect list is in `自检报告.md` (read it before changes to avoid re-stepping on known mines); the radar's current tool status is in `radar/MCP测试报告.md` and `radar/工具测试报告.md`
-6. SSL-pinning knowledge hierarchy: `techniques/04-evasion/ssl-pinning-bypass.md` is the primary article; java-layer/sslpinning-and-certificates.md (scripts), capture-all-scenarios.md (scenarios), and the per-vendor archive (by vendor) are subordinate; on conflict, the primary article wins
-8. Moving to a new machine: run `setup.md` first (the AI installs the environment automatically); the radar scheduled task must be rebuilt on the new machine per radar/README
+## Maintenance Rules
+
+1. Route through this entry and the selected INDEX; read relevant articles progressively. Each INDEX owns its branch's file list.
+2. Method bodies contain methods and code, without new external links, attributions, or personal names. Preserve existing source lookup metadata and historical evidence; use the data index to locate original corpus material.
+3. APK full-chain requests enter `pipeline/pipeline.md`; acceptance and artifact structure come from that workflow.
+4. Apply `test-values.md` to probes, hooks, and output, including the verification and cleanup loop.
+5. Ingest techniques into the matching `techniques/` area, domain knowledge into `platforms/`, and tools into the selection table plus radar baseline. Smoke-test installable tools before marking them usable.
+6. Before maintenance, read [maintenance.md](maintenance.md) for current conventions and any available local historical audit for known regressions. Do not turn old smoke tests into current results.
+7. [SSL pinning bypass](techniques/04-evasion/ssl-pinning-bypass.md) is the primary methodology. [Java certificate snippets](techniques/02-frida/java-layer/sslpinning-and-certificates.md), [capture scenarios](techniques/04-evasion/capture-all-scenarios.md), and the [vendor archive](techniques/04-evasion/vendor-capture-countermeasures.md) are subordinate; the primary article resolves conflicts.
+8. On a new machine, follow `setup.md` first and restore the optional radar schedule separately. Leave raw corpus data, installed tools, and existing historical records intact during documentation maintenance.

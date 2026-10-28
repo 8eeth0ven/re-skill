@@ -83,8 +83,8 @@ Read through each handler once and label it into eight classes:
 The efficiency tool for static reading is babel: extract the dispatcher function's source → `@babel/parser` to AST → collect each handler body per case → generate a "case number ↔ source" table to paste into notes and label one by one (with a hundred-plus handlers, skipping this step gets labels crossed):
 
 ```javascript
-// extract_handlers.mjs —— node + @babel/parser;从已格式化的 vmp.js 抽 handler 对照表
-// npm i @babel/parser 后: node extract_handlers.mjs vmp.js dispatcher行号 > handlers.txt
+// extract_handlers.mjs: Node + @babel/parser; extract a handler table from formatted vmp.js
+// After npm i @babel/parser, run: node extract_handlers.mjs vmp.js <dispatcher-line-number> > handlers.txt
 import { readFileSync } from "fs";
 import { parse } from "@babel/parser";
 import generate from "@babel/generator";
@@ -92,14 +92,14 @@ import generate from "@babel/generator";
 const src = readFileSync(process.argv[2], "utf8");
 const ast = parse(src);
 let out = [];
-// 找超长 switch:cases 数 > 50 的 SwitchStatement 即 dispatcher 主体
+// Locate a long switch: a SwitchStatement with more than 50 cases is a dispatcher candidate
 (function walk(n) {
   if (!n || typeof n.type !== "string") return;
   if (n.type === "SwitchStatement" && n.cases.length > 50) {
     for (const c of n.cases) {
       const code = c.test ? generate(c.test).code : "default";
       const body = c.consequent.map(st2 => generate(st2).code).join("; ");
-      out.push(`${code}\t${body.slice(0, 200)}`);   // 每个handler先看前200字符即可分类
+      out.push(`${code}\t${body.slice(0, 200)}`);   // Inspect the first 200 characters of each handler for initial classification
     }
   }
   for (const k in n) Array.isArray(n[k]) ? n[k].forEach(walk) : walk(n[k]);
@@ -119,23 +119,23 @@ Probe design (one move per dispatcher form):
 - **Form A (switch-style)**: first "manually table it" — babel extracts each case body into a function `h0x23(ctx){...}` stored in a table, the switch becomes `tbl[op](ctx)`, then treat as form B. The rewrite is purely mechanical and doesn't touch semantics; after rewriting, first cross-check the output against the original VM to confirm the rewrite is lossless.
 
 ```javascript
-// 骨架①:dispatcher hook(浏览器 console 注入版)——trace 收集
-// 前置:已定位 vmCtx(handler 所在对象)与 handlers 表;浏览器 DevTools console 粘贴
+// Skeleton 1: dispatcher hook injected through the browser console to collect traces
+// Prerequisites: locate vmCtx and the handlers table, then paste into the browser DevTools console
 (function () {
   var H = vmCtx.handlers, seq = 0, traces = [];
-  var snap = function (c) {                      // ctx 快照:只拷数组与标量,对象打标记
+  var snap = function (c) {                      // Context snapshot: copy arrays and scalars only, and mark objects
     var o = {};
     for (var k in c) {
       var v = c[k];
       if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") o[k] = v;
-      else if (Array.isArray(v)) o[k] = v.slice(0, 64).map(function (x) {   // 栈顶64格足够
+      else if (Array.isArray(v)) o[k] = v.slice(0, 64).map(function (x) {   // Keep the top 64 stack slots
         return (typeof x === "object" && x !== null) ? "[obj:" + Object.prototype.toString.call(x).slice(8, -1) + "]" : x;
       });
       else o[k] = "[obj:" + Object.prototype.toString.call(v).slice(8, -1) + "]";
     }
     return o;
   };
-  var passthrough = function (f) {               // 防 toString 完整性检测(§1.4)
+  var passthrough = function (f) {               // Preserve the original toString representation for integrity checks (Section 1.4)
     var g = function () { return f.apply(this, arguments); };
     g.toString = function () { return f.toString(); };
     return g;
@@ -147,7 +147,7 @@ Probe design (one move per dispatcher form):
       return r;
     });
   })(i, H[i]);
-  window.__dumpTrace = function () {             // 触发一次签名后:copy(window.__dumpTrace()) 落盘
+  window.__dumpTrace = function () {             // After triggering one signature calculation, persist copy(window.__dumpTrace())
     return JSON.stringify(traces);
   };
 })();
@@ -168,15 +168,15 @@ The key move is **repeat-invocation with controllable inputs**: find the page-gl
 Statistical surface: an op frequency table + the stack-effect distribution per op (a stable `|st|` delta = pops-N-pushes-M). Aggregation script:
 
 ```python
-# 骨架②:语义统计(python) —— 消费骨架①的多份 trace_json,产出 sem_table.json
+# Skeleton 2: Python semantic statistics; consume multiple trace_json files from skeleton 1 and emit sem_table.json
 import json, sys, collections
 
 def load(path): return json.load(open(path))
 
-def stack_len(snap):                      # 栈字段名按目标样本改(st/stack/_) 
+def stack_len(snap):                      # Adapt the stack field name to the sample: st/stack/_
     return len(snap.get("st", []))
 
-def main(traces):                         # 传多个 trace 文件路径:trace_11.json trace_12.json ...
+def main(traces):                         # Accept several trace paths, for example trace_11.json trace_12.json ...
     freq = collections.Counter(); effect = collections.defaultdict(collections.Counter)
     for p in traces:
         for e in load(p):
@@ -184,9 +184,9 @@ def main(traces):                         # 传多个 trace 文件路径:trace_1
             effect[op][stack_len(e["s1"]) - stack_len(e["s0"])] += 1
     sem = {}
     for op, eff in effect.items():
-        stable = eff.most_common(1)[0]            # 主栈效应(多态handler看次高频)
+        stable = eff.most_common(1)[0]            # Most common stack effect; for polymorphic handlers also inspect less frequent effects
         sem[op] = {"count": freq[op], "delta_stack": stable[0], "guess": None}
-    # 语义候选:人工比对 probe 组 trace 填 guess;diff_trace(见骨架③)验证后回填确认
+    # Fill guess by comparing probe traces; confirm through diff_trace in skeleton 3 before marking the semantics verified
     json.dump(sem, open("sem_table.json", "w"), indent=1, ensure_ascii=False)
     for op, s in sorted(sem.items(), key=lambda kv: -kv[1]["count"]):
         print(f"op 0x{op:x}: n={s['count']:6d}  dStack={s['delta_stack']:+d}  {s['guess']}")
@@ -206,23 +206,23 @@ The output is the **semantic table** (`sem_table.json`: op → {stack effect, gu
 Translating stack-style bytecode goes in two passes: first a linear scan collecting jump targets (label the target pcs); then per-instruction translation into stack-machine IR, followed by **stack resolution** (folding push/pop sequences into expression trees):
 
 ```python
-# lifter 模板:bytecode + sem_table → 伪代码文本
+# Lifter template: bytecode + semantic table -> pseudocode
 import json
 
 OPS = json.load(open("sem_table.json"))          # op -> {"guess": "ADD", ...}
 
-def disasm(bc):                                   # 第一遍:跳转目标收集
+def disasm(bc):                                   # First pass: collect branch targets
     pc, labels = 0, set()
     while pc < len(bc):
         op = bc[pc]; info = OPS.get(op)
         if not info: raise SystemExit(f"未知op 0x{op:x} @ {pc} —— 语义表缺口,先回§2.3补")
-        name = info["guess"]; pc += 1             # 步长按目标样本改(变长指令按语义表operandWidth走)
+        name = info["guess"]; pc += 1             # Adapt instruction length to the sample; variable-width instructions follow operandWidth in the semantic table
         if name in ("JMP", "JCC"): labels.add(read_imm(bc, pc)); pc += imm_w
         elif name in ("LDC_IMM",): pc += imm_w
     return labels
 
 def lift(bc):
-    labels = disasm(bc); pc = 0; out = []; stack = []      # stack 存"表达式字符串"做栈消解
+    labels = disasm(bc); pc = 0; out = []; stack = []      # Keep expression strings on stack for stack elimination
     while pc < len(bc):
         if pc in labels: out.append(f"L{pc}:")
         op = bc[pc]; name = OPS[op]["guess"]; pc += 1
@@ -231,7 +231,7 @@ def lift(bc):
         elif name == "STORE": out.append(f"v{bc[pc]} = {stack.pop()}"); pc += 1
         elif name == "JMP":   out.append(f"goto L{read_imm(bc, pc)}"); pc += imm_w
         elif name == "JCC":   out.append(f"if {stack.pop()} goto L{read_imm(bc, pc)}"); pc += imm_w
-        # ...其余语义类同构展开;CALL 从栈弹函数与参数个数
+        # Expand the other semantic classes in the same way; CALL pops the function and argument count
         else: raise SystemExit(f"未折叠语义 {name} @ {pc}")
     return "\n".join(out)
 ```
@@ -243,28 +243,28 @@ The output is assembly-like pseudocode (labels + goto + folded expressions); goo
 With the semantic table, directly implement a mini interpreter that reruns the **original bytecode** (bypassing the translator, ruling out second-order error introduction):
 
 ```python
-# 骨架③:重放 diff(python) —— sem_table + bytecode 重跑,与原 VM 输出/trace 对拍
+# Skeleton 3: Python replay comparison; execute the semantic table and bytecode, then compare output/trace against the original VM
 import json
 
-OPS = {0x23: ("LDC_IMM", 1), 0x35: ("ADD", 0)}   # 结构:op -> (语义, 立即数宽度)——由骨架②回填
-BC  = open("bc.bin", "rb").read()                 # hook dump 的解密后 bytecode(§1.3)
+OPS = {0x23: ("LDC_IMM", 1), 0x35: ("ADD", 0)}   # op -> (semantics, immediate width), populated from skeleton 2
+BC  = open("bc.bin", "rb").read()                 # Decrypted bytecode dumped through a hook (Section 1.3)
 
 def replay(inp):
     pc, st, regs, out = 0, [], {}, None
-    trace = []                                    # 重放自身 trace:供 §3.3 对齐
+    trace = []                                    # Replay's own trace, aligned in Section 3.3
     while pc < len(BC):
         op = BC[pc]; name, iw = OPS.get(op, (None, None)); pc += 1
         imm = int.from_bytes(BC[pc:pc+iw], "little") if iw else None; pc += iw
         trace.append((pc, name, tuple(st[-4:])))
         if   name == "LDC_IMM": st.append(imm)
         elif name == "ADD":     b, a = st.pop(), st.pop(); st.append(a + b)
-        elif name == "ENV":     st.append(env_shim(imm))    # 环境面:见下文 shim 说明
+        elif name == "ENV":     st.append(env_shim(imm))    # Environment-dependent behavior; see the shim discussion below
         elif name == "EXIT":    return st.pop(), trace
         else: raise SystemExit(f"语义缺口 {name} @ {pc} —— 继续回§2.3补表")
     return st[-1], trace
 
 out, trace = replay({"ts": 1760000000, "input": "..."})
-orig = open("orig_out.txt").read()                # 原 VM 同输入(freeze 时间后)的输出
+orig = open("orig_out.txt").read()                # Original VM output for identical input with time frozen
 print("输出一致" if out == orig else f"FAIL: replay={out} orig={orig}")
 json.dump([{"pc": p, "op": n, "st": list(s)} for p, n, s in trace], open("replay_trace.json", "w"))
 ```
@@ -278,8 +278,8 @@ Two hands-on essentials:
 The output diff only tells you "it's wrong"; the trace diff tells you "which instruction is wrong":
 
 ```python
-# 对齐两份 trace:原 VM(骨架①导出) vs 重放(骨架③产出),找第一个分歧
-orig  = json.load(open("orig_trace.json"))        # [{seq,op,s1...}] -> 先整理成 (op, 栈顶元组)
+# Align original VM traces from skeleton 1 with replay traces from skeleton 3 to find the first divergence
+orig  = json.load(open("orig_trace.json"))        # Normalize [{seq,op,s1...}] to (opcode, stack-top tuple) first
 repl  = json.load(open("replay_trace.json"))
 for i, (a, b) in enumerate(zip(orig, repl)):
     if a["op"] != b["op"]:
@@ -305,9 +305,9 @@ The divergence bisection: for a control-flow divergence, look at the previous en
 3. IDAPython bulk annotation: from the jump-table base scan out the handler address set; create each as a function named `vm_op_XX`, writing `XX` (the index) into the comment too — this is the native-version semantic table in embryo:
 
 ```python
-# IDAPython: 从跳转表批量提取 handler 并命名(arm64, 表在 jump_tbl_ea, N 项)
+# IDAPython: extract and name jump-table handlers in bulk; ARM64 table at jump_tbl_ea with N entries
 import ida_bytes, idc
-BASE = 0x7A0000                                   # so 内跳转表地址(静态认出 LDR X9,[X19,X9] 的 X19)
+BASE = 0x7A0000                                   # Shared-object jump table address; identify X19 in LDR X9,[X19,X9] statically
 for i in range(256):
     ea = ida_bytes.get_qword(BASE + i * 8)
     if ea and idc.get_func(ea) or True:
@@ -345,12 +345,12 @@ Decision criteria (reusing the existing docs, no new standard): inputs construct
 The dataflow contract of the three skeletons (a self-consistency checklist):
 
 ```
-骨架①(浏览器/frida 注入) --JSON: [{seq,op,s0,s1,ret}]--> 多组 probe trace
+Skeleton 1 (browser/Frida injection) --JSON: [{seq,op,s0,s1,ret}]--> multiple probe traces
         │
-骨架②(语义统计)         <-- trace_*.json ; 输出 sem_table.json(op→{delta_stack,guess})
+Skeleton 2 (semantic statistics) <-- trace_*.json; output sem_table.json(op->{delta_stack,guess})
         │
-骨架③(重放 diff)         <-- sem_table.json + bc.bin + orig_out/orig_trace
-                              输出: 输出 diff + trace 对齐报告(§3.3)
+Skeleton 3 (replay comparison) <-- sem_table.json + bc.bin + orig_out/orig_trace
+                              output: output diff + trace-alignment report (Section 3.3)
 ```
 
 Interlock points: ①'s `op` = the handler index (not the raw opcode; the mapping formula gets its own layer); ②'s `delta_stack` and `guess` are ③'s only inputs; ③'s "semantic gap" exception flows back into ② to keep filling the table — **a closed-loop trio, each independently runnable, each artifact archivable and reusable**.

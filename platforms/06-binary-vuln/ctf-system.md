@@ -71,9 +71,9 @@ The early days preserved the spectacle of 10-40 writeups on a single challenge (
 ### 3.0 The universal solving flow (an experience digest)
 
 ```
-拿题 → file/checksec(或 apk/so 体检) → 跑一遍录行为 → IDA/Ghidra 静态定位入口
-  ├─ PWN:菜单/输入面梳理 → 漏洞点(溢出/格式串/UAF) → leak → 原语 → getshell(注意 seccomp→ORW)
-  └─ RE:找校验函数 → 反调试/混淆对抗 → 算法还原(常为 rc4/base64 变体/自定义 VM) → 写 keygen
+Obtain challenge → file/checksec (or APK/SO inspection) → run once and record behavior → locate entries statically in IDA/Ghidra
+  ├─ PWN: map menus/input surfaces → flaw (overflow/format string/UAF) → leak → primitive → shell (consider seccomp→ORW)
+  └─ RE: locate verification function → handle anti-debugging/obfuscation → restore algorithm (often rc4/base64 variants/custom VMs) → write a keygen
 ```
 
 - When unsure, start with `checksec` + the libc version to pin the era (the 2.23/2.27/2.31/2.35 technique tiers, see `heap-exploitation.md`)

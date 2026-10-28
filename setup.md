@@ -4,12 +4,12 @@
 
 ## 0. First Setup Step: Full Inventory Snapshot
 
-First run `python3 pipeline/env_scan.py`: it inventories available software / external devices (USB · serial) / phone details (model · version · abi · **root status · third-party app list** · debugging state) / firmware ports, automatically generates "companion operation" suggestions, and **saves a snapshot to `环境快照/snapshot-<时间戳>.md`** (latest.md kept in sync). Re-run it on every setup / new-session start — after installing new software or plugging in devices, run it again and diff the snapshots to see what changed.
+First run `python3 pipeline/env_scan.py`: it inventories available software / external devices (USB · serial) / phone details (model · version · abi · **root status · third-party app list** · debugging state) / firmware ports, automatically generates "companion operation" suggestions, and **saves a snapshot to `环境快照/snapshot-<timestamp>.md`** (latest.md kept in sync). Re-run it on every setup / new-session start — after installing new software or plugging in devices, run it again and diff the snapshots to see what changed.
 
 ## Execution Discipline (formerly Section 0)
 
-- Work section by section; for each item detect first, install only if missing (skip if present); single-command timeout 5 minutes; log the whole run to `初始化报告-<日期>.md` (skill root)
-- Platform detection: `uname` (darwin/linux) or Windows (if the command errors, treat as win); on Windows prefer PowerShell (winget), fallback scoop/choco
+- Work section by section; for each item detect first, install only if missing (skip if present); single-command timeout 5 minutes; log the whole run to `setup-report-<date>.md` (skill root)
+- Platform detection: use `python3 -c "import platform; print(platform.system())"` (or `python` on Windows); a failed `uname` is not evidence of Windows. On Windows prefer PowerShell (winget), fallback scoop/choco
 - Sandbox/permission failures: switch to user-level installs (brew/winget user), or mark "needs human" and write it into the report
 
 ## 1. Base Runtimes
@@ -31,7 +31,7 @@ First run `python3 pipeline/env_scan.py`: it inventories available software / ex
 | radare2 | `brew install radare2` | `winget install radare2.radare2` (if absent, scoop) |
 | adb (Android dynamics) | `brew install --cask android-platform-tools` | `winget install Google.PlatformTools` |
 
-When Windows package managers are missing: `winget install Microsoft.PowerShell` first? Not needed — try in order winget → scoop (`irm get.scoop.sh \| iex`) → choco; if none work, manually download the zip from GitHub releases into `%LOCALAPPDATA%\re-tools\` and add the directory to PATH (with PowerShell `[Environment]::SetEnvironmentVariable('Path',...)`).
+When Windows package managers are missing, use the existing PowerShell and try in order winget → scoop (`irm get.scoop.sh \| iex`) → choco; if none work, manually download the zip from GitHub releases into `%LOCALAPPDATA%\re-tools\` and add the directory to PATH (with PowerShell `[Environment]::SetEnvironmentVariable('Path',...)`).
 
 ## 3. Python RE Environment (tools-env)
 
@@ -39,11 +39,11 @@ Run in the skill root (uniform relative paths, consistent across machines):
 
 ```bash
 # macOS/Linux
-cd <本技能根目录>/tools-env
+cd <skill-root>/tools-env
 UV_CACHE_DIR=/tmp/uv-cache uv venv
 UV_CACHE_DIR=/tmp/uv-cache uv pip install -p .venv/bin/python frida-tools frida unicorn capstone androguard ropper apkid apkleaks
 # Windows(PowerShell)
-cd <本技能根目录>\tools-env
+cd <skill-root>\tools-env
 $env:UV_CACHE_DIR="$env:TEMP\uv-cache"
 uv venv; uv pip install -p .venv\Scripts\python.exe frida-tools frida unicorn capstone androguard ropper apkid apkleaks
 ```
@@ -52,9 +52,9 @@ Verify: `.venv/bin/frida --version` (win: `.venv\Scripts\frida.exe --version`) p
 
 ## 4. Emulator (Optional, for Dynamic Analysis)
 
-- **macOS**: Android Studio AVD (after `brew install --cask android-studio`, `avdmanager create avd -n re_avd -k "system-images;android-35;google_apis;arm64-v8a"`); this skill's android-emulator MCP can drive it directly
+- **macOS**: Android Studio AVD (after `brew install --cask android-studio`, `avdmanager create avd -n re_avd -k "system-images;android-35;google_apis;arm64-v8a"`); this skill's android-emulator MCP can drive it directly. Record the created AVD name (`re_avd`) and select that name in the pipeline; `Medium_Phone_API_36.0` is a historical local example, not a portable requirement
 - **Windows**: `winget install Google.AndroidStudio`, create the AVD as above; or LDPlayer/Nox (mind frida compatibility; pick the frida-server arch matching the x86 image)
-- frida-server push: `adb push frida-server-<ver>-android-<arch> /data/local/tmp/fs && adb shell "chmod 755 /data/local/tmp/fs"` (rooted emulator; source: github.com/frida/frida/releases)
+- frida-server push (select a test emulator serial with `adb -s <serial>`): `adb -s <serial> push frida-server-<ver>-android-<arch> /data/local/tmp/re_fs && adb -s <serial> shell "chmod 755 /data/local/tmp/re_fs"` (rooted test emulator; use a server version and architecture matching the client and image, and register the copied file/PID for cleanup; source: github.com/frida/frida/releases)
 
 ## 5. MCP (Optional, As Needed)
 
@@ -65,7 +65,7 @@ Verify: `.venv/bin/frida --version` (win: `.venv\Scripts\frida.exe --version`) p
 
 1. Run the health check: `python3 pipeline/env_check.py` (cross-platform version, preferred; the legacy `env_check.sh` is macOS-bash-only, kept as backup)
 2. Smoke test (optional but recommended): download a small open-source APK → run the S0-S4 full chain per `pipeline/pipeline.md` → a generated report means setup succeeded
-3. Write the following into `初始化报告-<日期>.md`: platform / per-item install results (✓/✗/skipped) / venv version / leftover items needing a human / health-check output
+3. Write the following into `setup-report-<date>.md`: platform / per-item install results (✓/✗/skipped) / venv version / leftover items needing a human / health-check output
 4. Path fixes: if stale absolute paths from the old machine linger in pipeline.md (e.g. /Users/xxx, /opt/homebrew), replace them uniformly with PATH commands (jadx/apktool as bare command names) or the actual local paths
 
 ## 7. Post-Migration Scheduled Tasks (Optional)

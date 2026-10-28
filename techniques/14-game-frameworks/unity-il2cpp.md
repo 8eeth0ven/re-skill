@@ -21,8 +21,8 @@ Extract the material (this directory is used uniformly below):
 ```bash
 mkdir -p u3d && cd u3d
 unzip -o ../app.apk "lib/arm64-v8a/*" "assets/bin/Data/Managed/*" -d ext
-ls ext/lib/arm64-v8a/ | head    # 确认 libil2cpp.so / libunity.so
-ls -la ext/assets/bin/Data/Managed/Metadata/   # 确认 global-metadata.dat
+ls ext/lib/arm64-v8a/ | head    # Check for libil2cpp.so / libunity.so
+ls -la ext/assets/bin/Data/Managed/Metadata/   # Check for global-metadata.dat
 ```
 
 Note: 32-bit packages (`lib/armeabi-v7a/`) follow exactly the same workflow — just pick the arm architecture in IDA; for split APKs use `adb shell pm path <pkg>` to pull all splits before unpacking.
@@ -36,13 +36,13 @@ IL2CPP compiles C# into the native `libil2cpp.so`, but class names / method name
 ### 1.2 Run the Dumper
 
 ```bash
-# 任何平台: 装 .NET runtime 后
+# On any supported platform, after installing the .NET runtime:
 git clone https://github.com/Perfare/Il2CppDumper && cd Il2CppDumper
 dotnet Il2CppDumper.dll \
   ../u3d/ext/lib/arm64-v8a/libil2cpp.so \
   ../u3d/ext/assets/bin/Data/Managed/Metadata/global-metadata.dat \
   ../u3d/dump_out
-# Windows 下即 Il2CppDumper.exe <so> <metadata> <outdir>
+# On Windows: Il2CppDumper.exe <so> <metadata> <outdir>
 ```
 
 Answer arm64 when it interactively asks for the architecture; if automatic metadata-version detection fails, check the version manually per §3.1.
@@ -74,7 +74,7 @@ On the frida side, no script injection is needed — use RVAs directly:
 
 ```js
 const base = Module.findBaseAddress("libil2cpp.so");
-const TakeDamage = base.add(0x123456);   // dump.cs 里抄 RVA
+const TakeDamage = base.add(0x123456);   // Copy the RVA from dump.cs
 Interceptor.attach(TakeDamage, { onEnter(a) { console.log("hit", a[0], a[1]); } });
 ```
 
@@ -94,15 +94,15 @@ import "frida-il2cpp-bridge";
 Il2Cpp.perform(() => {
     const img = Il2Cpp.domain.assembly("Assembly-CSharp").image;
 
-    // 枚举找类: 名字不确定时先 dump 类清单
+    // Enumerate classes first when the class name is uncertain
     // for (const c of img.classes) console.log(c.name);
 
     const cls = img.class("PlayerController");
     const m = cls.method("TakeDamage");
     m.implementation = function (dmg) {
-        const hp = this.field("currentHp").value;   // 读字段
+        const hp = this.field("currentHp").value;   // Read the field
         console.log(`TakeDamage(${dmg}) hp=${hp}`);
-        return m.invoke(this, 0);                   // 原逻辑照跑但伤害改 0(免伤)
+        return m.invoke(this, 0);                   // Invoke the original implementation with damage set to 0
     };
 });
 ```
@@ -136,7 +136,7 @@ Drag `Assembly-CSharp*.dll` into dnSpy/ILSpy and read the C# source directly —
 
 ```bash
 xxd -l 16 ext/assets/bin/Data/Managed/Metadata/global-metadata.dat
-# 明文头: af bb b1 fa <版本u32 LE> ...   magic = 0xFAB11BAF
+# Plaintext header: af bb b1 fa followed by a little-endian u32 version; magic = 0xFAB11BAF
 ```
 
 | Symptom | Conclusion |
@@ -156,26 +156,26 @@ Header-only encryption: most keep the file length and merely XOR/overwrite the f
 hdr = open("global-metadata.dat","rb").read(0x40)
 plain = bytes.fromhex("afbb1bfa") + (29).to_bytes(4,"little")
 xor = bytes(a ^ b for a, b in zip(hdr, plain[:8]))
-print(xor.hex())   # 单字节循环 = 直接整段还原;无规律 = 换运行时 dump
+print(xor.hex())   # A repeating single-byte XOR permits whole-region recovery; if no pattern appears, switch to a runtime dump
 ```
 
 ### 3.3 Runtime Dump (heavy encryption; timing is everything)
 
 Core insight: **the game itself must decrypt the plaintext metadata to run** — place the dump point at "decryption finished, before use":
 
-- **First choice Zygisk-Il2CppDumper** (has a row in the tool master table): with root+Zygisk, install the module and the game dumps as it comes up; artifacts land automatically in `/storage/emulated/0/Android/data/<包名>/files/` (dump.cs + script.py + plaintext metadata); continue with §1.4/§1.5;
+- **First choice Zygisk-Il2CppDumper** (has a row in the tool master table): with root+Zygisk, install the module and the game dumps as it comes up; artifacts land automatically in `/storage/emulated/0/Android/data/<package>/files/` (dump.cs + script.py + plaintext metadata); continue with §1.4/§1.5;
 - **Manual frida scanning** (no Zygisk): once the game reaches the main screen, scan for the `af bb b1 fa` + valid-version combination:
 
 ```js
-// scan_meta.js —— 找到疑似明文 metadata 并按长度 dump
+// scan_meta.js: locate suspected plaintext metadata and dump it using a verified length
 const found = [];
 for (const r of Process.enumerateRanges("rw-")) {
-    Memory.scanSync(r.base, r.size, "af bb b1 fa 1d 00 00 00").forEach(m => {   // 1d=29, 按实际版本改
+    Memory.scanSync(r.base, r.size, "af bb b1 fa 1d 00 00 00").forEach(m => {   // 1d=29; adapt to the actual metadata version
         try { found.push([m.address, r.size]); } catch (e) {}
     });
 }
 found.forEach(([addr]) => {
-    const len = addr.add(0x10).readU32? 0 : 0;   // sanitizedLength/s fileSize 字段按版本结构读
+    const len = addr.add(0x10).readU32? 0 : 0;   // Read sanitizedLength or fileSize according to the version-specific structure
     console.log("candidate @", addr);
 });
 ```

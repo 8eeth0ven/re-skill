@@ -1,10 +1,10 @@
 # Corpus Branch Master Index (one of the RE single entry points · full distillation layer)
 
-> Positioning: the **semantic-dedup distillation layer** over all 18,915 articles of Kanxue Essentials vols 1-24 (2000-2023) — subdivided into nine categories; each topic file = the method distillation of that topic's cases across all 24 volumes. A given method keeps only one entry (same-approach sources listed on the last line); different semantics / different methods each get their own entry; an entry = chapter title + author.
-> Relation to the sister branches: **platforms/ and techniques/ are the systematic knowledge (check those first); corpus/ is the case ammunition depot** (come here for concrete cases, era techniques, vendor lineages). To find an original article: grep the title in `../data/精华全量索引.md` to get the path → `7z x pediyNN.chm "<路径>" -o<目录> -y`.
-> Coverage progress: **only the first wave of 8 topics is done** (2026-10-17); for pending areas and per-file skip clusters see [`coverage-ledger.md`](coverage-ledger.md).
+> This index routes concrete cases, historical techniques, and vendor lineages. Start with [`../platforms/INDEX.md`](../platforms/INDEX.md) or [`../techniques/INDEX.md`](../techniques/INDEX.md) for systematic knowledge. Scope, provenance, deduplication, and maintenance are in [`coverage-ledger.md`](coverage-ledger.md).
+> To locate the original article, use the title in `../data/精华全量索引.md`; extraction instructions are in [`../platforms/maintenance.md`](../platforms/maintenance.md).
+> For completed waves, pending work, and skipped clusters, read [`coverage-ledger.md`](coverage-ledger.md).
 
-## 01-windows-re (5 files)
+## 01-windows-re
 
 | File | When to open |
 |------|-----------|
@@ -14,19 +14,19 @@
 | [malware-evasion-cases.md](01-windows-re/malware-evasion-cases.md) | Family analysis: infection techniques / worm propagation / RAT backdoors / credential theft / ransomware mechanics / AV-evasion confrontation (incl. IOC signatures) |
 | [drivers-kernel-cases.md](01-windows-re/drivers-kernel-cases.md) | R0 in practice: hiding tables in SSDT slots / MDL beating read-only / protection-driver confrontation (TP·EAC·XIGNCODE3) / rootkit case teardowns (FUTo·Machine Dog·Stuxnet) / DKOM hiding / signature bypass / R0↔R3 injection |
 
-## 02-android-re (1 file)
+## 02-android-re
 
 | File | When to open |
 |------|-----------|
 | [early-techniques-packing-history.md](02-android-re/early-techniques-packing-history.md) | **Read this one for the era evolution**: early-era cracking → repackaging/signature confrontation → the smali debugging era → gen-1 whole-file encryption (Bangcle/Naga/360) → gen-2 method extraction → gen-3 VMP → unpacker evolution (ZjDroid→FART→FRIDA-DEXDump) / vendor signature lineage and the five-generation view / the early hook & injection ecosystem |
 
-## 05-network-proto (1 file)
+## 05-network-proto
 
 | File | When to open |
 |------|-----------|
 | [protocol-reversing-cases.md](05-network-proto/protocol-reversing-cases.md) | Concrete protocol restoration: PC/mobile game packet encryption / private-server auth clients / IM protocols / APP signature encryption / protobuf·netty / enterprise auth protocols / IoT & industrial-control protocols / protocol fuzzing |
 
-## 06-crypto (1 file)
+## 06-crypto
 
 | File | When to open |
 |------|-----------|
@@ -34,11 +34,11 @@
 
 ## To-be-built areas (priorities in the coverage ledger)
 
-03-iOS-macos / 04-linux-others / 07-binary-vulns-ctf / 08-smart-devices-hardware / 09-web-business — see the Wave2 list in [`coverage-ledger.md`](coverage-ledger.md).
+- [coverage-ledger.md](coverage-ledger.md#wave2-to-mine-list-ordered-by-value): planned areas, priorities, and suggested destinations.
 
-## western/ (7 files, 2026-10-19 — English-language sources)
+## western/ (English-language sources)
 
-> Distilled from foreign forums/collections (UnknownCheats, RE StackExchange, crackmes.de archive, Project Zero, Diaphora/BinDiff, hasherezade/MalwareTech, pwn.college/ir0nstone/GuyInATuxedo, mrexodia/Hex-Rays/x64dbg docs). Same dedup discipline: each agent read the overlapping Kanxue file first and kept only novel ground. Every file ends with a `## Sources` appendix (title — URL) as the re-find anchor; that appendix is the one place URLs live.
+> Source scope and acquisition history are maintained in [`coverage-ledger.md`](coverage-ledger.md#western-sources-wave-2026-10-19). Each file retains its existing source appendix for traceability.
 
 | File | When to open |
 |------|-----------|
@@ -60,12 +60,8 @@
 | [90-legacy/packers-protection-legacy.md](90-legacy/packers-protection-legacy.md) | Protection post-mortems tied to dead plugins/dead software (only 1 entry: the StrongOD bug) |
 | [90-legacy/kernel-mobile-algo-proto-legacy.md](90-legacy/kernel-mobile-algo-proto-legacy.md) | 9x-XP-only kernel tricks (call gates / cross-session csrss) / dead service protocols / out-of-print software algorithms (no migration value) |
 
-**Archive criteria** (move in if any holds; the main area prefers omission over error): (1) the tool is unusable today and the entry depends on it; (2) the technique only works on Win9x/ME/NT4/2000/XP (32-bit); (3) the target service/platform/version is dead with no migration value. **Do not move**: old packers / old virus families / hardware dongles (value for analyzing legacy in-the-wild samples), principle-level content, evolution histories with modern successors.
+See [legacy triage criteria](coverage-ledger.md#legacy-triage-criteria) before adding or moving entries; preserve historical cases with current analysis value.
 
-## Maintenance conventions
+## Maintenance
 
-- **Same-method dedup**: keep one entry per method, list other same-method sources on the last line via `> Same approach:`; different semantics/methods each get their own entry — the goal is not thinness but full method coverage
-- An entry = chapter title + author name; no URLs / volume numbers / dates / verification notes / process narrative (install addresses and IOC signatures are the exceptions)
-- **Legacy triage (applied at write time)**: run every new distilled entry through the archive criteria above; on a hit write it directly into `90-legacy/`, not the main area; register the destination in the "LEGACY ARCHIVE" section at the end of the main-area file
-- New files get a row in this index; each file carries its own "skip ledger" at the end, summarized centrally in `coverage-ledger.md`
-- Extraction workflow (reusable): `/tmp/kx_all.txt` (full vol|path|title list; rebuild command in the coverage ledger) → topic grep → 7z batch extract → `kx_read.py` to plain text → read cluster representatives → distill and write
+- [coverage-ledger.md](coverage-ledger.md#maintenance-conventions): deduplication, source metadata, extraction, and ingestion rules.

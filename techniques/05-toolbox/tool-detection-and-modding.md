@@ -286,7 +286,7 @@ Recommended stacks and "bill counts" for four typical scenarios - count each too
 
 ### 6.3 Finance-Grade Stubborn Targets (the thickest detection stacks)
 
-The order is `root 与环境隐藏.md` Section 5.2: KSU/APatch (naturally clean environment) -> Zygisk-Frida/LSPosed, pick one (pick one signature family) -> layered pinning scripts -> **risk-control leftovers handled by restraint** (if behavioral fingerprints can't be contained, don't force it). The detection-surface bill is no longer the point - the point is "even if you pass, don't operate at high frequency"; server-side behavioral clustering doesn't care which tools you use.
+The order is `../04-evasion/root-env-hiding.md` Section 5.2: KSU/APatch (naturally clean environment) -> Zygisk-Frida/LSPosed, pick one (pick one signature family) -> layered pinning scripts -> **risk-control leftovers handled by restraint** (if behavioral fingerprints can't be contained, don't force it). The detection-surface bill is no longer the point - the point is "even if you pass, don't operate at high frequency"; server-side behavioral clustering doesn't care which tools you use.
 
 ### 6.4 Pure Algorithm Restoration (zero bill)
 

@@ -27,12 +27,12 @@
 The youngest node in the tree. A container is essentially an **isolated process sharing the kernel** — so container security = kernel isolation mechanisms (namespaces/cgroups/capabilities/seccomp) + the daemon surface (Docker daemon/containerd/K8s control plane).
 
 ```
-逃逸路径总览:
-容器内进程 ──┬─ ① daemon API 未授权(2375 裸奔)──挂载宿主根 → 直接拿下
-             ├─ ② privileged 特权模式 ── mknod 磁盘/加载内核模块 → 逃逸
-             ├─ ③ 挂载敏感路径(/var/run/docker.sock、/proc、/)
-             ├─ ④ 内核漏洞(dirty cow / dirty pipe / CVE-2020-15257 shim 抽象套接字)
-             └─ ⑤ K8s 面组件(kubelet 10250、dashboard、etcd、RBAC 失配)
+Container escape routes:
+Container process ──┬─ ① Unauthenticated daemon API (exposed port 2375) → mount host root → host compromise
+                    ├─ ② privileged mode → mknod for disks/load kernel modules → escape
+                    ├─ ③ Sensitive mounts (/var/run/docker.sock, /proc, /)
+                    ├─ ④ Kernel flaws (dirty cow / dirty pipe / CVE-2020-15257 shim abstract socket)
+                    └─ ⑤ K8s components (kubelet 10250, dashboard, etcd, RBAC misconfiguration)
 ```
 (self-drawn ASCII)
 

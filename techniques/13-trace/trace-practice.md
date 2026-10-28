@@ -4,6 +4,18 @@
 > Division of labor: Stalker's assembly-level principles and transform recipes are in [02-frida/advanced/stalker.md](../02-frida/advanced/stalker.md); this piece covers only **runnable practice + the full selection panorama + post-processing**.
 > Environment: macOS arm64 (darwin 25.6.0, SIP on), frida 17.23.3 (`tools-env/.venv/bin/`), radare2 6.2.4. Everything marked "verified locally" is real output from 2026-10-16.
 
+**Bundled driver scope:** `scripts/stalker_trace.py` defaults to starting a
+host-local executable with `subprocess.Popen` and local `frida.attach`. Its optional
+Android attach mode requires an exact `--device-serial` and an existing `--pid`;
+it never chooses a device automatically or starts/kills that device process.
+Use only the task-owned test APK allowed by [device-testing.md](../../device-testing.md).
+`--thread-id` selects a verified enumerated TID; without it, Android/Linux mode
+requires the requested PID to match `Process.id` and verifies that the matching
+process-leader TID exists. The macOS `threads[0]` observation is confined to the
+default host mode. Device mode has offline mock coverage and **has not been
+verified on physical Android hardware**. `scripts/syscall_sim.py` remains a
+host-local macOS observer; `scripts/calltree.py` only post-processes JSONL.
+
 ## 0. The one-sentence creed
 
 Trace is fundamentally **buying information by layer**: at the syscall layer you buy "what resources were touched"; at the function layer "who called whom"; at the block/instruction layer "the true face of the control flow"; at the record/replay layer "time travel". The deeper the layer, the bigger the data volume and the slowdown - **locate at function level first, then drop layers for evidence**; never open Stalker wide from the start.
@@ -115,10 +127,29 @@ One more event-parsing detail: `Stalker.parse(blob, {annotate:true})` must be ru
 ### 3.2 The reusable driver (scripts/stalker_trace.py)
 
 ```bash
-# 采集:call+block 事件、只留主模块、3000 条封顶、JSONL 落盘
+# Collect call+block events, keep the main module only, cap at 3,000 events, and write JSONL
 python3 scripts/stalker_trace.py --target $(which python3) --args workload.py \
     --events call,block --limit 3000 --exclude-all-but-main --filter-main --out ev.jsonl
 ```
+
+For the already-running self-installed test APK on the explicitly selected
+phone (run from the skill root, with the recorded serial and PID):
+
+```bash
+tools-env/.venv/bin/python techniques/13-trace/scripts/stalker_trace.py --device-serial "$RE_DEVICE_SERIAL" --pid "$RE_TEST_PID" --events block --limit 3000 --wait 8 --out android-blocks.jsonl
+```
+
+Exercise the test APK's selected workload during capture; the device mode attaches
+to the recorded PID and does not launch the application.
+
+Add `--thread-id <verified-tid>` when tracing a specific worker. The driver checks
+that the selected TID belongs to the attached process and refuses the agent's own
+thread. With `--events block --limit N`, **N caps received block events before
+module filtering**, not guaranteed JSONL rows or unique blocks; filters, timeout,
+and an early process exit may yield fewer rows. Mixed `call,block` mode counts both
+event types toward the same cap. Cleanup stops only this script's selected trace,
+unloads its script, and detaches its session; the attached APK remains running.
+These are implemented transport/thread checks, not a claim of real-device success.
 
 The script's three volume-control switches (the 3 key parameters of the task):
 
@@ -278,14 +309,14 @@ One sentence: **the harder the target hits, the deeper into the kernel layer tra
 ## 7. Scenario decision tree
 
 ```
-想看「谁调用了 X / X 的参数」──────────→ 函数级:frida-trace attach / Interceptor(§2)
-想看「完整执行流/覆盖率/控制流篡改」────→ Stalker call+block 起步(§3),控量三参数
-想看「指令级且嫌 Stalker 慢」──────────→ QBDI(frida 会话内并行引擎,§1 表)
-想看「系统调用面/资源触碰(IOC)」──────→ Linux:strace/eBPF;macOS:syscall_sim.py(§5)
-想看「全局多进程、零注入观测」─────────→ eBPF tracepoint/uprobe(07 区 eBPF 篇)
-想「录制后时间倒流、只崩一次的 bug」───→ Linux:rr;Windows:WinDbg TTD(平台 01)
-想「不跑样本拿到执行流」─────────────→ r2 ESIL 仿真 / Triton 符号执行(§1 表)
-想「自动探索输入(fuzz)」────────────→ DBI 底座:DynamoRIO+WinAFL(win-vuln 工具链)
+Who calls X, or what are X's arguments? --------> function level: frida-trace attach / Interceptor (Section 2)
+Full execution flow, coverage, or flow changes? -> start with Stalker call+block (Section 3) and its three volume limits
+Instruction level, with less overhead than Stalker? -> QBDI, a parallel engine within a Frida session (Section 1 table)
+Syscall/resource-access surface or IOCs? -------> Linux: strace/eBPF; macOS: syscall_sim.py (Section 5)
+System-wide multiprocess observation, no injection? -> eBPF tracepoint/uprobe, ../07-kernel/android-kernel-ebpf.md
+Record/replay or a bug that crashes only once? --> Linux: rr; Windows: WinDbg TTD in ../../platforms/01-windows/
+Recover flow without running the sample? ------> r2 ESIL emulation / Triton symbolic execution (Section 1 table)
+Explore inputs automatically with fuzzing? ----> DBI engine: DynamoRIO + WinAFL, Windows vulnerability toolchain
 ```
 
 Layer-drop discipline: every address/path/call-site obtained at one layer becomes the **anchor** for the next layer's finer trace (frida-trace locates the function first, then Stalker that single function); whole-process full-instruction Stalker is the last resort.

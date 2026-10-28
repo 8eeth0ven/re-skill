@@ -48,23 +48,23 @@ Note: the author of dpt-shell is **luoyesiqiu**, not quintubits.
 ### 3.1 Build and commands
 
 ```bash
-# 需要 Go 1.19+ 与 Android NDK
+# Requires Go 1.19+ and the Android NDK
 ./build_env.sh && ./build.sh
 adb push eBPFDexDumper /data/local/tmp/
 
-# 主命令:dump(注意 -u 是 uid 不是 pid)
-eBPFDexDumper dump -n com.example.app            # 按包名
-eBPFDexDumper dump -u 10223                       # 按 uid 过滤
-# 常用 flag:
-#   --libart   默认 /apex/com.android.art/lib64/libart.so
-#   --out      默认 /data/local/tmp/dex_out
-#   --trace              实时方法执行跟踪
-#   --clean-oat          默认 true:先删 /data/app/.../<pkg>/oat/,避免 cdex/空结果
-#   --auto-fix           默认 true:退出时自动修复
-#   --execute-offset / --nterp-offset / --register-natives-offset  手动指定偏移
-eBPFDexDumper fix    -d <dir>      # 修复 dump 下来的 DEX 头/结构
-eBPFDexDumper dumpso -n <pkg> --watch   # dump native so(--lib 过滤 --anon 匿名 ELF)
-eBPFDexDumper fixso  -d <dir> -s jni_symbols_xxx.txt   # 修 so 段表+回填 JNI 符号
+# Main command: dump; -u is a UID, not a PID
+eBPFDexDumper dump -n com.example.app            # Select by package name
+eBPFDexDumper dump -u 10223                       # Filter by UID
+# Common flags:
+# --libart   default: /apex/com.android.art/lib64/libart.so
+# --out      default: /data/local/tmp/dex_out
+# --trace    trace method execution in real time
+# --clean-oat  default true: delete /data/app/.../<pkg>/oat/ first to avoid cdex or empty results
+# --auto-fix   default true: repair automatically on exit
+# --execute-offset / --nterp-offset / --register-natives-offset: specify offsets manually
+eBPFDexDumper fix    -d <dir>      # Repair the dumped DEX headers and structures
+eBPFDexDumper dumpso -n <pkg> --watch   # Dump native shared objects; --lib filters libraries and --anon selects anonymous ELFs
+eBPFDexDumper fixso  -d <dir> -s jni_symbols_xxx.txt   # Repair shared-object section tables and restore JNI symbols
 ```
 
 Outputs: `dex_<begin>_<size>.dex`, `dex_..._code.json` (method bytecode), `fix/`, `so_<pid>_<base>_<size>_<name>.so`, `jni_symbols_<module>.txt`.
@@ -106,11 +106,11 @@ Two symbols matching this shape (art.rs `is_art_dex_file_constructor_symbol`):
 
 ```text
 _ZN3art7DexFileC1/C2   DexFile::DexFile(const uint8_t* base, size_t size, ...)
-                       ABI: x0=this, x1=base, x2=size        → x1 直接是 DEX 起始
+                       ABI: x0=this, x1=base, x2=size        -> x1 is the DEX start
 _ZN3art13DexFileLoader7OpenOne
                        OpenOne(uintptr_t base, uint32_t size, OatDexFile const*, ...)
                        ABI: x0=this(DexFileLoader*), x1=base, x2=size
-                       → 与 ctor 同 x1=base 形态,同一个 uprobe 程序直接复用
+                       -> same x1=base shape as the constructor; reuse the same uprobe program
 ```
 
 Key background (verbatim from a source comment): **Android 16/17 strips the DexFile constructor's symbol / inlines it away**, in which case it falls back to attaching `DexFileLoader::OpenOne`; note that in most stripped libart builds that symbol has `st_value=0` in dynsym (an import placeholder only), the attach is skipped, and it can only be attached when the ROM actually exports an address.
@@ -143,12 +143,12 @@ Implemented in Rust + Aya, Android 13+ default layout; on API 35 some ROMs locat
 ### 5.1 End-to-end dataflow
 
 ```text
-uprobe 命中(Execute/Nterp/dexFileCtor/RegisterDexFile/verifyClass/RegisterNatives
-            + libc memcpy/memmove/mmap/mprotect 的 uprobe+uretprobe)
-  → bpf_probe_read_user 读寄存器+用户态内存(BPF 侧只做分类:DEX 发现/方法捕获/native buffer)
-  → 多个 ringbuf(method_events / 事件 / 分块 / debug / native)
-  → Rust 用户态持续 drain
-  → 按 DEX begin 地址去重 → 分块拼装 → fix.rs 回填字节码 → 重算校验和 → jadx/baksmali 可直接处理
+uprobe hit: Execute/Nterp/dexFileCtor/RegisterDexFile/verifyClass/RegisterNatives
+            + uprobes and uretprobes on libc memcpy/memmove/mmap/mprotect
+  -> bpf_probe_read_user reads registers and userspace memory; BPF classifies DEX discovery/method capture/native buffers
+  -> multiple ring buffers: method_events / events / chunks / debug / native
+  -> Rust userspace continuously drains them
+  -> deduplicate by DEX begin address -> assemble chunks -> fix.rs restores bytecode -> recompute checksums -> jadx/baksmali
 ```
 
 Probes come in three modes: `full` (default: interpreter + lifecycle + libc, with some jank) / `lifecycle` (lifecycle only, imperceptible) / `maps-only` (no BPF loaded, pure maps scan). libc's memcpy/memmove get **uprobe+uretprobe attached in pairs** (arguments at entry, return value at exit) — that is how the "native buffer operations" observation points are implemented.
@@ -221,11 +221,11 @@ FART (the ART continuation of FUPK3, hluwa) works by **flashing a modified-ART b
 ## 8. Picking a route
 
 ```text
-目标有 anti-frida/风控强、可 root 真机  → eBPFDexDumper(-rs 修复更全,Go 版文档全)
-目标无对抗、要最快出结果              → frida DefineClass 法(本库 dex-unpacking.md)
-抽取壳且方法体不全(eBPF/黑盒都不够)   → JDex(LSPosed 主动调用)或重移植 FART
-免 root / 模拟器 / 不想刷机           → BlackDex(A5-12)
-Pairip(Google 加固)                  → RePairip
-练手靶                                → dpt-shell 自加壳再打
-学术深读                              → BPFDex 论文
+Strong anti-Frida/risk controls, rootable device -> eBPFDexDumper (-rs has fuller repair; Go variant has fuller documentation)
+No instrumentation defenses; need quick results -> Frida DefineClass route in dex-unpacking.md
+Method-extraction packer with missing bodies after eBPF/black-box work -> JDex (LSPosed active invocation) or port FART again
+Root-free / emulator / no flashing desired -> BlackDex (Android 5-12)
+Pairip (Google protection) -> RePairip
+Practice target -> apply dpt-shell to your own APK and reverse it
+Academic deep dive -> BPFDex paper
 ```

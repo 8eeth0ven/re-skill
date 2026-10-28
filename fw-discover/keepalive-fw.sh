@@ -1,6 +1,7 @@
 #!/bin/bash
 # Autonomous firmware discovery · half-hour keepalive v2 (dispatch one batch every 1800s; stop gate = queue exhausted, not candidate count)
 cd "$(dirname "$0")" || exit 1
+mkdir -p ../data/fw-discover
 LOG=../data/fw-discover/keepalive.log
 LOCK=../data/fw-discover/.keepalive
 if [ -f "$LOCK" ]; then echo "$(date '+%F %T') keepalive-fw already running, exiting" >>"$LOG"; exit 0; fi
@@ -14,7 +15,7 @@ items=[json.loads(l) for l in open('../data/fw-discover/queue.jsonl') if l.strip
 print(sum(1 for i in items if i.get('status')=='pending'))" 2>/dev/null || echo 0; }
 for i in $(seq 1 40); do
   if [ "$(pend)" -eq 0 ]; then
-    say "round $i: queue empty ($([ "$(cnt)" ])/candidates), appending seeds"
+    say "round $i: queue empty ($(cnt)/candidates), appending seeds"
     python3 fw.py --seed >>"$LOG" 2>&1
     if [ "$(pend)" -eq 0 ]; then say "still no seeds after appending: queue exhausted, wrapping up with $(cnt) cumulative candidates — entering the batch four-kill-gates stage"; exit 0; fi
   fi

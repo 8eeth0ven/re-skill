@@ -57,9 +57,9 @@ Games and ordinary apps use the same detection function libraries (vendor-SDK wr
 - The one game-specific difference: detection often runs in a **standalone anti-cheat process/service** (dual-process mutual guarding); killing the guard process is easier than hooking detection functions — check for companion processes first:
 
 ```bash
-adb shell ps -A | grep <包名>          # 多进程:com.xx.game:guard / :sec 之类即反作弊伴生
+adb shell ps -A | grep <package>          # Companion processes such as com.xx.game:guard or :sec indicate an anti-cheat component
 adb shell ps -A | grep -i -E "ace|sec|guard|protect"
-# 伴生进程的 so 名也常带这些词:ls /data/app/*/com.xx.game*/lib/arm64/
+# Companion-process shared-object names often include these terms: ls /data/app/*/com.xx.game*/lib/arm64/
 ```
 
 The standard playbook of companion mutual guarding (process A detects the environment, process B verifies A is alive) has its principle in the anti-debug section of detection-landscape.md; on the game side it is just wrapped in a shell process.
@@ -75,7 +75,7 @@ Client and server record in sync: touch-coordinate sequences, press area/pressur
 - Countermeasure idea: at the injection layer the play is not "alter detected values" but "generate humanized input" (duration jitter / Bezier trajectories) — that is gray-market tooling territory; in a security-research context you only need to **identify the collection points** to prove the risk control exists:
 
 ```js
-// 观察客户端到底采集了哪些输入维度
+// Observe which input dimensions the client actually collects
 Java.perform(() => {
     const ME = Java.use("android.view.MotionEvent");
     ME.obtain.overloads.forEach(o => o.implementation = function () {
@@ -84,7 +84,7 @@ Java.perform(() => {
         return e;
     });
 });
-// native 引擎直读输入队列的(Unity/UE 常见),Java 层看不到 → hook AInputQueue_getEvent
+// Native engines that read input queues directly, common in Unity/UE, are invisible at the Java layer; hook AInputQueue_getEvent
 ```
 
 ### 3.2 Timestamps and Rhythm
@@ -96,7 +96,7 @@ Java.perform(() => {
 
 Drop rates / damage / economic output get server-wide distribution statistics; the long tail gets audited — **this layer has no client-side counter-surface**, which is why the single-player approach (§5.1) fails completely in online games.
 
-The generic way to locate collection/report points: capture and inspect heartbeat/log endpoints (if encrypted, go back to the algorithm layer per 抓包全场景 §2.9), or hook the engine-layer entry points from the first three pieces and watch the report fields being assembled.
+The generic way to locate collection/report points: capture and inspect heartbeat/log endpoints (if encrypted, go back to the algorithm layer per `../04-evasion/capture-all-scenarios.md` §2.9), or hook the engine-layer entry points from the first three pieces and watch the report fields being assembled.
 
 ## 4. Why Emulator Detection Is Stronger than in Ordinary Apps
 
@@ -119,8 +119,8 @@ Java.perform(() => {
     console.log(Java.use("android.opengl.GLES20").glGetString(0x1F01).value);  // GL_RENDERER
     console.log(Java.use("android.opengl.GLES20").glGetString(0x1F00).value);  // GL_VENDOR
 });
-// 模拟器上出现 SwiftShader/ANGLE/Translator 字样即 §4 第二行的判据;
-// 传感器熵:连续采样 200 次加速度计,取值集合大小——真机恒 > 100,模拟器常 < 10
+// SwiftShader/ANGLE/Translator on an emulator matches the second criterion in the Section 4 table
+// Sensor entropy: sample the accelerometer 200 times and count distinct values; this case observed >100 on real devices and often <10 on emulators
 ```
 
 ## 5. Confrontation and Boundaries

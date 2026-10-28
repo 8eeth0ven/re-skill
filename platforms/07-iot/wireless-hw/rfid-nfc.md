@@ -4,12 +4,12 @@
 ## 1. The M1 (Mifare Classic) System
 
 ```
-卡结构:16 扇区 × 4 块(每块 16B);每扇区末块 = KeyA(6B)+访问位(4B)+KeyB(6B)
-认证:三次握手 → CRYPTO1 流密码(NXP 专有)
+Card layout: 16 sectors × 4 blocks (16B each); final block of each sector = KeyA(6B)+access bits(4B)+KeyB(6B)
+Authentication: three-way handshake → CRYPTO1 stream cipher (NXP proprietary)
                   │
       ┌───────────┴────────────┐
-  明文扇区(0钥匙默认)        加密扇区(默认钥匙改过)
-  nested 攻击可恢复          需伪随机数弱点/字典/侧信道
+  Unencrypted sector (default zero key)       Encrypted sector (default key changed)
+  Recoverable with a nested attack            Requires PRNG weaknesses/dictionaries/side channels
 ```
 
 ## 2. Attack Genealogy

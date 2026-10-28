@@ -39,7 +39,7 @@ loop WaitForDebugEvent:
 - System foundation: debug events are delivered via the DebugObject (see the Internals/Protection chapters' debugging infrastructure); `EXCEPTION_DEBUG_EVENT` and `OUTPUT_DEBUG_STRING_EVENT` can both serve as synchronization points.
 - Finished references: various "debugger-framework patchers" (x64dbg scripts are structurally the same).
 
-### 2.3 The Debug-Register Mechanism (Node 1000742) — hardware-breakpoint patches (the killer against self-checks)
+### 2.3 The Debug-Register Mechanism (Node 1000742) — hardware-breakpoint patches (effective against self-checks)
 
 ```
 DR0~DR3: breakpoint linear addresses   DR6: status (which one hit)   DR7: enable/length (b00-b03, LEN, RW)/type

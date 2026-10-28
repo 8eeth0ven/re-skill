@@ -25,12 +25,12 @@ Big UE packages also often put the pak in the obb or download it on first launch
 ### 1.1 pak Unpacking (repak command flow)
 
 ```bash
-cargo install repak            # 或直接下 release 二进制;brew 系机器 cargo 装
-repak info Game.pak            # 看版本/是否加密/挂载点
-repak list Game.pak | head -50 # 列内容(加密 pak 也能列,读文件才要 key)
-repak unpack Game.pak          # 解到当前目录;加密 pak:
-repak --aes-key 0x<64位hex> unpack Game.pak
-repak get Game.pak Content/Scripts/main.lua > main.lua   # 抽单个文件
+cargo install repak            # Or download the release binary; on brew-family hosts cargo installation is also available
+repak info Game.pak            # Inspect version, encryption state, and mount point
+repak list Game.pak | head -50 # List contents; encrypted pak files can still be listed, but reading requires the key
+repak unpack Game.pak          # Unpack into the current directory; for an encrypted pak:
+repak --aes-key 0x<64-hex-digits> unpack Game.pak
+repak get Game.pak Content/Scripts/main.lua > main.lua   # Extract one file
 ```
 
 IoStore (`.utoc/.ucas`) is not repak's business: open it directly with FModel (see §1.3), or convert first with ZenTools-class tools.
@@ -62,14 +62,14 @@ libUE4.so is tens of MB with all symbols stripped; but UE's C++ object system ru
 ### 2.2 Locating GNames/GObjects (Android in Practice)
 
 ```js
-// ue_scan.js —— 思路骨架，签名随 UE 版本变，先静态后动态
+// ue_scan.js: conceptual skeleton; signatures vary with the UE version, so locate statically before dynamic confirmation
 const m = Process.findModuleByName("libUE4.so");
-// 1) GNames: FNamePool 首块第一个条目恒为 "None"；扫 so 数据段找指向 "None" 字符串的池结构
+// 1. GNames: the first entry in FNamePool's first block is "None"; scan the data segment for the pool structure referencing that string
 Memory.scan(m.base, m.size, "4e 6f 6e 65 00", {   // "None\0"
     onMatch(addr) { console.log("None entry @", addr.sub(m.base)); }
 });
-// 2) GObjects: FUObjectArray 的 Objects 指针数组成员恒指向 Chunk;
-//    在 IDA 里找 GetNameByIndex/FName::ToString 的 xref 反推池基址更稳
+// 2. GObjects: FUObjectArray.Objects is an array referencing chunks
+// Tracing IDA cross-references from GetNameByIndex/FName::ToString is a more reliable route to the pool base
 ```
 
 Static route: in IDA search for leftover symbols like `?FName::ToString@`/`FNamePool` or the string `"/Script/CoreUObject"` (the first path FName) as anchors, then xref backwards to derive the two table bases.
@@ -79,11 +79,11 @@ Static route: in IDA search for leftover symbols like `?FName::ToString@`/`FName
 The desktop UEDumper flow ports as-is to Android: **inject → find the GNames/GObjects bases → walk every UClass in the FUObjectArray → emit C++ headers along the SuperClass chain (class names / field offsets / function addresses)**. On Android this lands as a frida-based walker:
 
 ```js
-// 骨架:拿到 GObjects 后
+// Skeleton after locating GObjects
 for (let i = 0; i < objCount; i++) {
-    const obj = readObjPtr(GObjects, i);       // chunked 指针数组按版本分块
+    const obj = readObjPtr(GObjects, i);       // Read the chunked pointer array using this version's layout
     const cls = obj.vtable_class;              // UClass
-    emitHeader(cls.name, cls.super, cls.fields /* FProperty 链,含偏移*/);
+    emitHeader(cls.name, cls.super, cls.fields /* FProperty chain, including offsets */);
 }
 ```
 
@@ -103,15 +103,15 @@ In UE + xLua/UnLua/slua mobile games the business logic is all in lua (see the c
 ### 3.2 Three Routes to the Key
 
 ```bash
-# 路1(最快): 静态 strings 猜——key 是可读短串(8-32 字节),常在 libcocos2djs.so 的 rodata
+# Route 1, fastest: inspect strings; a readable 8-32-byte key is often in libcocos2djs.so rodata
 strings -n 6 ext/lib/arm64-v8a/libcocos2djs.so | grep -E "^[0-9a-zA-Z_-]{8,32}$" > cand.txt
-# 人肉/脚本逐个试解(§3.3 脚本化)
+# Try candidate keys manually or with the script in Section 3.3
 
-# 路2(准): so 没裁符号时直接定位 key 交叉引用
+# Route 2, precise: use direct key cross-references if symbols remain in the shared object
 nm -D ext/lib/arm64-v8a/libcocos2djs.so | grep -i xxtea
-# 有 xxtea_decrypt 导出 → IDA 看 xref,取 key 全局变量
+# If xxtea_decrypt is exported, follow IDA cross-references and read the global key
 
-# 路3(必中): 运行时 hook
+# Route 3: observe the key at runtime through a hook
 ```
 
 ```js
@@ -126,7 +126,7 @@ Interceptor.attach(Module.findExportByName("libcocos2djs.so", "xxtea_decrypt"), 
 UV_CACHE_DIR=/tmp/uv-cache uv pip install -p tools-env/.venv/bin/python xxtea-py
 python - <<'EOF'
 import xxtea, pathlib
-KEY, SIGN = b"THEKEY_YOU_FOUND", b"XXTEA"      # 按实际改
+KEY, SIGN = b"THEKEY_YOU_FOUND", b"XXTEA"      # Adapt both values to the actual sample
 for p in pathlib.Path("ext/assets").rglob("*.jsc"):
     d = p.read_bytes()
     if not d.startswith(SIGN): continue
@@ -145,7 +145,7 @@ EOF
 
 ```bash
 xxd ext/assets/src/main.lua | head -2
-# 1b 4c 4a xx = LuaJIT 字节码(\x1bLJ);  普通明文 lua 直接读
+# 1b 4c 4a xx identifies LuaJIT bytecode (escape 0x1b followed by LJ); read ordinary plaintext Lua directly
 ```
 
 The outer layer is often another xxtea shell (find the key as in §3.2, with the so swapped to `libcocos2dlua.so`/`libgame.so`); only after peeling it do you see `1b 4c 4a`.
@@ -153,10 +153,10 @@ The outer layer is often another xxtea shell (find the key as in §3.2, with the
 ### 4.2 The Standard Chain: Decrypt → Bytecode → Decompile
 
 ```bash
-# 1) 反汇编(需要同版本 luajit 宿主;luajit 官方仓库 make 即可)
-luajit -bl main.lua > main.bl            # -bl = bytecode list,能读 opcode 就能人肉跟
-# 2) 反编译到 lua 源码:luajit-decompiler v2 / ljd 之类,按字节码版本选
-#    输入 .lua(字节码)出 .lua(源码);控制流还原不完美,复杂函数回 -bl 人肉读
+# 1. Disassemble with a matching-version LuaJIT host; build the official repository with make
+luajit -bl main.lua > main.bl            # -bl lists bytecode; inspect opcodes manually when necessary
+# 2. Decompile to Lua source with luajit-decompiler v2 or ljd, choosing by bytecode version
+# Input is .lua bytecode, output is .lua source; complex control flow may require manual -bl inspection
 ```
 
 The two big causes of decompilation failure: the opcode table has been altered (§4.3), or the bytecode is a header-less memory dump (patch the `1b 4c 4a` header + flags byte back on).

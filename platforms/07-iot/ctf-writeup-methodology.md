@@ -22,7 +22,7 @@ Official entry points:
 ## §2 ExploitMe (a community institution) [1001011]
 
 The forerunner of community-run CTFs: **the organizer posts a vulnerable program, and whoever writes a working exploit first wins**. The 2007/2008 Exploit Me challenge contests (problems plus full solution analyses, collected in full) were the textbook of the Windows-overflow era:
-- Playbook = stack overflow/heap overflow → rescue SEH/VEH → bypass SafeSEH/DEP (back then the main weapon was proto-ROP ret2libc).
+- Playbook = stack overflow/heap overflow → rescue SEH/VEH → bypass SafeSEH/DEP (back then the main technique was proto-ROP ret2libc).
 - Value today: **reading the old writeups teaches the complete reasoning chain of "manual exploitation without metasploit"**, in direct lineage with modern Windows user-mode exploitation (§3.2).
 
 ## §3 Pwn [1001012]
@@ -40,10 +40,10 @@ Master index entry: the categorized index of curated threads in the CTF "Pwn" se
 #### 3.1.1 Stack Overflow [1001695]
 
 ```
-checksec → 无NX:ret2shellcode;有NX:ret2libc
-         → 有Canary:泄露canary(格式化串/输出函数)再回填
-         → PIE:先泄露返回地址低12位同页性质或放弃栈上定址
-         → partial overwrite 是 PIE/ASLR 万金油(改低1-2字节)
+checksec → No NX: ret2shellcode; NX enabled: ret2libc
+         → Canary enabled: leak the canary (format strings/output functions), then restore it
+         → PIE: first exploit the shared page offset in the low 12 bits of a return address, or avoid fixed stack addresses
+         → Partial overwrite is broadly useful against PIE/ASLR (modify the low 1–2 bytes)
 ```
 (hand-drawn ASCII decision tree)
 Beyond the basics, the index thread collects: ret2csu (64-bit gadget shortage), retdlresolve (forge an Elf64_Rel to resolve system when no libc is available), SROP (forge the sigreturn frame for clock-interrupt-grade context restoration).
@@ -116,8 +116,8 @@ The community's founding culture: crack-me practice applets (serial/keyfile/time
 ### 8.2 The KCTF Attack-Defense Format (unique to this community)
 
 ```
-防守方(出题):提交题目+漏洞程序     攻击方(解题):限时攻破拿 flag
-        └────────── 同一赛季双向计分,题目即攻击面 ──────────┘
+Defense (challenge author): submit challenge + vulnerable program     Attack (solver): exploit within the time limit to obtain the flag
+        └──────────── Both roles score in the same season; submitted challenges form the attack surface ────────────┘
 ```
 (ASCII contest diagram drawn by the author, aligned with the official page's description)
 - History: CrackMe attack-defense contest → KCTF (challenge categories span Windows/Android/iOS/Pwn/**smart devices** — which makes KCTF the meeting point of every facet of this area's sister articles).

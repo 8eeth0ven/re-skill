@@ -8,9 +8,9 @@ When to use: you do not want to hook, you only want a function to return immedia
 
 ```javascript
 function retFunc(parg2) {
-    // 修改内存保护，使其可写
+    // Make the target memory writable
     Memory.protect(parg2, 4, 'rwx');
-    // 使用 Arm64Writer 写入 'ret' 指令
+    // Write a 'ret' instruction with Arm64Writer
     var writer = new Arm64Writer(parg2);
     writer.putRet();
     writer.flush();
@@ -21,9 +21,9 @@ function retFunc(parg2) {
 
 ```javascript
 function nopFunc(parg2) {
-    // 修改内存保护，使其可写
+    // Make the target memory writable
     Memory.protect(parg2, 4, 'rwx');
-    // 使用 Arm64Writer 写入 'nop' 指令
+    // Write a 'nop' instruction with Arm64Writer
     var writer = new Arm64Writer(parg2);
     writer.putNop();
     writer.flush();

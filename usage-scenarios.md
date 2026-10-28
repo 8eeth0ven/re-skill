@@ -2,12 +2,12 @@
 
 > Knowledge that isn't anchored to scenarios is meaningless. **When the human is away**: the single sentence "unattended: …" goes through the unattended.md master control (fully automatic; only external submission / spending / actions beyond the authorization boundary are left on file). This document is organized by **real situation**: each scenario = trigger signal (what you're experiencing) → entry (which article to open) → steps → output → handoff to the next step. The complete entry-routing version is in [SKILL.md](SKILL.md); this is the plain-language version.
 
-## I. SRC Field Work (Main battleground: the app is the prerequisite stage of the target)
+## I. SRC Field Work (The app provides the target's prerequisite analysis surface)
 
 **re's role in SRC**: your goal is vulnerabilities, but the app hides the APIs — re handles "surface acquisition" (APIs/parameters/signatures); once acquired, hand off to `skill` (the SRC library) for vulnerability testing.
 
 ### Scenario 1: "The target is only an app; no web surface to be found"
-- **Steps**: ① run the `pipeline/pipeline.md` full chain on the APK (report in 9 minutes: component surface / exported Activities / sensitive strings / URLs) → ② follow `techniques/04-evasion/capture-all-scenarios.md` and its scenario matrix to capture the API inventory → ③ hand the API list + parameters to skill (SRC) and attack with the idor-test/injection-test matrices
+- **Steps**: ① run the `pipeline/pipeline.md` full chain on the APK (component surface / exported Activities / sensitive strings / URLs; a historical small-sample run took 9 minutes, not a runtime guarantee) → ② follow `techniques/04-evasion/capture-all-scenarios.md` and its scenario matrix to capture the API inventory → ③ hand the API list + parameters to skill (SRC) and attack with the idor-test/injection-test matrices
 - **Output**: an API-surface inventory → SRC vulnerabilities
 - **Handoff**: if the APIs turn out to have signature parameters, go to Scenario 3
 
@@ -66,21 +66,21 @@
 - **Practice**: the KCTF problem table in platforms/06
 
 ### Scenario 14: "Quickly look up a concept/function/term"
-- Direct examples: "what is Nterp" → techniques/11-syscall-chain/dex-load-exec-chain.md; "tcache double free" → platforms/06 heap exploitation; "/dev/tun" → techniques/11/network-chain.md; "which packer is this .so" → techniques/05 专项与信息收集
+- Direct examples: "what is Nterp" → techniques/11-syscall-chain/dex-load-exec-chain.md; "tcache double free" → platforms/06 heap exploitation; "/dev/tun" → techniques/11/network-chain.md; "which packer is this .so" → `techniques/05-toolbox/recon-and-specials.md`
 - **How to look up**: SKILL.md quick-picker table → INDEX → open by name
 
 ### Scenario 15: "Find a tool"
 - Known need: the selection decision tree in `techniques/05-toolbox/tool-master-table.md`
-- Want to see what's new lately: `radar/发现日志.md` (auto-updated daily)
-- **Happens automatically every day at 09:00** (you need do nothing): the radar discovers new tools → evaluates → catalogs → smoke-tests locally. Just browse the log occasionally
+- Want to see what's new lately: `radar/发现日志.md` (updated by configured daily runs or manual rounds)
+- **Runs daily at 09:00 when a host schedule is configured**: the radar discovers new tools → evaluates → catalogs → smoke-tests locally. Copying the library does not create the schedule; see `setup.md` §7
 
 ## V. Automation (driven by a single sentence)
 
 | You say | What happens |
 |------|---------|
-| "Run the full chain on /path/xx.apk" | Five stages, zero human effort: dual static engines → packer verdict → hook candidates → emulator dynamics → seven-section report (~9 minutes) |
+| "Run the full chain on /path/xx.apk" | Five stages, zero human effort: dual static engines → packer verdict → hook candidates → emulator dynamics → seven-section report (runtime depends on the sample and available tools; see the pipeline budget) |
 | "Run one round of the tool radar" | Immediately executes one round manually: discover → catalog → smoke test |
-| "Environment health check" | `bash pipeline/env_check.sh` (baseline 25 green 2 yellow; run once after installing new tools) |
+| "Environment health check" | `python3 pipeline/env_check.py` (cross-platform preferred; `env_check.sh` is the legacy macOS fallback; historical green/yellow counts are not a current health verdict; run after installing new tools) |
 
 ### Scenario 16: "Want the AI to reverse fully automatically for you (multi-agent orchestration)"
 - **Entry**: `techniques/01-methodology/llm-reverse-orchestration.md` (a copyable DAG template that shards APK analysis across parallel subagents)
@@ -89,7 +89,7 @@
 - **Entry**: `techniques/08-ai-re/ai-re-tools.md` (pick MCPs) + `techniques/08-ai-re/ai-re-workflows.md` (pipeline + copyable prompts)
 
 ### Scenario 18: "Given a PE/driver binary to audit" / "Need to find elevation or kernel bugs on Windows"
-- **Entry**: `platforms/01-windows/win-vuln/` — reversing (PE逆向与符号分析) → driver auditing (驱动IOCTL审计) → finding surface (内核攻击面定位) → exploitation (内核池与CVE模式库); with no environment, set up the target machine first with the setup.ps1 in `platforms/01-windows/win-vuln/toolchain-setup.md` (~30 minutes)
+- **Entry**: `platforms/01-windows/win-vuln/` — `pe-re-and-symbols.md` → `driver-ioctl-audit.md` → `kernel-attack-surface.md` → `kernel-pool-cve-patterns.md`; with no environment, set up the target machine first with the setup.ps1 in `platforms/01-windows/win-vuln/toolchain-setup.md` (~30 minutes)
 - **Output**: bug hypothesis → POC → (authorized context) report
 
 ### Scenario 19: "Want a CVE ID for a finding from reversing"

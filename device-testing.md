@@ -1,49 +1,68 @@
-# Real-Device Dynamic Testing (Auto-runs on Plug-in · Protects Real Devices)
+# Real-Device Dynamic Testing (Protect the Device and Restore Task-Owned Changes)
 
-> Goal: once a phone/microcontroller is plugged into the computer, a single trigger sentence runs the full real-device dynamic verification automatically. **Iron rule: no operation may affect the device's normal operation** — no flashing / no bootloader unlock / no burn-overwrite / no touching system partitions; the computer (the daily work machine) does user-mode and read-only operations only; kernel experiments go into VMs only.
+> Trigger: "real device plugged in, run real-device / serial validation". Complete the selected chain autonomously and persist measured evidence. **No operation may affect normal device operation**: no flashing, bootloader unlock, burn-overwrite, system-partition writes, rooting, recovery flashing, or Magisk installation. On the daily computer, use user-mode/read-only operations; kernel experiments belong in Windows/Linux VMs only.
 
-## 0. Hardware Probing (run first every time, to see what got plugged in)
+## 0. Identify Hardware and Record the Baseline
 
 ```bash
-adb devices -l                                   # Android phone (USB debugging on)
-system_profiler SPUSBDataType | grep -E "Product|Vendor|Serial"   # USB devices
-ls /dev/cu.* | grep -v Bluetooth                  # Serial ports (microcontrollers / USB-to-serial)
+adb devices -l
+# macOS USB and serial inventory; use the platform's read-only equivalent elsewhere.
+system_profiler SPUSBDataType | grep -E "Product|Vendor|Serial"
+ls /dev/cu.* | grep -v Bluetooth
 ```
 
-After a device is detected, first re-run `python3 pipeline/env_scan.py` to save a snapshot with phone details (root/app list), then enter the chains below.
+Rerun `python3 pipeline/env_scan.py` to save tool/device/root-evidence/app-list details. Select the intended device serial and include `adb -s "$RE_DEVICE_SERIAL"` in every subsequent device command. With multiple devices, use the task's named device; never guess. If no device is detected, record "not detected; physical connection required" and finish without idle polling.
 
-## I. Phones (Android Real-Device Chain)
+Before any mutation, write a task-owned change register under `输出/真机-<date>/`: selected serial, package existence/version, files copied by this task, spawned PIDs, and pre-existing frida/adb state. The existing output directory name is retained for compatibility. Do not overwrite a pre-existing temporary file or update a pre-existing user application merely to run the self-test.
 
-Trigger: "phone plugged in, run real-device validation". The executor walks autonomously in order, saving each step's artifacts to `输出/真机-<日期>/`:
+## I. Android Phone Chain
 
-1. **Identify**: `adb shell getprop ro.product.cpu.abi ro.build.version.release ro.build.id` + installed package count; record the device fingerprint (as field evidence for the device-fingerprinting article)
-2. **frida-server deployment (touch only /data/local/tmp, never the system)**:
-   - `adb push <tools-env downloaded frida-server-<abi>> /data/local/tmp/fs` → `adb shell chmod 755 /data/local/tmp/fs`
-   - Rooted device: start it after `adb root`; non-root: use **gadget injection**, or verify at the emulator layer only for now (don't force it without root)
-   - Verify: `.venv/bin/frida-ps -U | head`
-3. **Three dynamic live shots** (against a **self-installed test APK** such as F-Droid; injecting into system apps or real apps like WeChat is forbidden):
-   - frida hook at the Java layer (following any article in `techniques/02-frida/java-layer/`, e.g. hook onCreate and print)
-   - frida-trace at function level (attach to the test app, trace open-style calls; cross-reference `techniques/13-trace/`)
-   - Stalker at block level with volume capping (following the trace-practice.md script, limited to N blocks)
-4. **Wrap-up (mandatory, restore original state)**: `adb shell kill <frida-server pid>`; uninstall the test APK (`adb uninstall org.fdroid.fdroid`); `adb kill-server`; confirm `ps | grep fs` is empty; per test-values.md §III, grep [RE]/re_ prefixes to confirm zero test residue on device and artifacts
-5. Report: key real outputs of the three shots + a table of differences versus emulator results
+Trigger: "phone plugged in, run real-device validation". Persist each step before proceeding.
 
-**Red lines**: no rooting (unless the device is already rooted) / no recovery flashing / no Magisk / no touching the user-data partition / no injecting into non-test apps.
+1. **Identify**: query properties separately (a single `getprop` invocation does not read three property names):
 
-## II. Microcontroller / Serial-Device Chain
+   ```bash
+   adb -s "$RE_DEVICE_SERIAL" shell getprop ro.product.cpu.abi
+   adb -s "$RE_DEVICE_SERIAL" shell getprop ro.build.version.release
+   adb -s "$RE_DEVICE_SERIAL" shell getprop ro.build.id
+   adb -s "$RE_DEVICE_SERIAL" shell getprop ro.build.fingerprint
+   adb -s "$RE_DEVICE_SERIAL" shell pm list packages -3
+   adb -s "$RE_DEVICE_SERIAL" shell id
+   ```
 
-Trigger: "microcontroller plugged in, run serial validation":
+   Record installed package count and fingerprint as evidence for the device-fingerprinting article. Existing `su`/Magisk/KernelSU evidence is a candidate for root availability, not proof that `adbd` runs as root. Do not attempt to obtain root.
 
-1. **Identify (fully read-only)**: list serial ports; `esptool.py --port <p> chip_id` (ESP-family read-only) / read MAC/flash_id; for non-ESP use pyserial baud-rate scanning (9600-921600, read 1s each) to find a port+rate with output
-2. **Listen (read-only)**: continuously read logs to disk (pressing the reset button is a physical operation → leave a to-do for the human)
-3. **Analyze**: firmware version/chip model in the logs → cross-reference the article list in `platforms/07-iot/` to pick follow-up (e.g. for an IoT chip, evaluate per the firmware breach table)
-**Prohibitions**: `write_flash/erase_flash/write_reg` are all forbidden; driving NES/RESET pins is forbidden (physical).
+2. **Deploy frida-server only when existing root is available**:
+   - Map Android ABI to release architecture (`arm64-v8a` → `arm64`, `armeabi-v7a` → `arm`, `x86_64` → `x86_64`), then select the matching server/client version under `tools-env/frida-server/`. Do not invent a missing binary name.
+   - Copy the task's server only to a new `/data/local/tmp/re_fs` (or a task-unique `re_` name), then `chmod 755` that exact file. Register its path before starting and record its actual PID. Never write the system partition or unrelated user application data; the explicit temporary test directory is the only permitted deployment area.
+   - On an already-rooted device, first check `adb shell id`; use the already available `su` route when appropriate. `adb root` is allowed only on the selected test device when its build supports root adbd; it restarts adbd, so preserve other active sessions and do not assume that the presence of `su` makes it succeed. If unavailable, use a gadget in a self-installed test APK or an emulator; do not force root.
+   - Verify using `tools-env/.venv/bin/frida-ps -D "$RE_DEVICE_SERIAL"` (Windows: `.venv/Scripts/frida-ps.exe`). If the CLI needs a TTY, use the Python API: `frida.get_device(serial, timeout=10).enumerate_processes()` rather than repeatedly retrying the CLI.
 
-## III. Computer (This Machine) Discipline and Verified Items
+3. **Run three dynamic checks on a self-installed test APK** (for example F-Droid only when it was absent before this task; otherwise choose a distinct test package). Injecting into system applications or non-test applications such as WeChat is forbidden:
+   - Java-layer frida hook, such as `onCreate`, following a named article in `techniques/02-frida/java-layer/`.
+   - Function-level `frida-trace` on the same test application, such as open-family calls; see `techniques/13-trace/`.
+   - Block-level Stalker with an explicit `N`-block cap from [trace-practice.md](techniques/13-trace/trace-practice.md). Read its **Bundled driver scope** note first. Record the task-owned test APK's existing PID as `RE_TEST_PID`, a positive block limit as `RE_BLOCK_LIMIT`, and a task-local output path as `RE_TRACE_OUT`. Run `tools-env/.venv/bin/python techniques/13-trace/scripts/stalker_trace.py --device-serial "$RE_DEVICE_SERIAL" --pid "$RE_TEST_PID" --events block --limit "$RE_BLOCK_LIMIT" --out "$RE_TRACE_OUT"`. The adapter validates the selected process/main TID; use `--thread-id` only for a verified target thread. The limit counts received block events before filtering, so fewer rows may be persisted. Device mode has offline mock coverage, not a physical-device success claim; if transport/thread selection or execution cannot be verified, mark the check partial/unexecuted with its reason. Never run an unbounded trace.
 
-- **Verified** (user-mode safe, don't re-risk): frida spawn/attach on local CLI processes, Stalker, the full jadx/r2/androguard set — see `techniques/05-toolbox/tool-field-notes.md`
-- **Forbidden**: kernel extension loading (SIP/kext), changing system configuration, any kernel-mode experiments → Windows/Linux VMs only (toolchain in `platforms/01-windows/win-vuln/toolchain-setup.md`)
+4. **Mandatory cleanup: restore the recorded baseline**:
+   - Stop only the exact frida/hook PIDs started by this task, after rechecking ownership. Keep any pre-existing service intact.
+   - Remove only the exact temporary files copied/created by this task. Do not use a wildcard delete against all `re_*` files: another task may own them.
+   - Uninstall the test APK only if this task installed it and it did not exist beforehand. Never unconditionally run `adb uninstall org.fdroid.fdroid`.
+   - Stop adb only if this task started an otherwise unused adb server. Do not globally run `adb kill-server` while other sessions/devices use it.
+   - Check the selected device's process/file register against its baseline and apply `test-values.md` §III: task-owned `[RE]`/`[REPROBE]`/`re_`/`REPROBE-` values must leave no live-device residue; retained task logs are evidence and remain on disk.
 
-## IV. Hookup
+5. **Report**: include the three checks' measured outputs, cleanup results, and a comparison with emulator observations. Partial capability is explicitly marked with its reason.
 
-Unattended trigger sentence: "real device plugged in, run real-device / serial validation" → follow this document autonomously; if no device is detected, report "not detected, plug in and retry" instead of spinning idle.
+## II. Microcontroller / Serial Chain
+
+Trigger: "microcontroller plugged in, run serial validation".
+
+1. **Read-only identification**: list ports; for ESP-family devices use `esptool.py --port <port> chip_id` / MAC / flash ID reads. For other devices, use read-only pyserial baud scanning from 9600 to 921600, reading 1s at each rate. Preserve DTR/RTS state; do not drive reset lines while opening a port.
+2. **Read-only listening**: persist the logs continuously. A reset-button press is a physical operation; leave a to-do for the human.
+3. **Analyze**: extract firmware/chip details and open the relevant article by name via `platforms/07-iot/` and the firmware playbook.
+
+**Forbidden**: `write_flash`, `erase_flash`, `write_reg`, driving reset/enable pins, firmware burning, or any write that changes device state. The original prohibition on driving the documented `NES/RESET` pins is retained; do not interpret a misspelled pin label as permission to reset another pin.
+
+## III. Daily Computer and Verified Items
+
+- Previously measured user-mode checks: frida spawn/attach on local test CLI processes, Stalker, jadx/r2/androguard; dated evidence is in `techniques/05-toolbox/tool-field-notes.md`. Historical results are not a current availability probe.
+- Forbidden on the daily machine: kernel extensions/SIP/kext loading, system-configuration changes, kernel-mode experiments. Use isolated Windows/Linux VMs and `platforms/01-windows/win-vuln/toolchain-setup.md` for those experiments.

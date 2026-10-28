@@ -50,34 +50,34 @@ The five layers = the **tool-side projection** of area 09's L1-L5 layering. One 
 ### 1.1 Layer-selection decision tree
 
 ```
-目标动作在哪层可见?(查 §2 矩阵该行,先跑判层五法:so 依赖/导入表/扫 svc/Stalker x8 分布/strace)
+At which layer is the action visible? Consult its row in §2; first use the five layer-identification methods: SO dependencies / imports / svc scan / Stalker x8 distribution / strace.
 │
-├─ 三大特例(不落 svc):属性读 / vDSO 时间 / 用户态加密
-│    → 属性:改 /dev/__properties__ 共享内存(09 区案例 3)
-│    → 时间:patch __vdso_clock_gettime 或时间补偿(09 区案例 4)
-│    → 加密:L1 doFinal / 特征码定位静态实现(09 区案例 5);L3/L4/L5 对其 N/A
+├─ Three exceptions (no svc): property reads / vDSO time / user-space cryptography
+│    → Properties: modify /dev/__properties__ shared memory (area 09, case 3)
+│    → Time: patch __vdso_clock_gettime or compensate time (area 09, case 4)
+│    → Cryptography: L1 doFinal / locate a static implementation by signatures (area 09, case 5); L3/L4/L5 are N/A
 │
-├─ Java/符号层可见(有导出符号)
-│    → L1 frida 直接挂 ──被检?──→ 隐蔽化(strongR 改名改端口 / gadget)
-│         仍被检(Java 栈扫描)→ 降半层挂 L2 导出(libjavacore/libart,少人防)
-│         CRC 校验字节 → L3 eBPF uprobe(同一符号零注入)
+├─ Visible at Java/symbol level (exported symbols available)
+│    → L1 frida hook ──detected?──→ reduce detection signals (strongR rename/port change or gadget)
+│         Still detected by Java stack scanning? → hook L2 exports (libjavacore/libart), a less commonly checked layer
+│         CRC checks target bytes? → L3 eBPF uprobe (same symbol, no injected code)
 │
-├─ 无符号 so(静态编译/自实现)
-│    → L2 特征码 + 按地址 hook;或 L3 uprobe 偏移(IDA 定位)
+├─ Symbol-free SO (statically linked/custom implementation)
+│    → L2 signature + address-based hook; or L3 uprobe at an offset located with IDA
 │
-├─ svc 直调(内核入口前的层全漏)
-│    → L2 Stalker 抓 svc(短窗口);或 L3 kprobe sys_*/tracepoint(全局,含直调)
+├─ Direct svc (bypasses all layers above the kernel entry)
+│    → L2 Stalker observes svc in a short window; or L3 kprobe sys_*/tracepoint (system-wide, including direct calls)
 │
-└─ 用户态手段全灭(RASP 最强档)
-     → L4 fentry/kprobe 观测 + L5 wxshadow/KPM 改写;binder 深挖走内核符号定位五路(07 区)
+└─ All user-space approaches fail (strongest RASP configuration)
+     → L4 fentry/kprobe observation + L5 wxshadow/KPM modification; for binder, use the five kernel-symbol location routes in area 07
 ```
 
 Fallback path chart (read horizontally: left->right is the fallback direction; parentheses hold the failure signal of that step):
 
 ```
-Java hook ─(栈扫描/CRC)→ L2 导出符号 ─(GOT 校验)→ L3 uprobe ─(需要改写)→ L5 wxshadow
-libc hook ─(svc 直调)→ Stalker/ptrace BRK ─(性能/痕迹)→ L3 kprobe ─→ L4 fentry
-libc hook ─(字节 CRC)→ L3 uprobe(不改目标字节)或 L5 影子页(读了也看不见)
+Java hook ─(stack scan/CRC)→ L2 exported symbol ─(GOT check)→ L3 uprobe ─(modification needed)→ L5 wxshadow
+libc hook ─(direct svc)→ Stalker/ptrace BRK ─(performance/traces)→ L3 kprobe ─→ L4 fentry
+libc hook ─(byte CRC)→ L3 uprobe (target bytes unchanged) or L5 shadow pages (concealed from ordinary reads)
 ```
 
 Cross-layer switching notes (one line per layer: when NOT to use it):

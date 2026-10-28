@@ -26,6 +26,7 @@
 | radare2-mcp | Official radare2 MCP (C implementation; CLI/plugin/HTTP polymorphism) | Single capability |
 | x64dbg-mcp-server | Native x64dbg MCP plugin (Zig single binary; full debugging features) | Single capability (Windows) |
 | mcp-windbg | WinDbg MCP (incl. kernel debugging) | Single capability (Windows) |
+| aidbg | Native AI-first Windows x86/x64 CLI debugger (not an MCP wrapper): JSONL-per-command output contract, built-in `--mcp` server, ScyllaHide-style anti-anti-debug, snapshots/stepback, dump + IAT rebuild | Single capability (Windows; native debugger, new category) |
 | binary_ninja_mcp family | Binary Ninja MCP (plugin faction + headless 180-tool faction) | Single capability |
 | ASC | "APK as a database" zero-preprocessing decompiler (designed for Agents) | Single capability (performance) |
 
@@ -58,6 +59,7 @@
 | radareorg/radare2-mcp | Official r2 MCP: C implementation; CLI/r2 plugin/stdio/HTTP polymorphism; r2pipe connects to a local or remote session; read-only sandbox and tool-whitelist modes | radare2 6.x | hundreds of stars; `r2pm -Uci r2mcp` one-tap install |
 | duty1g/x64dbg-mcp-server | Native x64dbg MCP plugin: breakpoints/stepping/memory/registers fully exposed over HTTP | x64dbg (Zig plugin) | ~2.5k; single binary, zero deps; drop dist into the x64dbg directory and use |
 | svnscha/mcp-windbg | MCP for WinDbg (user/kernel-mode debugging AI-ized) | WinDbg | ~1.6k |
+| A-new/aidbg | AI-first Windows debugger with a native MCP (`--mcp` stdio / `--port` HTTP+SSE): one stable JSON line per command, WOW64 mixed x86/x64 sessions, fixed base addresses aligned with IDA/Ghidra statics, anti-anti-debug (scylla_hide.ini compatible) + snapshot/stepback, DLL host debugging, `dump` + Scylla-style import-table rebuild | self-developed debugger core (not a wrapper around an existing debugger) | fast-rising new project; single exe, zero VC-runtime deps, Windows 10+ |
 | fosdickio/binary_ninja_mcp | Binja plugin-form MCP; LLM clients connect directly | Binary Ninja | 450+ |
 | mrphrazer/binary-ninja-headless-mcp | Headless Binja MCP, 180 tools | headless BN | 250+ |
 | firerpa/lamda | Android device-control platform MCP: WebRTC screen mirroring/UI+OCR automation/one-tap MITM (system CA)/built-in latest Frida with stealth patches/160+ APIs/multi-device clusters | Self-developed on-device server (root/non-root) | ~8.6k; Python client orchestration |
@@ -232,53 +234,53 @@ What do you want to reverse?
 > For Python-family (pip-type) installs into this library's tools-env, see the "Installation Quick Reference" sections in the 《05-toolbox》 docs; for MCP one-liners, prefer the npx/uvx forms.
 
 ```bash
-# ── 编排层 ──
-# REA(Node 22+;MCP 注册进 Claude Code/Codex/Cursor 等)
+# -- Orchestration layer --
+# REA: Node 22+; register its MCP in Claude Code, Codex, Cursor, or another supported client
 npx rea-agents setup
-npm install --global rea-agents   # CLI 形态;rea update / rea --help
+npm install --global rea-agents   # CLI form; rea update / rea --help
 
-# MobileRE-Skill:clone 仓库(地址待核)→ Agent 大脑挂 .kilo/;外部 MCP 用下方 jadx/ghidra 两条
-# LSPilot:LSPosed 模块,GitHub Releases / TG 频道装 APK(LSPosed+Android 14+arm64;API 文档 lspilot.fun)
-# reverse-skill:github.com/zhaoxuya520/reverse-skill(clone 后挂进 agent skills 目录)
+# MobileRE-Skill: clone the repository (location unverified), attach the agent configuration under .kilo/; use the jadx/ghidra MCP routes below
+# LSPilot: LSPosed module; install the APK from GitHub Releases or its TG channel; requires LSPosed + Android 14+ arm64; API documentation: lspilot.fun
+# reverse-skill: github.com/zhaoxuya520/reverse-skill; clone and attach under the agent skills directory
 # reverse-skills(P4nda0s):github.com/P4nda0s/reverse-skills;android-reverse-engineering-skill:github.com/SimoneAvogadro/android-reverse-engineering-skill
-# R2Droid:APK 直装(仓库待核);barbatos:github.com/victorlpgazolli/barbatos(macOS 单二进制)
-# lamda(设备端全栈):github.com/firerpa/lamda
+# R2Droid: install the APK directly (repository unverified); barbatos: github.com/victorlpgazolli/barbatos, single macOS binary
+# lamda, full device-side stack: github.com/firerpa/lamda
 
-# ── 反编译 MCP ──
-# jadx-ai-mcp(GUI 插件):github.com/zinja-coder/jadx-ai-mcp — jadx-gui 插件市场/release jar
-# jadx-mcp-server:github.com/zinja-coder/jadx-mcp-server(配 JADX-AI 插件)
-# jadx-headless-mcp(无需 GUI):github.com/1013503897/jadx-headless-mcp
-# GhidraMCP(事实标准):github.com/LaurieWired/GhidraMcp(Ghidra 插件 + python server)
-# bethington/ghidra-mcp(200+ 工具)/ mrphrazer/ghidra-headless-mcp:headless 派
-# ida-pro-mcp:github.com/mrexodia/ida-pro-mcp(本机 ZCode 已在用,无需重装)
+# -- Decompiler MCP services --
+# jadx-ai-mcp GUI plugin: github.com/zinja-coder/jadx-ai-mcp; jadx-gui marketplace or release JAR
+# jadx-mcp-server: github.com/zinja-coder/jadx-mcp-server; paired with the JADX-AI plugin
+# jadx-headless-mcp, no GUI required: github.com/1013503897/jadx-headless-mcp
+# GhidraMCP, widely used plugin + Python server: github.com/LaurieWired/GhidraMcp
+# Headless variants: bethington/ghidra-mcp (200+ tools) and mrphrazer/ghidra-headless-mcp
+# ida-pro-mcp: github.com/mrexodia/ida-pro-mcp; already used by ZCode on this machine, so no reinstall is needed
 # ida-mcp-rs(headless Rust):github.com/blacktop/ida-mcp-rs
 
-# ── 动态/设备 MCP ──
-# frida-mcp(62 工具配方版,依赖 frida@17)
+# -- Dynamic-analysis and device MCP services --
+# frida-mcp: 62-tool recipe variant, requires frida 17
 claude mcp add frida-mcp -- npx -y frida-mcp@latest
-# dnakov/frida-mcp(最简 stdio):github.com/dnakov/frida-mcp,按 README 配 mcpServers
+# dnakov/frida-mcp, minimal stdio variant: github.com/dnakov/frida-mcp; configure mcpServers as described in its README
 # kahlo-mcp:github.com/FuzzySecurity/kahlo-mcp;frida-c2-mcp:github.com/s4dp4nd4/frida-c2-mcp
 # jshookmcp:github.com/vmoranv/jshookmcp;open-reverselab:github.com/LING71671/open-reverselab
-# agent-device(移动 App 验证,npm)
+# agent-device: mobile-app validation, distributed through npm
 npx agent-device
 
-# radare2 MCP(官方,r2pm 一键)
+# Official radare2 MCP: one-command install through r2pm
 r2pm -Uci r2mcp
 
-# ── 知识/验证层 ──
-# jniq(Python 3.9+,零依赖)
-uv tool install jniq              # 或 pipx install jniq
-# reverify(防幻觉验证层,PyPI)
-uv tool install reverify          # 或 pipx install reverify
+# -- Knowledge and verification layer --
+# jniq: Python 3.9+, no dependencies
+uv tool install jniq              # Alternative: pipx install jniq
+# reverify: verification layer for agent-generated analysis, distributed through PyPI
+uv tool install reverify          # Alternative: pipx install reverify
 
-# dexllm(主仓,非 demo 仓)
+# dexllm: main repository, not the demo repository
 git clone https://github.com/mobile-threat-hunter/dex-analyzer-for-llm
 
-# ── Windows 调试/其他引擎 MCP ──
+# -- Windows debugging and other engine MCP services --
 # mcp-windbg:github.com/svnscha/mcp-windbg
-# x64dbg-mcp-server:github.com/duty1g/x64dbg-mcp-server(dist 拷入 x64dbg 目录即用)
-# binary_ninja_mcp:github.com/fosdickio/binary_ninja_mcp(插件派)/ github.com/mrphrazer/binary-ninja-headless-mcp(180 工具 headless 派)
-# ryuumonbuchi(217 工具 Ghidra MCP)/ knife(CLI/TUI/MCP)/ re-mcp(jtsylve)/ Reversecore_MCP(sjkim1127):仓库待核,见 §1 表
+# x64dbg-mcp-server: github.com/duty1g/x64dbg-mcp-server; copy dist into the x64dbg directory
+# binary_ninja_mcp plugin: github.com/fosdickio/binary_ninja_mcp; 180-tool headless variant: github.com/mrphrazer/binary-ninja-headless-mcp
+# ryuumonbuchi (217-tool Ghidra MCP), knife (CLI/TUI/MCP), re-mcp (jtsylve), Reversecore_MCP (sjkim1127): repository locations unverified; see the table in Section 1
 ```
 
 Note: mobile-security-mcp (the same-named npm package) and the toolset described in the user's lead are **not the same thing** (see §4); verify the tool list before installing.

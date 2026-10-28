@@ -43,6 +43,8 @@ SoftICE (Ring0 fullscreen, the king of the 9x/NT era, DOS graphics) → TRW2000 
 
 Selection logic: user-mode patching/unpacking → x64dbg; kernel/drivers/system mechanisms → WinDbg; malware sample forensics → WinDbg+TTD/x64dbg+sandbox; 9x nostalgia and anti-debugging archaeology → SoftICE (run inside a VM).
 
+AI-era addition (2026-10): **aidbg** (github.com/A-new/aidbg, a single `aidbg.exe`) is a command-line Windows x86/x64 debugger built for AI agents rather than humans - every command emits one stable JSON line (JSONL), one session auto-detects x86/x64 (WOW64-aware, mixed architectures), fixed default base addresses keep dynamic addresses byte-identical with IDA/Ghidra statics, ScyllaHide-style anti-anti-debug + snapshot/stepback, `dump` rebuilds import tables the Scylla way (unpacking aid), and `--mcp` turns it into an MCP server (batch `-c` / script / MCP are the three driving modes).
+
 ## 3. Breakpoint Principles (Tree Node 1000093 / "Breakpoints — Everything You Need to Know" 1001258)
 
 ### 3.1 Software Breakpoints (INT3)

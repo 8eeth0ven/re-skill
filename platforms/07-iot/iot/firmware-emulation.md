@@ -6,8 +6,8 @@ The default kit for the no-real-hardware era. Three tiers of solutions, heavy to
 ## 1. Firmadyne / FAT (full-system level)
 
 ```
-FAT(firmware-analysis-toolkit) = Firmadyne 内核+QEMU 全系统仿真
-流程:提取 FS → 识别架构 → 生成磁盘镜像 → InferNetwork 猜网卡 → qemu-system 起整机
+FAT (firmware-analysis-toolkit) = Firmadyne kernel + QEMU full-system emulation
+Flow: extract FS → identify architecture → create disk image → InferNetwork infers network interfaces → boot in qemu-system
 ```
 
 Pain points: devices with non-standard kernels / private drivers won't come up; the `nvram_daemon` hangs forever waiting for a pid file (the classic pit).
@@ -25,7 +25,7 @@ Representative posts:
 
 ### 2.1 Hands-on: FirmAE-emulating Zyxel — manually reviving the device when auto-emulation fails
 
-The war story of the Zyxel NWA1100-NH 2.12 (the logs say "success" but the Web never comes up):
+The practical case of the Zyxel NWA1100-NH 2.12 (the logs say "success" but the Web never comes up):
 1. Root cause: the filesystem holds **two** http services; FirmAE started httpd while the real one is mini_httpd.
 2. `/etc/default/mini_httpd.conf` points at `/tmp/mini_httpd.conf` (which does not exist); booting directly with mini_httpd.cnf (the SSL config) fails.
 3. Open mini_httpd in IDA, search for the error string `unknown config option`, locate the config-parsing logic, probe the required fields, then hand-write the minimal config:
@@ -59,9 +59,9 @@ The emulation chain (Ubuntu18.04+QEMU7.2+binwalk2.3.3, ARM little-endian):
 5. **scp the archive across** (tar.gz), not the directory (files get lost — the author burned a week on this); `mount --bind /proc proc; mount --bind /dev dev; chroot . /bin/sh`.
 6. The service start order (the correct sequence after debugging):
    ```
-   /etc/init.d/boot boot        # 建 /tmp 各目录,消 "uci: Entry not found"
-   generate_default_cert        # 生成 /etc/ssl/private/Default.pem
-   /etc/init.d/confd start      # 轻量配置管理(nginx 依赖)
+   /etc/init.d/boot boot        # Create /tmp directories and resolve "uci: Entry not found"
+   generate_default_cert        # Generate /etc/ssl/private/Default.pem
+   /etc/init.d/confd start      # Lightweight configuration management required by nginx
    /etc/init.d/nginx start
    ```
 

@@ -10,12 +10,12 @@
 The standard audit pipeline (six steps, expanded in later sections):
 
 ```
-① 枚举暴露面:设备名/符号链接/ACL —— 哪些设备我(低权限)能 CreateFile 打开?
-② 提取 IOCTL 码:逆向分发函数/字符串/常量 cmp —— 一共暴露了几个功能号?
-③ 拆码定性:每个码的 Method(BUFFERED/DIRECT/NEITHER)+ Access 位 —— 高危面排序
-④ Checklist 逐条过分发链(§3 七条 + 附加三条)—— 正反例比对
-⑤ Fuzzer 轰一遍(§4.3)—— 补静态漏网
-⑥ BSOD → !analyze -v → 定位 handler → 最小复现 → 判可利用性 → 报告
+① Enumerate exposure: device names/symbolic links/ACLs — which devices can a low-privilege user open with CreateFile?
+② Extract IOCTL codes: reverse dispatch functions/strings/constant comparisons — which function numbers are exposed?
+③ Classify each code by Method (BUFFERED/DIRECT/NEITHER) and Access bits — prioritize high-risk surfaces
+④ Apply the checklist through the dispatch chain (§3: seven checks + three additional checks) — compare vulnerable and corrected examples
+⑤ Run the fuzzer (§4.3) to cover cases missed by static analysis
+⑥ BSOD → !analyze -v → locate handler → minimize reproduction → assess exploitability → report
 ```
 
 **Value ordering** (where to throw the first punch): unprobed METHOD_NEITHER > sensitive functions openable by any user (read MSR/physical memory/kernel read-write) > missing length/integer validation > double-fetch > output overflow > async/reference counting. In white-box auditing, ③ code decomposition directly decides the review intensity of ④ — don't spread effort evenly.
@@ -49,7 +49,7 @@ Predefined strings (learn.microsoft.com, "SDDL for Device Objects"): `SDDL_DEVOB
 The bad example (a typical fat surface, the Dell dbutil family shape):
 
 ```c
-// 反例:未指定安全 + 符号链接全局可见 → 低权限用户可开可发
+// Vulnerable: no explicit security + globally visible symbolic link → low-privilege users can open and send requests
 RtlInitUnicodeString(&dev, L"\\Device\\DBUtil");
 IoCreateDevice(drv, 0, &dev, FILE_DEVICE_UNKNOWN, FILE_DEVICE_SECURE_OPEN, FALSE, &devObj);
 RtlInitUnicodeString(&lnk, L"\\DosDevices\\DBUtil");
@@ -59,8 +59,8 @@ IoCreateSymbolicLink(&lnk, &dev);
 The good example:
 
 ```c
-// 正例:显式 SDDL,Everyone 无权;敏感功能走 FILE_READ_DATA|FILE_WRITE_ACCESS 的 CTL_CODE
-RtlInitUnicodeString(&sddl, L"D:P(A;;GA;;;SY)(A;;GA;;;BA)"); // 仅 SYSTEM/Administrators
+// Corrected: explicit SDDL excludes Everyone; sensitive functions use FILE_READ_DATA|FILE_WRITE_ACCESS in CTL_CODE
+RtlInitUnicodeString(&sddl, L"D:P(A;;GA;;;SY)(A;;GA;;;BA)"); // SYSTEM/Administrators only
 status = IoCreateDeviceSecure(drv, 0, &dev, FILE_DEVICE_UNKNOWN,
                               FILE_DEVICE_SECURE_OPEN, FALSE, &sddl, NULL, &devObj);
 ```
@@ -80,9 +80,9 @@ The CTL_CODE Access bits (FILE_ANY_ACCESS=0/READ=1/WRITE=2/BOTH=3) decide **the 
 
 ```
 CreateFile("\\\\.<name>", GENERIC_READ|GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL)
-→ SUCCESS          :低权限可写开 —— 面成立,进 §2
-→ ERROR_ACCESS_DENIED:ACL 拦(GENERIC_READ 再试一次,部分设备只读可开)
-→ ERROR_FILE_NOT_FOUND / ERROR_PATH_NOT_FOUND:名字错或无符号链接,试 GLOBALROOT\Device\ 路径
+→ SUCCESS: writable by a low-privilege user — exposure confirmed; continue with §2
+→ ERROR_ACCESS_DENIED: blocked by ACL (retry with GENERIC_READ; some devices permit read-only access)
+→ ERROR_FILE_NOT_FOUND / ERROR_PATH_NOT_FOUND: wrong name or missing symbolic link; try GLOBALROOT\Device\
 ```
 
 ---
@@ -92,12 +92,12 @@ CreateFile("\\\\.<name>", GENERIC_READ|GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0,
 ### 2.1 The Complete Chain
 
 ```
-用户态 DeviceIoControl(hDev, ctl, inBuf, inLen, outBuf, outLen, &ret, NULL)
-  → ntdll → NtDeviceIoControlFile → IO 管理器组 IRP(MajorFunction=IRP_MJ_DEVICE_CONTROL=0x0E)
-  → 按句柄找到设备对象 → 驱动的 DriverObject->MajorFunction[0x0E](WDM)
-    / KMDF: WdfIoQueue 的 EvtIoDeviceControl 回调
-  → dispatch 读 IoGetCurrentIrpStackLocation(irp)->Parameters.DeviceIoControl.IoControlCode
-  → switch(ctl) 或跳表 分发到子函数
+User-mode DeviceIoControl(hDev, ctl, inBuf, inLen, outBuf, outLen, &ret, NULL)
+  → ntdll → NtDeviceIoControlFile → I/O manager builds an IRP (MajorFunction=IRP_MJ_DEVICE_CONTROL=0x0E)
+  → Handle resolves the device object → DriverObject->MajorFunction[0x0E] (WDM)
+    / KMDF: EvtIoDeviceControl callback on the WdfIoQueue
+  → Dispatch reads IoGetCurrentIrpStackLocation(irp)->Parameters.DeviceIoControl.IoControlCode
+  → switch(ctl) or a jump table dispatches to individual handlers
 ```
 
 The WDM dispatch skeleton (auditors enter here; local post 86002, "Discovering and Exploiting Windows Driver Vulnerabilities", has the full version):
@@ -107,7 +107,7 @@ NTSTATUS IoctlDispatch(PDEVICE_OBJECT dev, PIRP irp) {
     PIO_STACK_LOCATION ios = IoGetCurrentIrpStackLocation(irp);
     ULONG ctl = ios->Parameters.DeviceIoControl.IoControlCode;
     switch (ctl) {
-    case IOCTL_READ_SOMETHING: ... // 逐 case 审计
+    case IOCTL_READ_SOMETHING: ... // Audit each case
     default: status = STATUS_INVALID_DEVICE_REQUEST;
     }
     irp->IoStatus.Status = status; irp->IoStatus.Information = ret;
@@ -160,11 +160,11 @@ Audit equivalence: the §3 checklist applies unchanged, only the entry name diff
 ### 3.1 METHOD_NEITHER: Type3InputBuffer/UserBuffer Used Raw Without Probe
 
 ```c
-// 反例( CVE-2007-5756 WinPcap NPF 一族形态,帖 86002 案例)
+// Vulnerable: CVE-2007-5756 / WinPcap NPF-family pattern, local article 86002
 case IOCTL_SET_MODE: {
     PNEITHER_IN in = (PNEITHER_IN)ios->Parameters.DeviceIoControl.Type3InputBuffer;
-    devExt->Mode = in->Mode;            // 未 ProbeForRead 直接解引用用户指针
-    devExt->Target = in->Target;        // in->Target 若再被解引用 → 用户给内核地址
+    devExt->Mode = in->Mode;            // Directly dereferences a user pointer without ProbeForRead
+    devExt->Target = in->Target;        // If in->Target is dereferenced again, the user may supply a kernel address
 }
 ```
 
@@ -172,12 +172,12 @@ Harm: the user passes a `0xFFFF8000_xxxxxxxx` kernel address → the kernel read
 The good example:
 
 ```c
-// 正例:PreviousMode 为用户 + Probe + SEH + 锁页(三选一,MDL 最稳)
+// Corrected: user PreviousMode + Probe + SEH + page locking (choose an appropriate mechanism; MDLs are the most robust)
 PNEITHER_IN in = (PNEITHER_IN)ios->Parameters.DeviceIoControl.Type3InputBuffer;
 if (Irp->RequestorMode != KernelMode) {
     __try {
         ProbeForRead(in, sizeof(*in), TYPE_ALIGNMENT(NEITHER_IN));
-        NEITHER_IN local = *in;         // 立即快照到内核栈,后续只用 local(防 double-fetch)
+        NEITHER_IN local = *in;         // Immediately snapshot into the kernel stack and use local afterward to prevent double-fetch
         ...
     } __except (EXCEPTION_EXECUTE_HANDLER) { return GetExceptionCode(); }
 }
@@ -188,15 +188,15 @@ Detection: reverse-search references to `Type3InputBuffer`/`UserBuffer` (x86 off
 ### 3.2 SystemBuffer Length Not Validated / Integer Overflow
 
 ```c
-// 反例:B 区没有最小长度检查
+// Vulnerable: region B has no minimum-length check
 case IOCTL_QUERY: {
     PREQ req = (PREQ)irp->AssociatedIrp.SystemBuffer;
-    out = req->Index * req->Count;      // Index/Count 用户可控
-    for (i=0;i<req->Count;i++) sink(req->Data[i]);  // 越读 SystemBuffer 外的池内存
+    out = req->Index * req->Count;      // Index/Count are user-controlled
+    for (i=0;i<req->Count;i++) sink(req->Data[i]);  // Reads pool memory beyond SystemBuffer
 }
-// 反例:分配长度加法溢出
-len = hdr->Count * sizeof(ITEM);        // ULONG 乘法回绕 → 小池分配
-memcpy(pool, SystemBuffer+1, hdr->Count*sizeof(ITEM)); // 大拷贝 → 池溢出
+// Vulnerable: arithmetic overflow in allocation size
+len = hdr->Count * sizeof(ITEM);        // ULONG multiplication wraps, producing a small pool allocation
+memcpy(pool, SystemBuffer+1, hdr->Count*sizeof(ITEM)); // Large copy → pool overflow
 ```
 
 The good example:
@@ -205,10 +205,10 @@ The good example:
 PIO_STACK_LOCATION ios = IoGetCurrentIrpStackLocation(irp);
 ULONG inLen  = ios->Parameters.DeviceIoControl.InputBufferLength;
 ULONG outLen = ios->Parameters.DeviceIoControl.OutputBufferLength;
-if (inLen < sizeof(REQ)) return STATUS_INVALID_PARAMETER;          // 入向最小长度
-if (outLen < sizeof(RESP)) return STATUS_BUFFER_TOO_SMALL;         // 出向最小长度
+if (inLen < sizeof(REQ)) return STATUS_INVALID_PARAMETER;          // Minimum input length
+if (outLen < sizeof(RESP)) return STATUS_BUFFER_TOO_SMALL;         // Minimum output length
 SIZE_T need; if (!NT_SUCCESS(RtlSizeTMult(hdr->Count, sizeof(ITEM), &need))
-              || need > inLen - FIELD_OFFSET(REQ, Data)) return STATUS_INVALID_PARAMETER; // 溢出安全乘
+              || need > inLen - FIELD_OFFSET(REQ, Data)) return STATUS_INVALID_PARAMETER; // Overflow-safe multiplication
 ```
 
 Detection: at every case entry compare `InputBufferLength/OutputBufferLength` against `sizeof(struct)`; search for multiplication/addition feeding length arithmetic with types narrower than SIZE_T (`ULONG * ULONG` fed to allocations/copies).
@@ -216,12 +216,12 @@ Detection: at every case entry compare `InputBufferLength/OutputBufferLength` ag
 ### 3.3 Missing Probe, Wrong Probe Length, TOCTOU After Probe
 
 ```c
-// 反例 A:Probe 了但用错长度(探 4 字节,读 8)
-ProbeForRead(u, sizeof(ULONG), 1);  value = *(PULONG64)u;   // 后 4 字节未探
-// 反例 B:TOCTOU —— Probe 完又从用户指针取值(经典 double-fetch 变体)
+// Vulnerable A: Probe uses the wrong length (probe 4 bytes, read 8)
+ProbeForRead(u, sizeof(ULONG), 1);  value = *(PULONG64)u;   // The final 4 bytes were not probed
+// Vulnerable B: TOCTOU — read from the user pointer again after Probe (classic double-fetch variant)
 ProbeForRead(ub, len, 1);
-KeDelayExecutionThread(...);              // 或任何让出执行的机会
-copy_len = ub->len;                       // 第二次读用户内存,竞态窗口已被攻击线程改写
+KeDelayExecutionThread(...);              // Or any other opportunity to yield execution
+copy_len = ub->len;                       // Second user-memory read; the attacking thread can modify the value in this race window
 RtlCopyMemory(kbuf, ub->data, copy_len);
 ```
 
@@ -232,11 +232,11 @@ Detection: count the **dereference count** of Type3InputBuffer/UserBuffer (acros
 ### 3.4 Double-Fetch (Reading User Memory Twice)
 
 ```c
-// 反例:校验一次、使用一次,两次都走用户内存(NEITHER 或 fastio 直通形态)
-if (ub->count > MAX) return STATUS_INVALID_PARAMETER;  // 第一次取(校验)
-p = ExAllocatePool2(POOL_FLAG_NON_PAGED, ub->count * 8, TAG); // 第二次取(使用)
+// Vulnerable: validate once and use once, both from user memory (NEITHER or direct Fast I/O forms)
+if (ub->count > MAX) return STATUS_INVALID_PARAMETER;  // First read: validation
+p = ExAllocatePool2(POOL_FLAG_NON_PAGED, ub->count * 8, TAG); // Second read: use
 RtlCopyMemory(p, ub->items, ub->count * 8);
-// 攻击:线程 A 在两取之间改 count → 校验过 8,拷贝用 0x10000 → 池溢出
+// Exploitation: thread A changes count between reads → validation sees 8, copy uses 0x10000 → pool overflow
 ```
 
 The good example: after `count = ub->count;` (a one-time snapshot onto the kernel stack), use only the local; or `MmCopyMemory` the whole block into the kernel, then parse nested fields.
@@ -245,9 +245,9 @@ Detection: same as 3.3 — **any user-address field read ≥2 times is a hit**; 
 ### 3.5 Output Buffer Overflow (Writing Back Beyond OutputBufferLength)
 
 ```c
-// 反例:不看 OutputBufferLength,按输入声称的长度写回
+// Vulnerable: ignores OutputBufferLength and writes the length claimed by the input
 PREQ req = SystemBuffer;
-memcpy(irp->UserBuffer, kdata, req->OutLen);   // OutLen 用户给,Buffered 下也可写爆 SystemBuffer
+memcpy(irp->UserBuffer, kdata, req->OutLen);   // User supplies OutLen; even BUFFERED can overflow SystemBuffer
 irp->IoStatus.Information = req->OutLen;
 ```
 
@@ -257,9 +257,9 @@ The good example: check `outLen >= the actual bytes written` first; set `IoStatu
 ### 3.6 Arbitrary Pointer Dereference (The User Hands the Kernel a Pointer as the Write Target)
 
 ```c
-// 反例:「写哪里、写什么」全由输入结构说了算
-PREQ req = SystemBuffer;            // Buffered 也不救:字段本身是"地址"
-*(PULONG)req->Addr = req->Value;    // 用户直接指定内核地址 → 原生 write-what-where
+// Vulnerable: both write destination and value come from the input structure
+PREQ req = SystemBuffer;            // BUFFERED does not protect a field whose value is an address
+*(PULONG)req->Addr = req->Value;    // User directly specifies a kernel address → write-what-where primitive
 ```
 
 This is the BYOVD family's (RTCore64/dbutil/WinRing0) design-level vulnerability: **the driver offers "arbitrary-address read/write" to user mode as a normal feature**. Detection: a field of the input structure cast to a pointer and dereferenced, with no "the target must be within some pool/structure" whitelist validation. No good example exists for "the feature is the vulnerability" drivers — the fix = redesign the interface (see the §6 cases).
@@ -267,13 +267,13 @@ This is the BYOVD family's (RTCore64/dbutil/WinRing0) design-level vulnerability
 ### 3.7 Reference Counting and Async Completion (Reusing After IoCompleteRequest)
 
 ```c
-// 反例:pending 后双路径都 Complete
+// Vulnerable: both paths complete a pending request
 IoMarkIrpPending(irp); ExQueueWorkItem(...); return STATUS_PENDING;
-// 工作线程: process(); IoCompleteRequest(irp, ...); return;
-// 超时路径: IoCancelTimer...; IoCompleteRequest(irp, ...);  // 双完成 → IRP UAF
-// 反例:Complete 后还碰 SystemBuffer
+// Worker thread: process(); IoCompleteRequest(irp, ...); return;
+// Timeout path: IoCancelTimer...; IoCompleteRequest(irp, ...);  // Double completion → IRP UAF
+// Vulnerable: accesses SystemBuffer after completion
 IoCompleteRequest(irp, IO_NO_INCREMENT);
-DbgPrint("%s", SystemBuffer);       // IO 管理器可能已释放
+DbgPrint("%s", SystemBuffer);       // The I/O manager may already have freed it
 ```
 
 The good example: IRP ownership has exactly one owner at a time (after pending, the original path must not Complete again); after completion, never reference the IRP or its buffers again; the cancel routine pairs with `IoSetCancelRoutine` for atomic unlinking.
@@ -304,7 +304,7 @@ def decode_ctl(v):
 def looks_like_ioctl(v):
     dt, ac, fn, m = decode_ctl(v)
     return fn >= 0x800 and ac in (0,1,2,3) and m in (0,1,2,3) \
-           and dt in (0x22, 0x07, 0x08, 0x09, *range(0x8000, 0x8100))   # 三方常见 DT
+           and dt in (0x22, 0x07, 0x08, 0x09, *range(0x8000, 0x8100))   # Common third-party DeviceType values
 
 for f in idautils.Functions():
     hit = {}
@@ -344,17 +344,17 @@ Fuzz discipline: **white-box code-table extraction first, then targeted fuzzing 
 ### 4.4 BSOD Location → !analyze → Vulnerability Confirmation Loop
 
 ```
-① VM 快照 + 网络内核调试开着(bcdedit /debug on + host kd, 配法见 toolchain-setup.md §1.2)
-② fuzzer/手发 IOCTL → 蓝屏
-③ kd> !analyze -v        → FAULTING_MODULE/IMAGE_NAME(哪个 .sys)、EXCEPTION_RECORD、崩溃偏移
-④ kd> .trap <addr> / kv  → 崩溃现场栈 + 寄存器(RCX/RDX 常是 IRP/缓冲指针)
-   kd> !irp <addr>       → IRP 四元组:ctl 码/inLen/outLen/buffer 地址 —— 直接对上你发的哪一个码
-⑤ IDA 里按崩溃偏移(base 用 lm 查)定位到 handler 具体行,回 §3 checklist 归类根因
-⑥ 最小复现:单独一个 DeviceIoControl 重放该码+该缓冲 → 稳定崩
-⑦ 可利用性判定:
-   - 写入地址/内容部分可控(3.1/3.5/3.6)→ write-what-where → 高危,继续原语化(token/PreviousMode)
-   - 仅越读(3.2)→ 信息泄露,评估泄露内容定级
-   - NULL 解引用/纯 DoS(帖 88782 Win7 RC win32k gptiCurrent 空 deref 即此类)→ 低危,记录
+① VM snapshot + network kernel debugging enabled (bcdedit /debug on + host kd; setup in toolchain-setup.md §1.2)
+② Fuzzer/manual IOCTL → BSOD
+③ kd> !analyze -v        → FAULTING_MODULE/IMAGE_NAME (which .sys), EXCEPTION_RECORD, crash offset
+④ kd> .trap <addr> / kv  → crash stack + registers (RCX/RDX often contain IRP/buffer pointers)
+   kd> !irp <addr>       → IRP tuple: ctl code/inLen/outLen/buffer address — match the request you sent
+⑤ Use the crash offset in IDA (base from lm) to locate the handler statement; classify its root cause with the §3 checklist
+⑥ Minimize: replay the code and buffer with a single DeviceIoControl → stable crash
+⑦ Assess exploitability:
+   - Partly controlled write destination/value (3.1/3.5/3.6) → write-what-where → high severity; develop primitives (token/PreviousMode)
+   - Out-of-bounds read only (3.2) → information disclosure; assess severity from the disclosed content
+   - NULL dereference/pure DoS (e.g. article 88782, Win7 RC win32k gptiCurrent NULL dereference) → low severity; record it
 ```
 
 The `SYMBOL_NAME`/`MODULE_NAME` in `!analyze` output and the ctl code from `!irp` are the two strongest anchors — **the crashing module ≠ necessarily the responsible module** (when a bad driver pollutes a shared pool, the crash first lands in someone else's home); trust `!irp` + the top of the call stack.

@@ -10,7 +10,7 @@
 ```c
 struct kinfo_proc info; size_t sz = sizeof(info);
 sysctl((int[]){CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()}, 4, &info, &sz, 0, 0);
-if (info.kp_proc.p_flag & P_TRACED) { /* 被 ptrace 附加 → 自杀/降级 */ }
+if (info.kp_proc.p_flag & P_TRACED) { /* ptrace attached → exit or degrade functionality */ }
 ```
 - Countermeasure: hook `sysctl` and rewrite the flag bit in the returned buffer (fishhook can intercept it, because it goes through a symbol); or fix it at the kernel layer — bypassing anti-debug by hooking the kernel ptrace function via xnuspy (2024-06: read the corresponding xnu-7195.50.7.100 source `bsd/kern/mach_process.c`, use the pongoOS module xnuspy to hook a kernel function from user mode). Tool: xnuspy (repo address and supported iOS 13/14 versions in its repository).
 - A 2026-era countermeasure example: an in-depth look at device-environment bypass on a QP platform (2026-03; verification checklist: pthread_getname_np thread-name spoofing/sysctl P_TRACED cleanup/filesystem leftovers).
@@ -18,7 +18,7 @@ if (info.kp_proc.p_flag & P_TRACED) { /* 被 ptrace 附加 → 自杀/降级 */ 
 ### 1.2 ptrace (PT_DENY_ATTACH)
 
 ```c
-ptrace(PT_DENY_ATTACH, 0, 0, 0);   // 之后任何 attach 被 kernel 拒绝
+ptrace(PT_DENY_ATTACH, 0, 0, 0);   // The kernel rejects subsequent attach attempts
 ```
 - Bypass: hook `ptrace` to turn the PT_DENY_ATTACH (31) call into a NOP; or race it by attaching before the call; in lldb, break `symbolic breakpoint ptrace` and change the return value.
 
@@ -59,13 +59,13 @@ The target inlines `svc #0x80` to call `SYS_sysctl/SYS_ptrace` directly, bypassi
 A typical file-path detection implementation (fishhook can intercept it; listed for recognizing signatures):
 
 ```objc
-// 典型检测代码(逆向时在 class-dump 头里常见 isJailbroken/canOpenURL 特征)
+// Typical detection code (isJailbroken/canOpenURL often appear in class-dump headers)
 NSString *paths[] = { @"/Applications/Cydia.app", @"/usr/sbin/sshd",
                       @"/bin/bash", @"/private/var/lib/apt/", @"/etc/apt" };
 for (p in paths) if ([[NSFileManager defaultManager] fileExistsAtPath:p]) return YES;
 if ([[UIApplication sharedApplication] canOpenURL:[NSURL URLWithString:@"cydia://"]]) return YES;
-pid_t p = fork(); if (p >= 0) { if (p == 0) exit(0); return YES; }  // 沙盒内 fork 必败,非负即越狱
-if (dlsym(RTLD_DEFAULT, "MSGetSessionIdentifier")) return YES;  // Substrate 痕迹
+pid_t p = fork(); if (p >= 0) { if (p == 0) exit(0); return YES; }  // fork fails in the sandbox; a nonnegative result indicates a jailbreak
+if (dlsym(RTLD_DEFAULT, "MSGetSessionIdentifier")) return YES;  // Substrate indicator
 ```
 
 1. **Files/paths**: `/Applications/Cydia.app`, `/usr/sbin/sshd`, `/bin/bash`, `/private/var/lib/apt`… (largely ineffective under rootless jailbreaks — the files simply are not at the traditional paths; the main reason detection difficulty spiked in the Dopamine era).
@@ -152,16 +152,16 @@ Community posts: "The ultimate iOS hook arsenal" (2025: a layered roadmap from O
 iOS game localization is isomorphic to the Windows kind (knowledge-base tree 1000254/1000277); the differences are the resource formats and signing:
 
 ```
-1) 拿 IPA(砸壳,见第1篇 §5) → 解包 Payload/*.app
-2) 定位文本:
-   - plist/json/sqlite/plain 字符串(多数 Unity/Cocos 转 iOS)
-   - 资源打包:Unity 的 resources.assets/AssetBundle 用 UnityPy;
-     自研格式 → IDA 逆加载函数定位索引结构
-   - 本地化目录:*.lproj(官方多语言框架,改 zh-Hans.lproj 最省)
-   - 字体:ttf/otf 缺字需补字形表(中文扩 A 免不了)
-3) 改文本(等长/变长看索引是否有长度字段/哈希校验)
-4) 重打包 + 重签(第1篇 §9 codesign/ldid/AltStore) → TrollStore/越狱机分发
-5) 崩溃排查:完整性校验(CRC/CodeResources)→ 重签;文本越界 → 溢出
+1) Obtain and decrypt the IPA (first article §5) → unpack Payload/*.app
+2) Locate text:
+   - plist/json/sqlite/plain strings (common in Unity/Cocos iOS ports)
+   - Packed resources: use UnityPy for Unity resources.assets/AssetBundle;
+     for custom formats, reverse the loader in IDA and locate the index structure
+   - Localization directories: *.lproj (official multilingual framework; editing zh-Hans.lproj is simplest)
+   - Fonts: ttf/otf may need added glyphs, including CJK Extension A
+3) Edit text; equal/variable length depends on index length fields and hash validation
+4) Repackage and re-sign (first article §9: codesign/ldid/AltStore) → distribute via TrollStore or jailbroken devices
+5) Crash triage: integrity checks (CRC/CodeResources) → re-sign; out-of-bounds text → overflow
 ```
 For Unity/IL2CPP games, logic-layer RE is fully same-origin with Android (the same IL2CPP/AssetBundle set), cross-linked to the techniques-library toolbox; under tree node 1001405 the digest post "Reverse engineering in Galgame localization" (1001486) has a directly transferable methodology: locate the font → pointer table → backfill.
 

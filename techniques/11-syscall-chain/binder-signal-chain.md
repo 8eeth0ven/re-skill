@@ -8,7 +8,7 @@
 ### 0.1 One synchronous Binder call (bidirectional)
 
 ```
-[Client app 进程]                         [内核 drivers/android/binder.c]        [system_server]
+[Client app process]                     [Kernel: drivers/android/binder.c]      [system_server]
 pm.getPackageInfo(...)                       │                                      │
  IPackageManager$Stub$Proxy.transact         │                                      │
   android.os.BinderProxy.transactNative      │                                      │
@@ -21,12 +21,12 @@ pm.getPackageInfo(...)                       │                                
                                                binder_ioctl_write_read               │
                                                binder_thread_write                   │
                                                binder_transaction ──┐                │
-                                                解析 binder_transaction_data          │
+                                                Parse binder_transaction_data        │
                                                 handle→binder_ref→binder_node        │
-                                                binder_alloc_new_buf:数据拷入目标 mmap│
+                                                binder_alloc_new_buf:copy into target mmap│
                                                 binder_proc_transaction:             │
-                                                 select/enqueue/wakeup ──────────────►│ (阻塞在 ioctl 读侧的
-                                                (唤醒目标线程,wake_up_interruptible) │  binder 线程被唤醒)
+                                                 select/enqueue/wakeup ──────────────►│ (binder thread blocked
+                                                (wake target: wake_up_interruptible) │  in ioctl read wakes)
                                                                                      │ binder_thread_read
                                                                                      │ → BR_TRANSACTION(_SECCTX)
                                                                                      │ IPCThreadState::executeCommand
@@ -35,21 +35,21 @@ pm.getPackageInfo(...)                       │                                
                                                                                      │ → PackageManagerService.getPackageInfo
                                                                                      │ sendReply → BC_REPLY
                                                 binder_transaction(reply=true) ◄─────│
-                                                拷回 client mmap + 唤醒 client 线程    │
-       ioctl 返回(BR_REPLY) ◄───────────────┘                                      │
-      waitForResponse 收 Parcel(直接指向 client mmap 区)                            │
-     JNI/Java 反序列化 → PackageInfo
+                                                Copy to client mmap + wake client thread│
+       ioctl returns(BR_REPLY) ◄───────────────┘                                    │
+      waitForResponse receives Parcel(points directly to client mmap area)          │
+     JNI/Java deserialization → PackageInfo
 ```
 
 ### 0.2 Signal and exit chains at a glance
 
 ```
-发信号: kill/tgkill → sys_tgkill → do_tkill/do_send_sig_info → __send_signal_locked
+Send signal: kill/tgkill → sys_tgkill → do_tkill/do_send_sig_info → __send_signal_locked
         → complete_signal → signal_wake_up_state{ set_tsk_thread_flag(TIF_SIGPENDING) }
-递送:   返回用户态(ret_to_user 检查 _TIF_SIGPENDING) → do_notify_resume → do_signal
-        → get_signal(被 trace 则先 ptrace_signal/ptrace_stop 给 tracer) → handler/默认行为
-异常源: BRK 断点 → el0_dbg → do_el0_brk → send_user_sigtrap → SIGTRAP(TRAP_BRKPT)
-退出:   exit_group(94) → do_group_exit → do_exit → do_task_dead → schedule(不返回)
+Delivery: return to user space(ret_to_user checks _TIF_SIGPENDING) → do_notify_resume → do_signal
+        → get_signal(if traced, first notify tracer via ptrace_signal/ptrace_stop) → handler/default action
+Exception source: BRK breakpoint → el0_dbg → do_el0_brk → send_user_sigtrap → SIGTRAP(TRAP_BRKPT)
+Exit: exit_group(94) → do_group_exit → do_exit → do_task_dead → schedule(never returns)
 ```
 
 ## 1. Chain 1: the full Binder call sequence (PackageManager.getPackageInfo as the example)
@@ -75,10 +75,10 @@ Source anchors:
 sys_ioctl(arm64 __NR_ioctl=29)
  → binder_ioctl(filp, BINDER_WRITE_READ, arg)        // file_operations
    → binder_ioctl_write_read(...)
-     → binder_get_thread()                             // 按 task 找/建 binder_thread
-     → binder_thread_write(proc, thread, bwr->write_buffer, ...)   // 消费写侧命令
+     → binder_get_thread()                             // Find/create binder_thread for task
+     → binder_thread_write(proc, thread, bwr->write_buffer, ...)   // Consume write-side commands
         → BC_TRANSACTION/BC_REPLY → binder_transaction(proc, thread, &tr, reply, 0)
-     → binder_thread_read(...)                         // 生产读侧命令(BR_*)
+     → binder_thread_read(...)                         // Produce read-side commands(BR_*)
 ```
 
 Key steps inside `binder_transaction` (the non-reply, non-zero-handle path):
@@ -98,8 +98,8 @@ At the end, `binder_transaction` calls `binder_proc_transaction(t, target_proc, 
 
 ```c
 if (!thread && !pending_async)
-        thread = binder_select_thread_ilocked(proc);      // 挑一个可用 binder 线程
-binder_enqueue_thread_work_ilocked(thread, &t->work);     // 挂到线程 todo 队列
+        thread = binder_select_thread_ilocked(proc);      // Select an available binder thread
+binder_enqueue_thread_work_ilocked(thread, &t->work);     // Append work to thread todo queue
 binder_wakeup_thread_ilocked(proc, thread, !oneway /* sync */);
 ```
 
@@ -140,13 +140,13 @@ Command numbers: `BC_TRANSACTION=_IOW('c',0,...)`, `BC_REPLY=_IOW('c',1,...)`, `
 bpftrace examples:
 
 ```bash
-# 例1:kprobe binder_transaction,按进程过滤 dump 事务元数据(需 BTF;arg2 = struct binder_transaction_data*)
+# Example 1: kprobe binder_transaction; filter by process and dump transaction metadata(requires BTF; arg2 = struct binder_transaction_data*)
 bpftrace -e 'kprobe:binder_transaction /comm=="com.target.app"/ {
   $tr = (struct binder_transaction_data *)arg2;
   printf("handle=%d code=%d dsz=%d fl=%x\n", $tr->target.handle, $tr->code,
          $tr->data_size, $tr->flags); }'
 
-# 例2:tracepoint 版(字段由 TRACE_EVENT 提供,跨版本更稳)
+# Example 2: tracepoint variant(fields provided by TRACE_EVENT; more stable across versions)
 bpftrace -e 'tracepoint:binder:binder_transaction /args->code==<TRANSACTION_getPackageInfo>/ {
   printf("to_proc=%s code=%d reply=%d\n", comm, args->code, args->reply); }'
 ```
@@ -165,17 +165,17 @@ Division of labor with 02-frida/java-layer/storage-and-system.md sec.9.3: the Ja
 
 ```
 Java ServiceManager.getService("package")                     frameworks/base/core/java/android/os/ServiceManager.java
- → handle 0 的 BinderProxy(Android 11+ 经 ServiceManagerNative/IServiceManager AIDL 包装,底层不变)
+ → BinderProxy for handle 0(Android 11+ wraps it through ServiceManagerNative/IServiceManager AIDL; same underlying mechanism)
  → IPCThreadState::transact(handle=0, GET_SERVICE, name)
- → binder_transaction:target.handle==0 时不走 binder_get_ref_olocked,
-   目标定为 binder_context_mgr_node(servicemanager 启动时
-   ioctl BINDER_SET_CONTEXT_MGR(_EXT) 注册的 context manager 节点)(EXT 变体用于 features 协商)
- → servicemanager 进程(frameworks/native/cmds/servicemanager)BR_TRANSACTION 醒来查 svcinfo 表
- → BC_REPLY 返回 flat_binder_object(type=BINDER_TYPE_HANDLE)
- → 驱动 binder_translate_binder:在 client 进程 binder_inc_ref_for_node 建 binder_ref、
-   分配新 handle desc,回填到 client 读到的对象里(函数名以 binder.c 为准)
- → libbinder 包装成新的 BpBinder(handle N)/Java BinderProxy
- → 之后所有 getPackageInfo 的 BC_TRANSACTION 都用 target.handle=N
+ → binder_transaction: target.handle==0 bypasses binder_get_ref_olocked,
+   selecting binder_context_mgr_node: the context-manager node registered when servicemanager starts
+   through ioctl BINDER_SET_CONTEXT_MGR(_EXT)(EXT variant supports feature negotiation)
+ → servicemanager process(frameworks/native/cmds/servicemanager)wakes on BR_TRANSACTION and looks up svcinfo
+ → BC_REPLY returns flat_binder_object(type=BINDER_TYPE_HANDLE)
+ → Driver binder_translate_binder: binder_inc_ref_for_node creates binder_ref in the client,
+   allocates a new handle desc, and writes it into the object read by client(verify function names against binder.c)
+ → libbinder wraps a new BpBinder(handle N)/Java BinderProxy
+ → All subsequent getPackageInfo BC_TRANSACTION calls use target.handle=N
 ```
 
 The essence of a handle: the client's `binder_ref->desc`; the same service has different handle values in different processes - `binder_node` (unique on the server side) is the global anchor.
@@ -208,13 +208,13 @@ Source anchor: kernel/ptrace.c.
 
 ```
 sys_ptrace → arch_ptrace(arm64/kernel/ptrace.c) → ptrace_attach:
-  task_lock + cred_guard_mutex 下:
-    __ptrace_may_access(task, PTRACE_MODE_ATTACH_REALCREDS)   // 权限总闸
+  Under task_lock + cred_guard_mutex:
+    __ptrace_may_access(task, PTRACE_MODE_ATTACH_REALCREDS)   // Main permission gate
     task->ptrace = flags;
-    ptrace_link(task, current);                                 // 建立跟踪关系
+    ptrace_link(task, current);                                 // Establish tracing relationship
     ptrace_set_stopped(task, seize);
-      非 seize:send_signal_locked(SIGSTOP, SEND_SIG_PRIV, task, PIDTYPE_PID);
-      已停止:signal_wake_up_state(task, __TASK_STOPPED);
+      Without seize: send_signal_locked(SIGSTOP, SEND_SIG_PRIV, task, PIDTYPE_PID);
+      Already stopped: signal_wake_up_state(task, __TASK_STOPPED);
 ```
 
 The `__ptrace_may_access` check sequence: same thread group passes directly; otherwise under RCU compare the caller's uid against the target's euid/suid/uid and the gid triple for full equality; unequal -> `ptrace_has_cap` (ns_capable CAP_SYS_PTRACE); then `task_still_dumpable` (the dumpable state - where `prctl(PR_SET_DUMPABLE,0)` acts); finally `security_ptrace_access_check` (the LSM/SELinux hook). Any step failing -> EPERM.
@@ -223,7 +223,7 @@ The `__ptrace_may_access` check sequence: same thread group passes directly; oth
 ```c
 BUG_ON(!list_empty(&child->ptrace_entry));
 list_add(&child->ptrace_entry, &new_parent->ptraced);
-child->parent = new_parent;                  // 关键:parent 指向 tracer
+child->parent = new_parent;                  // Key: parent points to tracer
 child->ptracer_cred = get_cred(ptracer_cred);
 ```
 
@@ -277,10 +277,10 @@ kernel/signal.c (the tgkill/tkill tails were truncated; the inner do_tkill chain
 ```
 kill(2):  sys_kill → kill_something_info
             pid>0 → kill_proc_info → kill_pid_info → kill_pid_info_type(..., PIDTYPE_TGID)
-            → group_send_sig_info(check_kill_permission 鉴权)
+            → group_send_sig_info(check_kill_permission authorizes caller)
             → do_send_sig_info(sig, info, p, type)
 tgkill:   sys_tgkill → do_tkill → do_send_sig_info(si_code=SI_TKILL)
-共同后段: __send_signal_locked → complete_signal(选目标 task/线程)
+Shared suffix: __send_signal_locked → complete_signal(select target task/thread)
             → signal_wake_up_state(t, state):
                 set_tsk_thread_flag(t, TIF_SIGPENDING);
                 wake_up_state(t, state | TASK_INTERRUPTIBLE) / kick_process(t);
@@ -292,12 +292,12 @@ The arm64 return path (ret_to_user checks `thread_flags & _TIF_SIGPENDING` -> `d
 
 ```
 do_signal → get_signal(&ksig)(kernel/signal.c):
-  dequeue_signal 取信号
-  → 若 current->ptrace 且非 SIGKILL 且非 SA_IMMUTABLE:
+  dequeue_signal obtains signal
+  → If current->ptrace and neither SIGKILL nor SA_IMMUTABLE:
         signr = ptrace_signal(...) → ptrace_stop(signr, CLD_TRAPPED, ...)
-        「We're back. Did the debugger cancel the sig?」——tracer 先看:
-        tracer 不转发(signr==0)→ 信号被丢弃;改号/被阻塞 → 重排队
-  → SIG_DFL 走默认行为 / 否则 handle_signal → setup_rt_frame → 用户态 handler
+        "We're back. Did the debugger cancel the sig?" — tracer examines it first:
+        Tracer suppresses(signr==0)→ discard signal; changed number/blocked → requeue
+  → SIG_DFL uses default action; otherwise handle_signal → setup_rt_frame → user-space handler
 ```
 
 **The kernel mechanism of "the debugger eats the signal" is exactly this stretch**: for a traced task, every non-IMMUTABLE signal first `ptrace_stop`s to the tracer; gdb/IDA don't reinject by default, so the app's handler never fires.
@@ -307,11 +307,11 @@ do_signal → get_signal(&ksig)(kernel/signal.c):
 The arm64 BRK exception (arch/arm64/kernel/debug-monitors.c):
 
 ```c
-do_el0_brk():先试 uprobes(UPROBES_BRK_IMM),否则
+do_el0_brk(): try uprobes(UPROBES_BRK_IMM)first; otherwise
 send_user_sigtrap(TRAP_BRKPT) → arm64_force_sig_fault(SIGTRAP, TRAP_BRKPT,
                      instruction_pointer(regs), "User debug trap");
-32 位:do_bkpt32 → arm64_notify_die("aarch32 BKPT", ..., SIGTRAP, TRAP_BRKPT, ...);
-EL1 未处理 BRK → die("Oops - BRK")。旧内核对应 el0_dbg→brk_handler→force_sig_fault 路径。
+32-bit: do_bkpt32 → arm64_notify_die("aarch32 BKPT", ..., SIGTRAP, TRAP_BRKPT, ...);
+Unhandled EL1 BRK → die("Oops - BRK"). Older kernels use el0_dbg→brk_handler→force_sig_fault.
 ```
 - **Single-step**: PTRACE_SINGLESTEP sets PSTATE.SS (hardware single-step) -> the step exception -> SIGTRAP (TRAP_TRACE). Detection can only sense it via latency/behavioral side channels; user space cannot read mdscr_el1.
 - **Breakpoint self-check detection principle**: the app first `sigaction`-registers a SIGTRAP handler, then deliberately executes `brk #0` in its own code (or raise/tgkills itself) - normally the handler runs and sets a flag (sec.4.2 normal delivery); under a ptrace-style debugger it goes `ptrace_signal`->`ptrace_stop`, the tracer swallows it by default, the handler never runs -> the flag is missing -> debugger detected. Counter: have the tracer forward SIGTRAP (the gdb `handle SIGTRAP nostop pass` idea), or switch to a breakpoint mechanism that doesn't depend on ptrace (wxshadow shadow pages - the checked page reads the original instruction, even the prologue CRC misses).
@@ -330,7 +330,7 @@ Source: writing to a closed pipe/socket has the kernel send SIGPIPE on the write
 | Kernel delivery layer | `kprobe:get_signal` / `tracepoint:signal:signal_deliver` | bpftrace | whether the handler really ran, or was intercepted by ptrace_stop |
 
 ```bash
-# 例3:观测 SIGTRAP(5) 的产生与目标
+# Example 3: observe generation and target of SIGTRAP(5)
 bpftrace -e 'tracepoint:signal:signal_generate /args->sig==5/ {
   printf("sig=%d target_pid=%d target=%s from=%s\n", args->sig, args->pid, args->comm, comm); }'
 ```
@@ -341,13 +341,13 @@ bpftrace -e 'tracepoint:signal:signal_generate /args->sig==5/ {
 
 ```
 Java: System.exit(code) → Runtime.getRuntime().exit(code)
-      → shutdownHooks → native Exit → libc exit(走 atexit)→ exit_group
-native: exit()/quick_exit → exit_group;_exit → exit(93) 单线程
-svc 直调: 内联汇编 mov x8,#94; svc #0(不经 libc,用户态 hook 失效)
-内核: sys_exit_group → do_group_exit(code) → do_exit:
+      → shutdownHooks → native Exit → libc exit(runs atexit)→ exit_group
+native: exit()/quick_exit → exit_group; _exit → exit(93), single thread
+Direct svc: inline assembly mov x8,#94; svc #0(bypasses libc; user-space hooks do not see it)
+Kernel: sys_exit_group → do_group_exit(code) → do_exit:
         exit_signals/exit_mm/exit_files/exit_fs/exit_task_work...
-        → do_task_dead() → schedule()   // 不再返回
-      父进程收 SIGCHLD(kernel/exit.c)
+        → do_task_dead() → schedule()   // Never returns
+      Parent receives SIGCHLD(kernel/exit.c)
 ```
 
 Common anchors of "suicide" detection: after an RASP hit, the descent runs from Java System.exit through native exit to direct svc; once the defense blocks the Java/native layers, the last stage can only be intercepted at the syscall (Stalker instruction rewriting/patching the so/kernel observation). SIGKILL-style termination cannot be intercepted in-process - only by an external watchdog/kernel observation.
@@ -362,7 +362,7 @@ Common anchors of "suicide" detection: after an RASP hit, the descent runs from 
 | kernel | `kprobe:do_exit` / `tracepoint:sched:sched_process_exit` | bpftrace | reached even by direct svc; kstack gives the kernel path |
 
 ```bash
-# 例4:exit 时打内核栈(kstack 可行;用户态/Java 栈需在进程内另取,内核侧拿不到)
+# Example 4: collect kernel stack at exit(kstack works; obtain user/Java stacks inside the process, not from kernel side)
 bpftrace -e 'kprobe:do_exit /comm=="com.target.app"/ { print(kstack); }'
 ```
 

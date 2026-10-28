@@ -9,7 +9,7 @@
 ```javascript
 var Cipher = Java.use("javax.crypto.Cipher");
 
-// 钩取 doFinal
+// Hook doFinal
 Cipher.doFinal.overload("[B").implementation = function (data) {
     var mode = this.getAlgorithm();
     console.log("Cipher mode: " + mode);
@@ -24,7 +24,7 @@ Cipher.doFinal.overload("[B").implementation = function (data) {
     return result;
 };
 
-// 钩取 init 方法
+// Hook init
 Cipher.init.overload('int', 'java.security.Key').implementation = function (opmode, key) {
     console.log("Cipher initialized!");
     console.log("Operation mode: " + opmode);
@@ -68,7 +68,7 @@ const config = {
     showDivider: true,
   }
   Java.perform(function () {
-    // console.log('frida 已启动');
+    // console.log('Frida started');
     function showStacks(name = '') {
       if (config.showStacks) {
         console.log(Java.use('android.util.Log').getStackTraceString(Java.use('java.lang.Throwable').$new(name)))
@@ -192,7 +192,7 @@ const config = {
   
           if (arguments[1]) {
             const className = JSON.stringify(arguments[1])
-            // 安卓10以上私钥是有可能输出不了的
+            // On Android 10 and later, a private key may not be exportable
             if (className.includes('OpenSSLRSAPrivateKey')) {
               // const keyBytes = arguments[1];
               // console.log(`${algorithm} init key`, keyBytes);

@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Stalker call 事件 → 调用树 + 热点统计(本机实测通过)。
+"""Stalker call events -> call tree and hotspot statistics(previously tested locally).
 
-输入:stalker_trace.py --out 产出的 JSONL,每行
+Input: JSONL produced by stalker_trace.py --out, one event per line:
   {"type":"call","from":"Python!0x...","to":"Python!0x...","depth":N}
-  (block/ret 行会被忽略)
+  (block/ret records are ignored)
 
-用法:
+Usage:
   ./calltree.py events.jsonl [--top 15] [--children 3] [--depth-max 8]
 
-输出:
-  1) 聚合调用树(每个节点:目标符号 + 调用次数;按次数截断展示)
-  2) 热点 top:被调最多次的目标
-  3) 去重率:唯一 from->to 边 / 总事件数(trace 数据大爆炸的压缩证据)
+Output:
+  1) Aggregated call tree(target symbol and call count per node; display capped by count)
+  2) Top hotspots: most frequently called targets
+  3) Deduplication: unique from->to edges versus total events, showing trace compression
 """
 import argparse
 import json
@@ -42,10 +42,10 @@ def main():
     a = ap.parse_args()
 
     root = Node()
-    edges = defaultdict(int)     # (from,to) -> 次数
-    targets = defaultdict(int)   # to -> 次数
+    edges = defaultdict(int)     # (from,to) -> count
+    targets = defaultdict(int)   # to -> count
     total = 0
-    stack = []                   # 当前调用栈(to 链)
+    stack = []                   # Current call stack(target chain)
 
     with open(a.jsonl) as f:
         for line in f:
@@ -59,7 +59,7 @@ def main():
             src, dst, d = e['from'], e['to'], e['depth']
             edges[(src, dst)] += 1
             targets[dst] += 1
-            # depth 相对值:增→入栈,减→弹栈,平→同级
+            # Relative depth: increase -> push, decrease -> pop, equal -> sibling
             if not stack:
                 stack = [(d, dst)]
                 root.add([dst])
@@ -82,18 +82,18 @@ def main():
             print('%s%s%s x%d' % (prefix, '`- ' if last else '|- ', name, c.count))
             render(c, prefix + ('   ' if last else '|  '), depth + 1)
 
-    print('== 调用树(top %d children/层, 深度<=%d) ==' % (a.children, a.depth_max))
+    print('== Call tree(top %d children/level, depth<=%d) ==' % (a.children, a.depth_max))
     render(root, '', 0)
 
-    print('\n== 热点目标 top %d ==' % a.top)
+    print('\n== Top %d hotspot targets ==' % a.top)
     for k, v in sorted(targets.items(), key=lambda kv: -kv[1])[:a.top]:
         print('  %6d  %s' % (v, k))
 
     uniq = len(edges)
-    print('\n== 去重统计 ==')
-    print('  call 事件总数 : %d' % total)
-    print('  唯一 from->to 边: %d (去重率 %.1f%%)' % (uniq, 100.0 * (1 - uniq / total) if total else 0))
-    print('  唯一目标符号  : %d' % len(targets))
+    print('\n== Deduplication statistics ==')
+    print('  Total call events: %d' % total)
+    print('  Unique from->to edges: %d (reduction %.1f%%)' % (uniq, 100.0 * (1 - uniq / total) if total else 0))
+    print('  Unique target symbols: %d' % len(targets))
 
 
 if __name__ == '__main__':
