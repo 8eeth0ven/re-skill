@@ -27,6 +27,7 @@ unpacked tree is plain scan input for the calling profile (file/banner/secret
 rules), and every 7z child runs under the runner's process bounds.
 """
 import os
+import queue
 import re
 import stat
 import subprocess
@@ -35,7 +36,7 @@ import time
 from pathlib import Path
 
 from .errors import BudgetExceeded, Cancelled, InvalidInput
-from .execution import REAP_SECONDS, WindowsJob, _posix_limits, run_command
+from .execution import REAP_SECONDS, WindowsJob, _await_exit, _posix_limits, run_command
 from .safety import Budget, atomic_json, redact, safe_relative
 
 TIMEOUT_CAP_SECONDS = 60
@@ -176,8 +177,27 @@ def _spawn_member_reader(argv: list[str], cwd: Path, budget: Budget):
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW | 0x4
         job = WindowsJob(budget.limits["max_memory_mb"])
-        process = subprocess.Popen(argv, **kwargs)
-        job.attach_and_resume(process)
+        process = None
+        try:
+            process = subprocess.Popen(argv, **kwargs)
+            job.attach_and_resume(process)
+        except BaseException:
+            # Failed assignment/resume must not leave a suspended Windows child or job handle.
+            try:
+                if process is not None:
+                    try:
+                        job.kill()
+                        process.kill()
+                        _await_exit(process, REAP_SECONDS)
+                    except OSError:
+                        pass
+                    finally:
+                        for pipe in (process.stdout, process.stderr):
+                            if pipe is not None:
+                                pipe.close()
+            finally:
+                job.close()
+            raise
         return process, job
     kwargs["start_new_session"] = True
     kwargs["preexec_fn"] = _posix_limits(
@@ -193,10 +213,7 @@ def _kill_member_child(process: subprocess.Popen, job: WindowsJob | None) -> Non
             os.killpg(process.pid, 9)
         except (ProcessLookupError, PermissionError, OSError):
             pass
-    try:
-        process.wait(timeout=REAP_SECONDS)
-    except subprocess.TimeoutExpired:
-        process.kill()
+    _await_exit(process, REAP_SECONDS)
 
 
 def _extract_streaming(trusted: str, sample: Path, members: list[dict], output_dir: Path,
@@ -235,28 +252,62 @@ def _extract_streaming(trusted: str, sample: Path, members: list[dict], output_d
         argv = [trusted, "x", "-so", "-y", "-spd", str(sample.absolute()), member["name"]]
         process, job = _spawn_member_reader(argv, output_dir.parent, budget)
         stderr_chunks: list[bytes] = []
+        stdout_blocks: queue.Queue[bytes] = queue.Queue(maxsize=2)
+        stdout_done = threading.Event()
+        stop_reader = threading.Event()
+        stdout_errors: list[OSError] = []
 
-        def drain_stderr(pipe=process.stderr):
+        def read_stdout(pipe=process.stdout, blocks=stdout_blocks, done=stdout_done,
+                        stop=stop_reader, errors=stdout_errors):
+            try:
+                while not stop.is_set():
+                    block = pipe.read1(65536)
+                    if not block:
+                        break
+                    while not stop.is_set():
+                        try:
+                            blocks.put(block, timeout=EXTRACT_POLL_SECONDS)
+                            break
+                        except queue.Full:
+                            continue
+            except OSError as exc:
+                errors.append(exc)
+            finally:
+                pipe.close()
+                done.set()
+
+        def drain_stderr(pipe=process.stderr, chunks=stderr_chunks):
             try:
                 while block := pipe.read1(8192):
-                    if sum(len(chunk) for chunk in stderr_chunks) < STREAM_STDERR_CAP:
-                        stderr_chunks.append(block)
+                    if sum(len(chunk) for chunk in chunks) < STREAM_STDERR_CAP:
+                        chunks.append(block)
             except OSError:
                 pass
             finally:
                 pipe.close()
 
+        stdout_thread = threading.Thread(target=read_stdout, daemon=True)
         stderr_thread = threading.Thread(target=drain_stderr, daemon=True)
-        stderr_thread.start()
+        started_threads = []
         digest_total = 0
         try:
+            for thread in (stdout_thread, stderr_thread):
+                thread.start()
+                started_threads.append(thread)
             with destination.open("xb") as out:
                 started = time.monotonic()
                 while True:
                     budget.check()
-                    block = process.stdout.read1(65536)
-                    if not block:
-                        break
+                    if time.monotonic() - started >= timeout:
+                        raise _MemberStreamFailure(f"Member extraction timed out after {timeout}s: {member['name'][:120]}")
+                    try:
+                        block = stdout_blocks.get(timeout=EXTRACT_POLL_SECONDS)
+                    except queue.Empty:
+                        if stdout_done.is_set() and stdout_blocks.empty():
+                            if stdout_errors:
+                                raise _MemberStreamFailure(f"Cannot read member {member['name'][:120]}: {stdout_errors[0]}")
+                            break
+                        continue
                     if progress["bytes"] + len(block) > budget.limits["max_unpack_bytes"]:
                         # The exact enforcement point: this block is never written.
                         raise _MemberStreamFailure(
@@ -268,12 +319,12 @@ def _extract_streaming(trusted: str, sample: Path, members: list[dict], output_d
                     if time.monotonic() - started >= timeout:
                         raise _MemberStreamFailure(f"Member extraction timed out after {timeout}s: {member['name'][:120]}")
             code = process.poll()
-            if code is None:
-                try:
-                    code = process.wait(timeout=max(1, int(timeout - (time.monotonic() - started))))
-                except subprocess.TimeoutExpired:
-                    _kill_member_child(process, job)
+            while code is None:
+                budget.check()
+                if time.monotonic() - started >= timeout:
                     raise _MemberStreamFailure(f"Member extraction did not exit: {member['name'][:120]}")
+                time.sleep(EXTRACT_POLL_SECONDS)
+                code = process.poll()
             if code != 0:
                 signature = b"".join(stderr_chunks).decode("utf-8", "replace")[:200]
                 raise _MemberStreamFailure(
@@ -301,8 +352,23 @@ def _extract_streaming(trusted: str, sample: Path, members: list[dict], output_d
                 first_member_error = f"{len(members)} member extraction(s); first omitted: {exc}"
             continue
         finally:
-            if job:
-                job.close()
+            # Stop queue backpressure before kill/reap; a silent pipe read ends
+            # when the owned process tree is stopped. Each reader closes only
+            # its own pipe, so the main thread never races a blocked read.
+            stop_reader.set()
+            try:
+                if process.poll() is None or any(thread.is_alive() for thread in started_threads):
+                    _kill_member_child(process, job)
+            finally:
+                try:
+                    if job:
+                        job.close()
+                finally:
+                    for thread, pipe in ((stdout_thread, process.stdout), (stderr_thread, process.stderr)):
+                        if thread in started_threads:
+                            thread.join(timeout=REAP_SECONDS)
+                        else:
+                            pipe.close()
         written_files = progress["files"] + 1
         budget.consume("files", 1)
         budget.consume("unpack_bytes", digest_total)

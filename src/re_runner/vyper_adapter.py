@@ -37,14 +37,14 @@ def _resolve_executable(explicit: str | None) -> tuple[list[str] | None, str | N
     if explicit:
         if Path(explicit).suffix.lower() in WRAPPER_SUFFIXES or not Path(explicit).is_file():
             raise InvalidInput("vyper executable must be a real file, not a wrapper script")
-        return [explicit], None
+        return [str(Path(explicit).absolute())], None
     if (env := os.environ.get("RE_RUN_VYPER")) and Path(env).is_file() and Path(env).suffix.lower() not in WRAPPER_SUFFIXES:
-        return [env], None
+        return [str(Path(env).absolute())], None
     venv_script = Path(sys.executable).parent / "vyper"
     if venv_script.is_file():
         return [str(venv_script)], None
     if found := shutil.which("vyper"):
-        return [found], None
+        return [str(Path(found).absolute())], None
     if importlib.util.find_spec("vyper") is not None:
         return [sys.executable, "-c", "from vyper.cli.vyper_compile import main; main()"], None
     return None, "no vyper executable or importable vyper package found"

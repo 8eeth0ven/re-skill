@@ -12,7 +12,7 @@ def radare2(path: Path, output: Path, budget: Budget) -> dict | None:
     executable = os.environ.get("RE_RUN_R2") or shutil.which("r2")
     if not executable:
         return None
-    executable_path = Path(executable)
+    executable_path = Path(executable).absolute()
     if not executable_path.is_file() or executable_path.suffix.lower() in (".bat", ".cmd", ".ps1", ".sh"):
         raise InvalidInput("RE_RUN_R2 must reference the trusted native r2 executable")
     keep = ("PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "TMPDIR")

@@ -13,6 +13,7 @@ object or directory quota on macOS).
 """
 import io
 import os
+import shutil
 import tarfile
 import tempfile
 import threading
@@ -35,8 +36,10 @@ from re_runner.runner import Runner, _artifacts
 from re_runner.safety import Budget, InvalidInput, load_json
 from re_runner.scope import ScopePolicy
 
-REPO = Path(__file__).resolve().parents[1]
-SEVENZIP = "/opt/homebrew/bin/7z"
+# Keep the real local-fixture gates, without assuming one Homebrew prefix.
+SEVENZIP = configured_executable(
+    os.environ.get("RE_RUN_7Z") or shutil.which("7z") or shutil.which("7zz")
+)
 WATCH_SECONDS = 120
 
 
@@ -263,15 +266,8 @@ class R1RunnerIntegrationTests(TempCase):
         self.assertIn("interrupted-intake-recovered", events)
 
 
-def _files_in_first_journal(used_before, state2, attempt_dir):
-    """files already present in used_before from the cancelled attempt's journal."""
-    first = attempt_dir / "attempt-1" / "usage.json"
-    if first.exists():
-        return load_json(first, max_bytes=65536).get("files", 0)
-    return 0
 
-
-@unittest.skipUnless(configured_executable(SEVENZIP) or Path(SEVENZIP).is_file(), "7z not installed")
+@unittest.skipUnless(SEVENZIP, "trusted 7z not installed (set RE_RUN_7Z or use PATH)")
 class ExtractorRefusalTests(TempCase):
     """R2 gates against the real 7z binary."""
 

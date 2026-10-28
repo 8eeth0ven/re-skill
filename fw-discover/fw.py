@@ -42,7 +42,7 @@ OPENWRT = "https://downloads.openwrt.org/releases/"
 def log(msg):
     DATA.mkdir(parents=True, exist_ok=True)
     with LOG.open("a", encoding="utf-8") as f:
-        f.write(f"{time.strftime('%F %T')} {msg}\n")
+        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}\n")
 
 
 def http_get(url, timeout=60):
@@ -258,7 +258,7 @@ def write_ledger():
         by_fw[r["fw"]] = by_fw.get(r["fw"], 0) + 1
     rows.sort(key=lambda r: (-r["pri"], r["fw"]))
     L = ["# Autonomous Firmware Vulnerability Discovery Ledger (0day candidates)\n",
-         f"> generated {time.strftime('%F %T')} | cumulative **{len(rows)}/{TARGET}** | firmware: {len(by_fw)} | "
+         f"> generated {time.strftime('%Y-%m-%d %H:%M:%S')} | cumulative **{len(rows)}/{TARGET}** | firmware: {len(by_fw)} | "
          f"rules: analyzers.py (account files / private keys / command-injection flows / telnetd / default passwords) — **every entry is autonomously discovered on this machine, not matched against a CVE database**",
          "> Red lines: candidates are for local research prioritization only; external reporting goes through a human + `../../disclosure-cve.md`; dynamic emulation (FirmAE/qemu) is next stage.\n"]
     L.append("| Class | Count | Description |")
@@ -294,7 +294,7 @@ def load_progress():
 
 def save_progress(p):
     p["target"] = TARGET
-    p["updated"] = time.strftime("%F %T")
+    p["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
     atomic_text(PROGRESS, json.dumps(p, ensure_ascii=False, indent=1))
 
 
@@ -331,7 +331,7 @@ def process_one(item, prog):
         if k in keys:
             continue
         keys.add(k)
-        append_finding({**r, "src": item["src"], "ts": time.strftime("%F %T")})
+        append_finding({**r, "src": item["src"], "ts": time.strftime("%Y-%m-%d %H:%M:%S")})
         added += 1
     write_ledger()
     n = len(read_findings())

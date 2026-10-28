@@ -37,11 +37,19 @@ Not sure which route fits? [Usage scenarios](usage-scenarios.md) map common situ
 
 ## Quick Start
 
+For macOS and Windows commands, tool paths, and platform limits, see the
+[compatibility guide](docs/compatibility.md). The Python runner is separate
+from the optional Bash-based APK workflow.
+
 ### Browse or use the agent skill
 
 Use this repository as the `re` skill folder in your agent's supported skill location, then start with [SKILL.md](SKILL.md). The entry and its relative references stay together; individual articles can also be read directly.
 
 From the repository root, check the library and available environment:
+
+The following commands use macOS/Linux `python3`. On Windows use `python` or
+`py -3`; after runner setup, `uv run --no-sync python` selects the project
+interpreter on either platform.
 
 ```bash
 # Check local routes, index coverage, and source syntax.

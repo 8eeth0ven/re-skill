@@ -63,6 +63,11 @@ full protocol/business testing or a full interprocedural source audit.
 
 ## Execution Modes and Essential Constraints
 
+Treat unlabelled legacy behavior and thresholds as inference. Evidence labels apply
+only to their recorded version/platform scope; a historical verified result does
+not establish current efficacy. Validate the selected claim before reporting it
+as an observed outcome.
+
 - **Real devices:** follow [device-testing.md](device-testing.md) for "run real-device / serial validation". No flashing, bootloader unlocking, firmware writes, or system-partition changes. Use only the permitted temporary test artifacts and self-installed test APKs. Microcontroller work is read-only; host kernel experiments belong in VMs. If no device is detected, record that result.
 - **Unattended execution:** follow [unattended.md](unattended.md) for "unattended: reverse ..." or "unattended: hunt CVEs ...". Persist incremental evidence, follow acceptance gates, and use [racing.md](racing.md) when an approach fails. Keep the existing boundaries for outbound submission, spending, irreversible changes, scope, and physical actions.
 - **Test values and cleanup:** follow [test-values.md](test-values.md): `[RE]` / `[REPROBE]`, `0x52455052`, `REPROBE-<date>-<seq>`, and device names prefixed with `re_`. High-collision probes such as `0x42` and `deadbeef` are forbidden. Check the value families at wrap-up and remove only the current task's temporary device state; retain labeled evidence.
@@ -79,3 +84,9 @@ For library updates, read [maintenance.md](maintenance.md) and the
 installed tools, and dated evidence. SSL pinning's authoritative methodology is
 [ssl-pinning-bypass.md](techniques/04-evasion/ssl-pinning-bypass.md); other articles provide
 snippets, scenarios, or vendor examples.
+
+For host migration, use the [platform compatibility matrix](docs/compatibility.md).
+For knowledge intake, evidence labels, variant dossiers, decay review, or article
+renames, follow [knowledge engineering](docs/knowledge-engineering.md) and its
+templates. These maintenance references are conditional; analysis tasks do not
+need to preload them. Existing articles remain routable during staged migration.

@@ -70,7 +70,10 @@ Every tool/capability degradation feeds into section 7 of S4. Honor scope, cance
 
 ### 0.1 Safe Shared-State Initialization (Bash / Git-Bash / WSL)
 
-Use the installed skill's actual absolute path. The checked-in initializer derives the root from `BASH_SOURCE`, verifies the APK, resolves SDK/venv paths, and persists state using Bash `%q`; do not derive the skill root from an interactive shell's `$0`.
+Use the installed skill's actual path. The shell entry selects the shared
+standard-library Python initializer, which verifies the APK, resolves SDK/venv
+paths, and writes `env.json` plus a safely quoted, LF-terminated `env.sh`.
+Do not derive the skill root from an interactive shell's `$0`.
 
 ```bash
 source /absolute/skill-root/pipeline/init_pipeline.sh "/absolute/path/to/app.apk"
@@ -83,6 +86,33 @@ source /absolute/skill-root/pipeline/init_pipeline.sh "/absolute/path/to/app.apk
 Default artifacts remain next to the APK at `输出/<package>-<date>/`. Set `RE_PIPELINE_OUT` before sourcing to choose another base. If that directory already contains artifacts, a timestamp/PID suffix creates a distinct run instead of overwriting evidence. Existing non-ASCII artifact names remain compatibility interfaces; all new explanatory prose is English.
 
 `run_to <seconds> <command> [args...]` uses `run_with_timeout.py`, returns 124 on timeout/budget exhaustion, and terminates only the process tree it created. It bounds a command by both the requested timeout and the remaining global budget, reserving 300s for S4. Set `RE_REPORT_RESERVE_SECONDS=0` only when entering S4; no new analysis starts inside the report reserve.
+
+#### Native Windows PowerShell
+
+From the skill root, after preparing its Python environment:
+
+```powershell
+$env:RE_PYTHON = (uv run --no-sync python -c "import sys; print(sys.executable)")
+. ./pipeline/init_pipeline.ps1 -Apk 'C:\Samples\sample.apk' -Output 'C:\Research\sample-run'
+# A later session on the same host boot restores the original deadline:
+. ./pipeline/init_pipeline.ps1 -StateFile 'C:\Research\sample-run\env.json'
+run_to 120 $RE_PYTHON (Join-Path $SKILL_ROOT 'pipeline/env_check.py')
+```
+
+Use the actual output path printed by initialization: a populated output directory
+causes a distinct run directory to be selected. `-StateFile` validates and loads
+the existing variables without creating a new run or resetting its deadline.
+Both entries share the same budget and artifact contract. A host reboot requires
+a new run because the saved deadline is monotonic, not a portable wall timestamp.
+Use script execution allowed by the host's policy; do not change system policy
+as an implicit installation step.
+
+The stage tables below are **Bash examples**, not PowerShell syntax. Translate
+text filters and logging deliberately, or use the bounded runner for static APK
+analysis. A native `.bat` launcher has different argument rules from a native
+executable; use the adapter's documented path and restrictions. In particular,
+do not copy `adb ... > binary-file` into older PowerShell: use the byte-stream
+recipe in the [host compatibility guide](../docs/compatibility.md#binary-output-example).
 
 ### 0.2 Discipline parameters
 
@@ -97,7 +127,7 @@ Default artifacts remain next to the APK at `输出/<package>-<date>/`. Set `RE_
 
 ```
 输出/<package>-<date>/
-├── env.sh  黑板.md
+├── env.json  env.sh  黑板.md
 ├── 00-环境/   env_report.txt  status.md  run.log
 ├── 01-静态/   apktool_out/  jadx_out/  apkid.txt  packer_sos.txt  packer_verdict.md
 │              badging.txt  manifest_face.md  apkleaks.txt  secrets_grep.txt

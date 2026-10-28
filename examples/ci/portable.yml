@@ -1,0 +1,42 @@
+# Optional GitHub Actions example. Copy to .github/workflows/portable.yml to enable.
+# Local validation and tests do not depend on GitHub Actions.
+name: Portable RE checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+        python: ['3.11', '3.13']
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.13.6'
+          python-version: ${{ matrix.python }}
+      - name: Install locked project and optional Python engines
+        run: uv sync --locked --all-extras --group dev
+      - name: Check library routes and source syntax
+        run: uv run --no-sync python scripts/validate_library.py --json
+      - name: Check knowledge metadata without blocking legacy articles
+        run: uv run --no-sync python scripts/validate_knowledge.py --json
+      - name: Run offline regression suite
+        run: uv run --no-sync python -B -m unittest discover -s tests -v
+      - name: Lint maintained Python packages and tests
+        run: uv run --no-sync ruff check --no-cache src tests scripts

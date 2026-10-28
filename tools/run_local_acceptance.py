@@ -6,8 +6,10 @@ Usage: uv run --no-sync python tools/run_local_acceptance.py [--output re-runs/r
 import argparse
 import json
 import os
+import queue
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -26,15 +28,29 @@ SCOPES = {
 
 
 def wait_ready(proc: subprocess.Popen, timeout: float = 20) -> dict:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        line = proc.stdout.readline() if proc.stdout else ""
+    """Bound startup even when a Windows/POSIX pipe has not produced a line."""
+    messages = queue.Queue()
+
+    def read_lines():
+        if proc.stdout is not None:
+            for line in proc.stdout:
+                messages.put(line)
+        messages.put(None)
+
+    threading.Thread(target=read_lines, daemon=True).start()
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError("services did not become ready")
+        try:
+            line = messages.get(timeout=remaining)
+        except queue.Empty as exc:
+            raise RuntimeError("services did not become ready") from exc
+        if line is None:
+            raise RuntimeError(f"service exited before readiness: {proc.poll()}")
         if line.strip().startswith("{"):
             return json.loads(line)
-        if proc.poll() is not None:
-            raise RuntimeError(f"service exited early: {proc.returncode}")
-        time.sleep(0.1)
-    raise RuntimeError("services did not become ready")
 
 
 def main() -> int:
@@ -81,7 +97,15 @@ def main() -> int:
         atomic_json(REPO / "re-runs" / "local-acceptance-summary.json", results)
         return 0 if all(item.get("status") in ("succeeded", "degraded") for item in results.values()) else 1
     finally:
-        services.terminate()
+        if services.poll() is None:
+            services.terminate()
+        try:
+            services.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            services.kill()
+            services.wait()
+        if services.stdout is not None:
+            services.stdout.close()
 
 
 if __name__ == "__main__":

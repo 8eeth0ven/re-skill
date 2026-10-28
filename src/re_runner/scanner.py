@@ -26,7 +26,7 @@ def resolve_executable(executable: str | None = None) -> str | None:
     candidate = executable or shutil.which("bandit")
     if not candidate:
         return None
-    path = Path(candidate)
+    path = Path(candidate).absolute()
     if not path.is_file() or path.suffix.lower() in (".bat", ".cmd", ".ps1", ".sh"):
         raise InvalidInput("bandit must reference the trusted native bandit executable")
     return str(path)

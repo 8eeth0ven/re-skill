@@ -1,14 +1,15 @@
 """Doctor per-profile readiness: requirement matrix, statuses and backward-compatible global probe."""
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from re_runner.capabilities import PACKAGES, TOOLS, probe
 from re_runner.models import KINDS
 
-REPO = Path(__file__).resolve().parents[1]
-R2 = REPO / "tools-env" / "radare2-6.2.4" / "radare2-6.2.4-w64" / "bin" / "radare2.exe"
 TOP_LEVEL_KEYS = {"os", "python", "profile", "builtin_profiles", "capabilities", "isolation", "note"}
 PROFILE_ENTRY_KEYS = {"name", "kind", "required", "available", "status", "purpose", "operations", "version"}
 STATUSES = {"missing", "present", "runnable"}
@@ -27,11 +28,21 @@ class GlobalProbeTests(unittest.TestCase):
 
 class ProfileProbeTests(unittest.TestCase):
     def test_binary_profile_required_packages_and_r2_provider(self):
-        if not R2.exists():
-            self.skipTest("radare2 fixture is not present under tools-env")
-        self.addCleanup(os.environ.pop, "RE_RUN_R2", None)
-        os.environ["RE_RUN_R2"] = str(R2)
-        value = probe("binary")
+        # Readiness is a capability-input contract, not a real-radare2 acceptance run.
+        # Use the current interpreter as a native-path fixture; the version call is mocked.
+        version = SimpleNamespace(
+            status="succeeded", exit_code=0, stdout="radare2 fixture-version\n",
+            stderr="", timed_out=False,
+        )
+        with (
+            patch.dict(os.environ, {"RE_RUN_R2": sys.executable, "RE_RUN_UPX": ""}),
+            patch("re_runner.capabilities.shutil.which", return_value=None),
+            patch("re_runner.capabilities.importlib.metadata.version", return_value="fixture-installed"),
+            patch("re_runner.capabilities.run_command", return_value=version) as version_probe,
+        ):
+            value = probe("binary")
+        version_probe.assert_called_once()
+        self.assertEqual(version_probe.call_args.args[0], [sys.executable, "-qv"])
         self.assertTrue(TOP_LEVEL_KEYS <= set(value))
         self.assertEqual(value["profile"], "binary")
         entries = {item["name"]: item for item in value["capabilities"]}
@@ -54,14 +65,18 @@ class ProfileProbeTests(unittest.TestCase):
         self.assertIn("r2", requirements["optional"])
 
     def test_binary_r2_wrapper_scripts_are_rejected(self):
-        if not R2.exists():
-            self.skipTest("radare2 fixture is not present under tools-env")
+        # Rejecting a wrapper never requires an installed native radare2 binary.
         with tempfile.TemporaryDirectory() as directory:
             wrapper = Path(directory) / "radare2.bat"
             wrapper.write_bytes(b"@echo off\r\n")
-            self.addCleanup(os.environ.pop, "RE_RUN_R2", None)
-            os.environ["RE_RUN_R2"] = str(wrapper)
-            entries = {item["name"]: item for item in probe("binary")["capabilities"]}
+            with (
+                patch.dict(os.environ, {"RE_RUN_R2": str(wrapper), "RE_RUN_UPX": ""}),
+                patch("re_runner.capabilities.shutil.which", return_value=None),
+                patch("re_runner.capabilities.importlib.metadata.version", return_value="fixture-installed"),
+                patch("re_runner.capabilities.run_command") as version_probe,
+            ):
+                entries = {item["name"]: item for item in probe("binary")["capabilities"]}
+            version_probe.assert_not_called()
         self.assertFalse(entries["r2"]["available"])
         self.assertEqual(entries["r2"]["status"], "missing")
         self.assertIn("wrapper", entries["r2"]["reason"])

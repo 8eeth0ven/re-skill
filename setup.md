@@ -1,5 +1,10 @@
 # Setup Guide — Prepare the Tools for Your Analysis
 
+Use the [host compatibility matrix](docs/compatibility.md) for shell, path, SDK,
+and binary-output differences. Select the host platform independently of the
+target platform. A Windows binary task on macOS does not make WinDbg available,
+and an Android task does not make its device shell equivalent to the host shell.
+
 ## Install the Agent Skill
 
 Keep the complete repository together so relative references and helpers resolve. Choose one
@@ -32,13 +37,18 @@ The repository provides `pyproject.toml` and `uv.lock`; the runner requires
 Python 3.11+. Install and test only as requested for the current task, respecting
 any explicit user limits on execution, installation, or device access.
 
-```bash
+```text
 uv sync --locked --all-extras --group dev
 uv run --no-sync re-run doctor --profile binary
-uv run --no-sync re-run analyze --manifest examples/assets.local.json --output re-runs
+uv run --no-sync re-run analyze --manifest examples/assets.local.json --output re-runs --language en
 ```
 
-Without uv, `python -m pip install -e '.[devices,grpc]'` uses version ranges
+These uv commands work from macOS/Linux terminals and native Windows PowerShell;
+they do not require virtual-environment activation. On Windows quote asset paths
+such as `'C:\Samples\sample.apk'`. For library validation after synchronization,
+use `uv run --no-sync python scripts/validate_library.py --json` on either host.
+
+Without uv, `python -m pip install -e ".[devices,grpc]"` uses version ranges
 rather than the exact uv lock. External JADX, Ghidra, IDA, Frida, and extractors
 are installed separately; available adapters and supported depth vary by
 profile. `RE_RUN_R2` accepts a trusted native executable. See [runner guide](docs/runner.md),
@@ -66,7 +76,7 @@ These version probes execute tools; defer them when the user defers execution/te
 
 ## Execution Discipline (formerly Section 0)
 
-- Work section by section; for each item detect first, install only if missing (skip if present); single-command timeout 5 minutes; log the whole run to `setup-report-<date>.md` (skill root)
+- Work section by section; for each item detect first, install only if missing (skip if present); single-command timeout 5 minutes; log the run to `setup-report-<date>.md` in the task workspace, outside the maintained skill tree
 - Platform detection: use `python3 -c "import platform; print(platform.system())"` (or `python` on Windows); a failed `uname` is not evidence of Windows. On Windows prefer PowerShell (winget), fallback scoop/choco
 - Sandbox/permission failures: switch to user-level installs (brew/winget user), or mark "needs human" and write it into the report
 
@@ -77,7 +87,7 @@ These version probes execute tools; defer them when the user defers execution/te
 | python ≥3.11 | `python3 --version` (win: `python --version`) | bundled, or `brew install python` | `winget install Python.Python.3.12` |
 | uv | `uv --version` | `brew install uv` / `curl -LsSf https://astral.sh/uv/install.sh \| sh` | `winget install astral-sh.uv` or `powershell -c "irm https://astral.sh/uv/install.ps1 \| iex"` |
 | java ≥17 | `java -version` | `brew install openjdk` | `winget install Microsoft.OpenJDK.17` |
-| node ≥18 (for MCP) | `node -v` | `brew install node` | `winget install OpenJS.NodeJS.LTS` |
+| Node (only when a selected MCP requires it) | `node -v`; compare with that server's requirement | `brew install node` | `winget install OpenJS.NodeJS.LTS` |
 | 7z | `7z \| head -1` (win: just `7z`) | `brew install sevenzip` / `apt install p7zip-full` | `winget install 7zip.7zip` (or bundled) |
 
 ## 2. Reverse Engineering Toolchain
@@ -99,15 +109,15 @@ Run in the skill root (uniform relative paths, consistent across machines):
 # macOS/Linux: start in the repository root; tools-env is not bundled
 mkdir -p tools-env
 cd tools-env
-UV_CACHE_DIR=/tmp/uv-cache uv venv
-UV_CACHE_DIR=/tmp/uv-cache uv pip install -p .venv/bin/python frida-tools frida unicorn capstone androguard ropper apkid apkleaks
+UV_CACHE_DIR="${TMPDIR:-/tmp}/re-uv-cache" uv venv
+UV_CACHE_DIR="${TMPDIR:-/tmp}/re-uv-cache" uv pip install -p .venv/bin/python frida-tools frida unicorn capstone androguard ropper apkid apkleaks
 ```
 
 ```powershell
 # Windows: start in the repository root
 New-Item -ItemType Directory -Path tools-env -Force | Out-Null
 Set-Location tools-env
-$env:UV_CACHE_DIR="$env:TEMP\uv-cache"
+$env:UV_CACHE_DIR=Join-Path $env:TEMP 're-uv-cache'
 uv venv
 uv pip install -p .venv\Scripts\python.exe frida-tools frida unicorn capstone androguard ropper apkid apkleaks
 ```
@@ -132,9 +142,9 @@ a requirement for every host.
 
 ## 6. Verification and Wrap-up
 
-1. Return to the repository root and run `python3 pipeline/env_check.py` on macOS/Linux or `python pipeline/env_check.py` on Windows. The legacy `env_check.sh` is macOS-only.
+1. Return to the repository root and run `uv run --no-sync python pipeline/env_check.py`, or use the installed host Python directly. `env_check.sh` is a Bash compatibility shim; native Windows does not need it.
 2. For an APK smoke test, use a suitable open-source or owned lab sample and execute S0–S4 per [pipeline/pipeline.md](pipeline/pipeline.md). Check the required static artifacts and any requested dynamic steps, as well as the report's limitations; a report can also describe a degraded run and does not by itself prove full setup success.
-3. Write the following into `setup-report-<date>.md`: platform / per-item install results (✓/✗/skipped) / venv version / leftover items needing a human / health-check output.
+3. Write `setup-report-<date>.md` in the task workspace: platform / per-item install results (✓/✗/skipped) / venv version / leftover items needing a human / health-check output. Promote only reusable, scoped conclusions through the [knowledge intake gate](docs/knowledge-engineering.md#f-workspace-to-library-promotion-and-the-minimum-evidence-package).
 4. Path fixes: if stale absolute paths from the old machine linger in pipeline.md (e.g. /Users/xxx, /opt/homebrew), replace them uniformly with PATH commands (jadx/apktool as bare command names) or the actual local paths
 
 ## 7. Post-Migration Scheduled Tasks (Optional)

@@ -66,6 +66,33 @@ Keep task-generated reports outside the knowledge body. When an offline mock
 validates orchestration or path handling, label it as a mock rather than a real
 APK, firmware, or hardware result.
 
+## Knowledge Intake, Renames, and Evidence Review
+
+Follow [knowledge engineering](docs/knowledge-engineering.md) for new articles,
+same-family variant dossiers, source attribution, decay warnings, and the
+project-to-library promotion gate. Preserve existing articles and branch meanings;
+legacy metadata remains pending until reviewed rather than being fabricated.
+
+Run both gates after an article move, rename, new INDEX row, or intake:
+
+```text
+python scripts/validate_library.py --json
+python scripts/validate_knowledge.py path/to/changed-article.md --strict --json
+```
+
+Use the installed host's Python name (`python3`, `python`, or `py -3`), or prefix
+with `uv run --no-sync python`. Both gates must exit zero for the intended change.
+The structural gate checks the whole library's routes, including legacy indexes;
+the metadata gate checks declared claims, ids, evidence and the selected draft.
+`legacy-pending` is not a claim that all old evidence has been reviewed. Keep stable
+article ids across renames and update inbound links, owning INDEX rows, and local
+evidence paths in the same change. Never delete an old article to make a check pass.
+
+Use `python scripts/validate_knowledge.py --review-due` for a manual review queue.
+Record a rerun only when one actually happened; elapsed age or an inaccessible old
+attachment does not rewrite the historical observation. No hosted service or
+automatic target testing is required for these gates.
+
 ## Recurring Regression Checks
 
 - Standard YAML delimiters and an indented/folded description; legacy task phrases retained in the optional usage-scenario vocabulary; no escaped `\---` delimiters.

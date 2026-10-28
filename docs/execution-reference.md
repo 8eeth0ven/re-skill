@@ -26,13 +26,13 @@ and negative control before claiming a successful bypass.
 
 - Common CLI tools: `jadx`, `apktool`, `r2`, `adb`, and `7z`; detect availability before use.
 - Python environment: `tools-env/.venv`. On this machine, use `UV_CACHE_DIR=/tmp/uv-cache uv pip install -p tools-env/.venv/bin/python <package>`; the venv has no pip and this cache path avoids known sandbox cache failures. Windows equivalents are in [setup.md](../setup.md).
-- Prefer `python3 pipeline/env_check.py` for cross-platform health checks. Keep `pipeline/env_check.sh` as the legacy macOS Bash fallback.
+- Use the selected host Python for `pipeline/env_check.py`; `env_check.sh` is a Bash compatibility shim. Native Windows can use Python directly.
 - Optional local MCP observations: `../radar/mcp-test-report.md`; tool observations: `../radar/tool-test-report.md`. These machine-local records are excluded from Git and may be absent in a fresh clone. They are dated observations, not a live capability guarantee. Check the installed client/server version and architecture before a dynamic session; prepared server binaries are under `tools-env/frida-server/` when installed.
 
 ## Maintenance Rules
 
 1. Route through this entry and the selected INDEX; read relevant articles progressively. Each INDEX owns its branch's file list.
-2. Method bodies contain methods and code, without new external links, attributions, or personal names. Preserve existing source lookup metadata and historical evidence; use the data index to locate original corpus material.
+2. Keep method bodies focused, and attribute decision-changing claims through the evidence ids and sources in [knowledge engineering](knowledge-engineering.md). Preserve source lookup metadata and historical evidence. The earlier blanket prohibition on new attribution is superseded by the evidence requirement; source-claimed observations must not be disguised as inference or device verification.
 3. APK full-chain requests enter `pipeline/pipeline.md`; acceptance and artifact structure come from that workflow.
 4. Apply `test-values.md` to probes, hooks, and output, including the verification and cleanup loop.
 5. Ingest techniques into the matching `techniques/` area, domain knowledge into `platforms/`, and tools into the selection table plus radar baseline. Smoke-test installable tools before marking them usable.

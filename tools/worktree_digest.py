@@ -8,6 +8,7 @@ Usage: python tools/worktree_digest.py [--root .]
 """
 import argparse
 import hashlib
+import os
 import sys
 from pathlib import Path
 
@@ -23,7 +24,8 @@ def collect(root: Path) -> list[Path]:
         if base.is_file():
             files.append(base)
             continue
-        for directory, subdirs, names in base.walk():
+        for dirname, subdirs, names in os.walk(base):
+            directory = Path(dirname)
             subdirs[:] = [d for d in subdirs if d not in EXCLUDE_DIRS]
             for item in sorted(names):
                 if item.endswith(EXCLUDE_SUFFIX):

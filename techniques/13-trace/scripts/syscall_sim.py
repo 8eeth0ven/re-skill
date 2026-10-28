@@ -13,7 +13,6 @@ import subprocess
 import sys
 import time
 
-import frida
 
 JS = r"""
 'use strict';
@@ -59,6 +58,14 @@ send({tag: 'ready', hooked: hooked});
 
 
 def main():
+    if sys.platform != 'darwin':
+        print('This helper requires macOS libsystem_kernel; use a platform-appropriate trace route.', file=sys.stderr)
+        return 2
+    if len(sys.argv) < 2:
+        print(__doc__, file=sys.stderr)
+        return 2
+    import frida
+
     if sys.argv[1] == '--attach':
         pid = int(sys.argv[2])
         secs = float(sys.argv[4]) if len(sys.argv) > 4 else 20.0
@@ -98,4 +105,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

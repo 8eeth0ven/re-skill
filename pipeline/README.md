@@ -41,6 +41,8 @@ coverage and skipped checks.
 | --- | --- |
 | [pipeline.md](pipeline.md) | Five-stage workflow, commands, outputs, gates, and fallbacks |
 | [init_pipeline.sh](init_pipeline.sh) | Source with one APK path; shell-safe shared-state initialization and `env.sh` persistence |
+| [init_pipeline.ps1](init_pipeline.ps1) | Native PowerShell entry; load a new APK or restore an existing `env.json` without Bash |
+| [init_pipeline.py](init_pipeline.py) | Standard-library initializer and shared state validation for both shell entries |
 | [run_with_timeout.py](run_with_timeout.py) | Owned process-tree timeout, shared global deadline, and S4 report reserve; timeout exit 124 |
 | [env_check.py](env_check.py) | Environment checker with macOS/Linux/Windows paths and capability-specific outcomes |
 | [env_scan.py](env_scan.py) | Portable version probes and inventory; live-device reads require an explicit selected-device scope |
@@ -54,9 +56,13 @@ smoke tests when the SDK is available. Respect user limits on execution; missing
 SDK components leave the relevant tests unperformed.
 
 
-Prepare the required tools using [setup.md](../setup.md). The stage command
-examples use Bash; Windows execution requires adapting them or using Git Bash
-or WSL. Actual compatibility depends on each tool and device configuration.
+Prepare the required tools using [setup.md](../setup.md). Shared initialization,
+state, and command timeouts have native Python/PowerShell entries. The detailed
+stage command tables use Bash syntax; use their stated inputs and acceptance
+gates when selecting native PowerShell equivalents, or use Bash for those tables.
+The PowerShell initializer does not translate shell pipelines automatically.
+See the [host compatibility guide](../docs/compatibility.md) for binary output,
+MSYS boundaries, and platform-specific engines.
 Historical tool versions, AVD names, and MCP results in the workflow are reference
 observations and must be rechecked on the current host.
 

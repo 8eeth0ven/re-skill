@@ -10,11 +10,16 @@ import argparse
 import ast
 import json
 import re
+import shutil
 import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
+
+# Support direct execution and importlib/spec-based loading from offline tests.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from markdown_routes import extract_routes, prose_lines  # noqa: E402
 
 SKIP_PARTS = {'.git', 'data', 'tools-env', '环境快照', '__pycache__', '输出'}
 HISTORICAL = {'自检报告.md', 'radar/发现日志.md'}
@@ -26,28 +31,8 @@ REQUIRED_ENTRY_ROUTES = {
 }
 
 
-def prose_lines(source):
-    """Yield line numbers and Markdown outside fenced code blocks."""
-    marker = None
-    for number, line in enumerate(source.splitlines(), 1):
-        fence = re.match(r'^\s*(`{3,}|~{3,})(.*)$', line)
-        if fence:
-            token, suffix = fence.groups()
-            if marker is None:
-                marker = token
-            elif token[0] == marker[0] and len(token) >= len(marker) and not suffix.strip():
-                marker = None
-            continue
-        if marker is None:
-            yield number, line
-
-
 def links(source):
-    for number, line in prose_lines(source):
-        # A code sample such as `[*](ctx)` is not a Markdown link.
-        line = re.sub(r'(`+).*?\1', '', line)
-        for match in re.finditer(r'!?\[[^\]]*\]\(\s*(<[^>]+>|[^\s)]+)(?:\s+[\'"].*?[\'"])?\s*\)', line):
-            yield number, match.group(1).strip('<>')
+    return extract_routes(source)
 
 
 def heading_ids(source):
@@ -71,6 +56,8 @@ def validate(root):
     files = sorted(p for p in root.rglob('*') if p.is_file()
                    and not (set(p.relative_to(root).parts) & SKIP_PARTS))
     errors = []
+    warnings = []
+    bash = shutil.which("bash")
     texts = {}
     stats = Counter()
     for path in files:
@@ -85,13 +72,17 @@ def validate(root):
                 errors.append(f'{rel}: {exc}')
             stats['python_files'] += 1
         elif path.suffix == '.sh':
+            stats['shell_files'] += 1
+            if bash is None:
+                stats['shell_files_unchecked'] += 1
+                continue
             try:
-                proc = subprocess.run(['bash', '-n', str(path)], capture_output=True, text=True)
+                proc = subprocess.run([bash, '-n', path.relative_to(root).as_posix()],
+                                      cwd=root, capture_output=True, text=True)
                 if proc.returncode:
                     errors.append(f'{rel}: {proc.stderr.strip()}')
             except OSError as exc:
                 errors.append(f'{rel}: Bash syntax check unavailable: {exc}')
-            stats['shell_files'] += 1
 
     for path, source in texts.items():
         rel = path.relative_to(root).as_posix()
@@ -166,10 +157,14 @@ def validate(root):
                          if not urlsplit(target).scheme}
         for route in sorted(REQUIRED_ENTRY_ROUTES - entry_targets):
             errors.append(f'SKILL.md: missing essential workflow route: {route}')
-    return {'root': str(root), 'passed': not errors, 'stats': dict(stats), 'errors': errors}
+    if stats['shell_files_unchecked']:
+        warnings.append('Bash is unavailable; optional shell-script syntax was not checked. Python entry points remain independently validated.')
+    return {'root': str(root), 'passed': not errors, 'stats': dict(stats), 'errors': errors, 'warnings': warnings}
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('root', nargs='?', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--json', action='store_true', help='Emit the report as JSON.')
@@ -182,6 +177,8 @@ def main():
         print(json.dumps(report['stats'], sort_keys=True))
         for error in report['errors']:
             print(f'  {error}')
+        for warning in report['warnings']:
+            print(f'  WARNING: {warning}')
     return 0 if report['passed'] else 1
 
 

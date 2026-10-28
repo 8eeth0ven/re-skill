@@ -7,7 +7,7 @@
 - Exit code: 0 = all green  1 = has yellows / non-critical reds (the chain degrades and continues)  2 = critical red (key items like jadx+apktool missing; decompilation degrades)
 - Detection items match env_check.sh (the macOS bash edition); adds ropper/frida-tools detection per setup.md §3
 - Internal timeouts use subprocess(timeout=), no dependence on GNU timeout, identical on all three platforms
-- Verification status: tested and passing on macOS; Linux/Windows branches written with the same logic, **not verified on real machines**
+- Verification status: historical macOS execution; current portability edits have offline coverage. Linux/Windows are **not verified on real machines**.
 """
 import datetime
 import glob
@@ -16,6 +16,8 @@ import shutil
 import socket
 import subprocess
 import sys
+
+from init_pipeline import latest_build_tool, sdk_directory
 
 # The Windows console defaults to GBK; avoid UnicodeEncodeError on non-ASCII/table characters
 try:
@@ -26,7 +28,7 @@ except Exception:
 
 IS_WIN = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
-PLATFORM_TAG = {"darwin": "macOS (verified on a real machine)", "win32": "Windows (not verified on a real machine)"}.get(
+PLATFORM_TAG = {"darwin": "macOS (historical machine checks; current readiness is probed below)", "win32": "Windows (not verified on a real machine)"}.get(
     sys.platform, "Linux (not verified on a real machine)")
 
 VER_TIMEOUT = 10
@@ -112,14 +114,8 @@ def first_exist(paths):
 
 
 # ---------- platform-dependent paths ----------
-HOME = os.path.expanduser("~")
-# SDK root: darwin=~/Library/Android/sdk  linux=~/Android/Sdk  win=%LOCALAPPDATA%\Android\Sdk
-if IS_MAC:
-    SDK_DIR = os.path.join(HOME, "Library", "Android", "sdk")
-elif IS_WIN:
-    SDK_DIR = os.path.join(HOME, "AppData", "Local", "Android", "Sdk")
-else:
-    SDK_DIR = os.path.join(HOME, "Android", "Sdk")
+USER_HOME = os.path.expanduser("~")
+SDK_DIR = str(sdk_directory())
 
 # Skill root: this script lives under <skill_root>/pipeline/, no hardcoded absolute paths
 SKILL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -131,7 +127,7 @@ VENV_PY = first_exist([
 ])
 
 print("=" * 62)
-print(" pipeline branch environment check  @ %s" % datetime.datetime.now().strftime("%F %T"))
+print(" pipeline branch environment check  @ %s" % datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 print(" host: %s | python: %s" % (sys.platform, sys.version.split()[0]))
 print(" platform branch: %s" % PLATFORM_TAG)
 print("=" * 62)
@@ -159,10 +155,8 @@ else:
     warn("adb", "not found (S3 dynamic degrades; SDK: %s)" % SDK_DIR)
 
 # aapt2: scan SDK build-tools for the highest version
-aapt2_bin = None
-for bt in sorted(glob.glob(os.path.join(SDK_DIR, "build-tools", "*", "aapt2*"))):
-    if not bt.endswith(".txt") and os.path.isfile(bt):
-        aapt2_bin = bt  # last in lexicographic order = highest version
+aapt2_tool = latest_build_tool(SDK_DIR, "aapt2.exe" if IS_WIN else "aapt2")
+aapt2_bin = str(aapt2_tool) if aapt2_tool else None
 if aapt2_bin:
     ok("aapt2(SDK)", "%s (%s)" % (ver_line([aapt2_bin, "version"]) or aapt2_bin,
                                   aapt2_bin))
@@ -247,7 +241,7 @@ else:
     warn("emulator", "SDK emulator not executable")
 
 avd_list = [os.path.splitext(os.path.basename(f))[0]
-            for f in glob.glob(os.path.join(HOME, ".android", "avd", "*.ini"))]
+            for f in glob.glob(os.path.join(USER_HOME, ".android", "avd", "*.ini"))]
 if avd_list:
     ok("AVD", " ".join(avd_list))
 else:
@@ -287,11 +281,8 @@ info("fofa MCP", "not testable from py; without FOFA_KEY the chain skips it outr
 head("## 5. Small-sample self-check (build a minimal dex → zip → decompile)")
 TMPD = None
 SMOKED = False
-D8_JAR = None
-for j in sorted(glob.glob(os.path.join(SDK_DIR, "build-tools", "*", "lib",
-                                       "d8.jar"))):
-    if os.path.isfile(j):
-        D8_JAR = j  # take the highest version
+D8_TOOL = latest_build_tool(SDK_DIR, "lib/d8.jar")
+D8_JAR = str(D8_TOOL) if D8_TOOL else None
 javac_bin = shutil.which("javac")
 
 if TMPD is None:

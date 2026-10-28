@@ -126,7 +126,7 @@ def _sweep_escaped_group(pid: int) -> None:
         return
 
 
-def _posix_limits(memory_mb: int, seconds: int, file_bytes: int):
+def _posix_limits(memory_mb: int, seconds: int, file_bytes: int, *, max_open_files: int = 128):
     def apply():
         import resource
         if sys.platform.startswith("linux"):
@@ -139,7 +139,7 @@ def _posix_limits(memory_mb: int, seconds: int, file_bytes: int):
         resource.setrlimit(resource.RLIMIT_CPU, (seconds + 1, seconds + 2))
         resource.setrlimit(resource.RLIMIT_FSIZE, (file_bytes, file_bytes))
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-        resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
+        resource.setrlimit(resource.RLIMIT_NOFILE, (max_open_files, max_open_files))
     return apply
 
 
@@ -184,7 +184,7 @@ def _settle_output(raw: bytearray, *, stream_truncated: bool = False) -> str:
 def run_command(
     argv: list[str], cwd: Path, budget: Budget, *, timeout: int | None = None,
     env: dict[str, str] | None = None, stdout_path: Path | None = None,
-    stderr_path: Path | None = None,
+    stderr_path: Path | None = None, max_open_files: int = 128,
 ) -> Execution:
     if not argv or any(not isinstance(x, str) or "\x00" in x for x in argv):
         raise ValueError("Invalid argument list")
@@ -203,6 +203,7 @@ def run_command(
         kwargs["start_new_session"] = True
         kwargs["preexec_fn"] = _posix_limits(
             budget.limits["max_memory_mb"], timeout, budget.limits["max_unpack_bytes"],
+            max_open_files=max_open_files,
         )
     process = None
     buffers, sizes = [bytearray(), bytearray()], [0, 0]

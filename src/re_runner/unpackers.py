@@ -25,7 +25,7 @@ _UPX_FORMAT_TAGS = ("PE", "ELF", "MACHO")
 def _trusted_executable(configured: str | None) -> Path:
     # Same trust boundary as providers.radare2: only a real executable file is
     # accepted; interpreted wrappers must never run on a sample's behalf.
-    path = Path(configured or "")
+    path = Path(configured or "").absolute()
     if not configured or not path.is_file() or path.suffix.lower() in _SCRIPT_SUFFIXES:
         raise InvalidInput("RE_RUN_UPX must reference the trusted native upx executable")
     return path

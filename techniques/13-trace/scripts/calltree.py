@@ -15,6 +15,7 @@ Output:
 """
 import argparse
 import json
+import sys
 from collections import defaultdict
 
 
@@ -34,6 +35,8 @@ class Node:
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
     ap.add_argument('jsonl')
     ap.add_argument('--top', type=int, default=15)
@@ -47,7 +50,7 @@ def main():
     total = 0
     stack = []                   # Current call stack(target chain)
 
-    with open(a.jsonl) as f:
+    with open(a.jsonl, encoding='utf-8') as f:
         for line in f:
             try:
                 e = json.loads(line)

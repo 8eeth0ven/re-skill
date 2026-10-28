@@ -88,12 +88,13 @@ def main(argv: list[str] | None = None) -> int:
                 runner = Runner.resume(run)
                 state = runner.execute()
                 value = {"run_id": state["run_id"], "status": state["status"], "report": str(run / "report.md"), "findings": len(state["findings"])}
-        print(json.dumps(redact(value), ensure_ascii=False, indent=2, allow_nan=False))
+        # ASCII JSON escapes preserve values when Windows redirects to a legacy code page.
+        print(json.dumps(redact(value), ensure_ascii=True, indent=2, allow_nan=False))
         if args.command in ("analyze", "resume"):
             return {"succeeded": 0, "degraded": 1, "blocked": 2, "failed": 2, "cancelled": 130}.get(value["status"], 2)
         return 0
     except (AnalysisError, OSError) as exc:
-        print(json.dumps({"error": getattr(exc, "code", "io-error"), "message": redact(str(exc))}, ensure_ascii=False), file=sys.stderr)
+        print(json.dumps({"error": getattr(exc, "code", "io-error"), "message": redact(str(exc))}, ensure_ascii=True), file=sys.stderr)
         return 2
 
 

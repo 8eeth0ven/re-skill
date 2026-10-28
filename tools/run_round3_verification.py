@@ -2,17 +2,20 @@
 
 Produces, under re-runs/r1r2r3-verification/:
   r3-redaction/   run_command settlement + reader-boundary canary oracle (R3)
-  r2-extractor/   real 7z squashfs (with a symlink member) + cpio extract runs, plus
+  r2-extractor/   real 7z squashfs (regular-file fixture) + cpio extract runs, plus
                   refusal evidence for flooded/truncated listings (R2)
   r1-cancel/      real Runner run cancelled with an un-enumerable (linked) output tree,
                   then resumed; state.json/report + journal identities recorded (R1)
 
-Every assertion prints PASS/FAIL and the script exits nonzero on any FAIL.
+Every assertion prints PASS/FAIL. Exit 1 means failed assertions; exit 2 means
+missing required tools or an unexecuted link-anomaly oracle (Windows may need
+Developer Mode/symlink privilege). No environment gap is reported as ALL PASS.
 Run: uv run --no-sync python tools/run_round3_verification.py
 """
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -24,7 +27,9 @@ from unittest.mock import patch
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 BASE = REPO / "re-runs" / "r1r2r3-verification"
-SEVENZIP = "/opt/homebrew/bin/7z"
+SEVENZIP = os.environ.get("RE_RUN_7Z") or shutil.which("7z") or shutil.which("7zz")
+MKSQUASHFS = os.environ.get("RE_RUN_MKSQUASHFS") or shutil.which("mksquashfs")
+SKIPPED = []
 FAILURES = []
 
 
@@ -87,7 +92,7 @@ def make_test_containers(out: Path):
     (tree / "etc" / "banner.conf").write_bytes(b"banner=round3-squashfs\n")
     (tree / "secret.key").write_bytes(b"-----BEGIN RSA PRIVATE KEY-----\nROUND3CANARY\n-----END RSA PRIVATE KEY-----\n")
     image = out / "round3.sqfs"
-    subprocess.run(["/opt/homebrew/bin/mksquashfs", str(tree), str(image), "-no-progress", "-quiet",
+    subprocess.run([MKSQUASHFS, str(tree), str(image), "-no-progress", "-quiet",
                     "-all-root", "-comp", "gzip"], check=True, capture_output=True)
     return image
 
@@ -110,19 +115,20 @@ def r2_extractor():
         return work
 
     budget = Budget(dict(BUDGET_DEFAULTS))
-    result = sevenzip_extract(image, fresh("run-squashfs") / "rootfs-7z", budget, executable=SEVENZIP)
+    squashfs_work = fresh("run-squashfs")
+    result = sevenzip_extract(image, squashfs_work / "rootfs-7z", budget, executable=SEVENZIP)
     save(out / "squashfs-extract-result.json", result)
-    # The sample contains 3 symlink members: the omit-and-continue policy
-    # materializes none of them and reports them explicitly as omitted.
+    # Accept a complete tree or an explicitly degraded extraction with omissions.
+    # The locally generated sample has regular files and requires no link privilege.
     check("R2 squashfs extract succeeded-or-degraded-with-omissions",
           result and result["status"] in ("succeeded", "degraded") and
           (result["status"] == "succeeded" or result.get("links_omitted", 0) > 0),
           f"status={result and result.get('status')} omitted={result and result.get('links_omitted')} err={result and result.get('error')}")
     check("R2 squashfs extraction_started", bool(result and result["extraction_started"]))
     check("R2 squashfs files > 0", bool(result and result["files"] > 0), str(result and result.get("files")))
-    link = (fresh("run-squashfs") / "rootfs-7z" / "secret.key")
-    # Symlink member materialized as a plain file; the tree stays link-free so
-    # the later scan_tree cannot fail on privileged hosts.
+    link = squashfs_work / "rootfs-7z" / "secret.key"
+    check("R2 extracted evidence survives oracle inspection", link.is_file())
+    # Inspect the existing result; never recreate/clear the evidence directory here.
     check("R2 no symlink in extracted tree", not link.is_symlink() if link.exists() else True)
     scan = [(p.relative_to(out / "run-squashfs" / "rootfs-7z").as_posix(), p.is_symlink())
             for p in (out / "run-squashfs" / "rootfs-7z").rglob("*")]
@@ -177,6 +183,16 @@ def r1_cancel(image: Path):
             info = tarfile.TarInfo(f"etc/file-{index:04d}.conf")
             info.size, info.mode, info.mtime = len(data), 0o600, 0
             archive.addfile(info, io.BytesIO(data))
+    # This specific R1 oracle needs a link anomaly; ordinary Windows users may
+    # lack symlink privilege. Record it as unexecuted rather than claiming a pass.
+    probe_link = out / "link-capability-probe"
+    try:
+        probe_link.symlink_to(tar)
+        probe_link.unlink()
+    except OSError as exc:
+        SKIPPED.append("R1 link-anomaly oracle requires symlink capability")
+        save(out / "requires-environment.json", {"status": "requires-environment", "reason": str(exc)})
+        return
     runner = Runner.new(BASE / "runs", [AssetRequest(str(tar))], ScopePolicy(), "triage", "en")
     cancel_path = runner.root / "cancel.request"
     attempt_dir = runner.root / "work" / "asset-001" / "attempt-1"
@@ -200,7 +216,7 @@ def r1_cancel(image: Path):
             root = attempt_dir / "rootfs"
             if root.exists():
                 try:
-                    (root / "late.link").symlink_to("/etc/hosts")
+                    (root / "late.link").symlink_to(tar)
                 except OSError:
                     pass
             return result
@@ -240,12 +256,24 @@ def patch_sleep_fast():
 
 def main():
     import unittest.mock as mock
+    missing = [name for name, executable in (("7z (RE_RUN_7Z)", SEVENZIP),
+                                             ("mksquashfs (RE_RUN_MKSQUASHFS)", MKSQUASHFS))
+               if not executable]
+    if missing:
+        print("BLOCKED: configure required local tools: " + ", ".join(missing), file=sys.stderr)
+        return 2
     with mock.patch.dict(os.environ, {"RE_RUN_7Z": SEVENZIP}):
         r3_redaction()
         image = r2_extractor()
         r1_cancel(image)
-    print(f"\n{'ALL PASS' if not FAILURES else 'FAILURES: ' + '; '.join(FAILURES)}")
-    return 1 if FAILURES else 0
+    if FAILURES:
+        print("\nFAILURES: " + "; ".join(FAILURES))
+        return 1
+    if SKIPPED:
+        print("\nINCOMPLETE: " + "; ".join(SKIPPED))
+        return 2
+    print("\nALL PASS")
+    return 0
 
 
 if __name__ == "__main__":

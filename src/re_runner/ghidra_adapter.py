@@ -24,14 +24,11 @@ Honesty boundaries:
 """
 import os
 import shutil
-import signal
-import subprocess
-import sys
-import time
 from pathlib import Path
 from types import SimpleNamespace
 
 from .errors import InvalidInput
+from .execution import run_command
 from .safety import Budget, atomic_json, load_json, redact
 
 TIMEOUT_CAP_SECONDS = 420          # JVM startup + auto-analysis for small ELF
@@ -119,7 +116,7 @@ def configured_headless(executable: str | None = None) -> str | None:
     if which:
         candidates.append(which)
     for candidate in candidates:
-        path = Path(candidate)
+        path = Path(candidate).absolute()
         if path.is_dir():
             path = path / "support" / ("analyzeHeadless.bat" if os.name == "nt" else "analyzeHeadless")
         if path.is_file() and os.access(path, os.X_OK):
@@ -138,64 +135,23 @@ def _tool_env() -> dict[str, str]:
 
 
 def _run_bounded(argv: list[str], cwd: Path, budget: Budget, timeout: int) -> SimpleNamespace:
-    """One headless child under execution-style bounds, with the JVM fd ceiling.
-
-    Mirrors execution.run_command's shape (fixed argv, no shell, bounded
-    capture, timeout -> kill -> reap, honest status) so evidence and failure
-    semantics stay comparable. The only deliberate difference is
-    RLIMIT_NOFILE=CHILD_NOFILE for the reason given at the constant.
-    """
-    budget.check()
-    limit = budget.limits["max_tool_output_bytes"]
-
-    def preexec():
-        # Mirrors execution._posix_limits field-for-field (Linux
-        # prctl(PR_SET_PDEATHSIG)=parent-death SIGKILL; RLIMIT_CPU at the
-        # timeout, RLIMIT_FSIZE at the unpack quota, no core dumps) with ONE
-        # deliberate deviation: RLIMIT_NOFILE is CHILD_NOFILE instead of the
-        # shared 128, and it is set HERE because the shared helper pins the
-        # hard limit too, after which no child could raise it.
-        import resource
-        if sys.platform.startswith("linux"):
-            import ctypes
-            libc = ctypes.CDLL(None, use_errno=True)
-            libc.prctl(1, signal.SIGKILL, 0, 0, 0)   # PR_SET_PDEATHSIG
-        resource.setrlimit(resource.RLIMIT_CPU, (timeout + 1, timeout + 2))
-        resource.setrlimit(resource.RLIMIT_FSIZE, (budget.limits["max_unpack_bytes"],) * 2)
-        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-        resource.setrlimit(resource.RLIMIT_NOFILE, (CHILD_NOFILE, CHILD_NOFILE))
-
-    kwargs = {
-        "cwd": str(cwd), "env": _tool_env(), "stdin": subprocess.DEVNULL,
-        "stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "shell": False,
-    }
-    if os.name == "nt":
-        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-    else:
-        kwargs["start_new_session"] = True
-        kwargs["preexec_fn"] = preexec
-    started = time.monotonic()
-    process = subprocess.Popen(argv, **kwargs)
-    timed_out = False
-    try:
-        out, err = process.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError, OSError):
-            process.kill()
-        try:
-            out, err = process.communicate(timeout=REAP_SECONDS)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            out, err = process.communicate()
-    stdout = (out or b"")[:limit].decode("utf-8", "replace")
-    stderr = (err or b"")[:limit].decode("utf-8", "replace")
-    status = "timed-out" if timed_out else ("succeeded" if process.returncode == 0 else "failed")
-    return SimpleNamespace(status=status, exit_code=process.returncode, timed_out=timed_out,
-                           stdout=stdout, stderr=stderr,
-                           duration_seconds=time.monotonic() - started)
+    """Use the shared bounded process tree runner with the JVM descriptor ceiling."""
+    if os.name == "nt" and Path(argv[0]).suffix.lower() in (".bat", ".cmd"):
+        # Official launchers use call and delayed expansion, so argv quoting alone is insufficient.
+        if any(any(c in value for c in '&|<>^%!"\r\n') for value in argv):
+            raise InvalidInput(
+                "Ghidra's Windows batch launcher cannot safely carry command-interpreted characters; "
+                "use an independent work path without & | < > ^ % ! quotes or newlines. "
+                "Do not rename or overwrite the original input."
+            )
+    execution = run_command(
+        argv, cwd, budget, timeout=timeout, env=_tool_env(), max_open_files=CHILD_NOFILE,
+    )
+    return SimpleNamespace(
+        status=execution.status, exit_code=execution.exit_code, timed_out=execution.timed_out,
+        stdout=execution.stdout, stderr=execution.stderr, duration_seconds=execution.duration,
+        reap_failed=execution.reap_failed,
+    )
 
 
 def _consume_derived(directory: Path, budget: Budget) -> tuple[int, int, str | None]:
@@ -207,7 +163,7 @@ def _consume_derived(directory: Path, budget: Budget) -> tuple[int, int, str | N
     instead of discovering the overshoot at final inventory time). Re-implemented
     here because decompile.py is outside this lane's writable set.
     """
-    files = total = 0
+    files = total = visited = 0
     stack = [(directory, 0)]
     while stack:
         current, depth = stack.pop()
@@ -216,6 +172,9 @@ def _consume_derived(directory: Path, budget: Budget) -> tuple[int, int, str | N
         try:
             with os.scandir(current) as entries:
                 for entry in entries:
+                    visited += 1
+                    if visited > budget.limits["max_files"]:
+                        return files, total, "derived entry enumeration limit reached; usage is incomplete"
                     if entry.is_symlink():
                         continue
                     info = entry.stat(follow_symlinks=False)
@@ -226,12 +185,12 @@ def _consume_derived(directory: Path, budget: Budget) -> tuple[int, int, str | N
                         continue
                     files += 1
                     total += info.st_size
-                    if files > budget.limits["max_files"] or total > budget.limits["max_unpack_bytes"]:
+                    budget.consume("files", 1)
+                    budget.consume("unpack_bytes", info.st_size)
+                    if budget.used["files"] > budget.limits["max_files"] or budget.used["unpack_bytes"] > budget.limits["max_unpack_bytes"]:
                         return files, total, f"derived output exceeds run budgets after {files} files/{total} bytes; usage is incomplete"
-        except OSError:
-            continue
-    budget.consume("files", files)
-    budget.consume("unpack_bytes", total)
+        except OSError as exc:
+            return files, total, f"derived enumeration incomplete ({type(exc).__name__}); partial usage retained"
     return files, total, None
 
 
@@ -279,14 +238,28 @@ def headless_decompile(binary_path: Path, output_dir: Path, budget: Budget,
         "timed_out": execution.timed_out,
         "stdout": execution.stdout[-4000:], "stderr": execution.stderr[-4000:],
     }))
+    if getattr(execution, "reap_failed", False) or execution.exit_code is None:
+        return {"tool": "ghidra", "status": "failed", "functions": [], "decompiled": [],
+                "usage_marker": "Child termination was not confirmed; derived usage is incomplete",
+                "error": "Headless child could not be reaped; partial dumps are not completed analysis"}
+    # The child has exited: settle already-produced usage even if cancellation/deadline fired.
+    was_settling = budget.settling
+    budget.settling = True
+    try:
+        files, total, marker = _consume_derived(output_dir, budget)
+    finally:
+        budget.settling = was_settling
+    if execution.status != "succeeded":
+        return {"tool": "ghidra", "status": "failed", "functions": [], "decompiled": [],
+                "derived_files": files, "derived_bytes": total, "usage_marker": marker,
+                "error": f"Headless execution stopped ({execution.status}); partial dumps are not completed analysis"}
     if not out_json.is_file():
         signature = " ".join((execution.stderr or execution.stdout or "").split())[:300]
         return {"tool": "ghidra", "status": "failed", "functions": [], "decompiled": [],
                 "error": f"Headless run produced no function dump ({execution.status}): {signature}"}
     payload = load_json(out_json)
-    files, total, marker = _consume_derived(output_dir, budget)
     decompiled = payload.get("decompiled", [])
-    status = "succeeded" if decompiled and not marker else ("succeeded" if payload.get("functions") else "degraded")
+    status = "succeeded" if (decompiled or payload.get("functions")) and not marker else "degraded"
     return {
         "tool": "ghidra", "status": status, "program": payload.get("program"),
         "language": payload.get("language"),

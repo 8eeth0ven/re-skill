@@ -415,7 +415,7 @@ class Budget:
         self.wall_deadline_epoch = wall_deadline_epoch
         # Settlement mode: after a stop condition fired, the Runner's bookkeeping
         # segment must still record artifacts and real usage completely. Only the
-        # Runner's settlement segment may set this, never new dispatches.
+        # Runner/adapter post-process settlement segments may set this, never new dispatches.
         self.settling = False
         self.cancel_path = cancel_path
         self.usage_path = usage_path

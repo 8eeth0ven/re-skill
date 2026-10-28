@@ -53,7 +53,7 @@ def solc_compile(source_path: Path, output_dir: Path, budget: Budget, executable
     configured = executable or os.environ.get("RE_RUN_SOLC")
     if not configured:
         return None
-    executable_path = Path(configured)
+    executable_path = Path(configured).absolute()
     if not executable_path.is_file() or executable_path.suffix.lower() in WRAPPER_SUFFIXES:
         raise InvalidInput("RE_RUN_SOLC must reference the trusted native solc executable")
     output_dir.mkdir(parents=True, exist_ok=True)

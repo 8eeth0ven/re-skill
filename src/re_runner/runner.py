@@ -60,13 +60,18 @@ def _worker_environment(scope: ScopePolicy, output: Path) -> dict[str, str]:
     # drivers at import time (e.g. scapy looking for Npcap).
     keep = ("PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL",
             "ProgramFiles", "ProgramFiles(x86)", "COMMONPROGRAMFILES",
-            "RE_RUN_JADX", "RE_RUN_APKTOOL", "RE_RUN_UPX", "RE_RUN_7Z", "RE_RUN_SOLC")
+            "RE_RUN_JADX", "RE_RUN_APKTOOL", "RE_RUN_UPX", "RE_RUN_7Z", "RE_RUN_SOLC",
+            "RE_RUN_GHIDRA", "RE_RUN_VYPER", "JAVA_HOME")
     env = {name: os.environ[name] for name in keep if name in os.environ}
     for variable in scope.headers_env.values():
         if variable in os.environ:
             env[variable] = os.environ[variable]
     if os.environ.get("RE_RUN_R2"):
         env["RE_RUN_R2"] = os.environ["RE_RUN_R2"]
+    # Workers run in a new cwd; pin trusted tool/JDK paths while still in the caller's cwd.
+    for key in (*[name for name in keep if name.startswith("RE_RUN_")], "RE_RUN_R2", "JAVA_HOME"):
+        if env.get(key):
+            env[key] = str(Path(env[key]).expanduser().absolute())
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
     env["PYTHONUTF8"] = "1"
     env["PYTHONDONTWRITEBYTECODE"] = "1"

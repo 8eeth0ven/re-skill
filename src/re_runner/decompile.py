@@ -21,7 +21,7 @@ SIGNATURE_CHARS = 400
 
 # Minimal environment: no R2-like plugin hooks exist, but java still needs the
 # system paths, and TEMP/TMP inherit the run-scoped scratch directory.
-_ENV_KEYS = ("PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TEMP", "TMP", "TMPDIR")
+_ENV_KEYS = ("PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TEMP", "TMP", "TMPDIR", "JAVA_HOME")
 
 # One probe per configured executable per process; the JSON evidence reflects
 # the process that actually performed the probe.
@@ -33,7 +33,12 @@ def _clean_env() -> dict[str, str]:
 
 
 def _java() -> str | None:
-    return shutil.which("java")
+    if home := os.environ.get("JAVA_HOME"):
+        configured = Path(home).expanduser().absolute() / "bin" / ("java.exe" if os.name == "nt" else "java")
+        if configured.is_file():
+            return str(configured)
+    executable = shutil.which("java")
+    return str(Path(executable).absolute()) if executable else None
 
 
 def _heap_arguments(budget: Budget) -> list[str]:
@@ -173,6 +178,13 @@ def jadx(apk_path: Path, output: Path, budget: Budget, executable: str | None = 
     if target.is_file() and target.suffix.lower() in (".jar", ".txt", ".json", ".zip"):
         return {"tool": "jadx", "status": "skipped", "version": "unknown", "sources": [],
                 "error": f"RE_RUN_JADX must reference the jadx launcher or distribution directory, not {target.name}"}
+    if target.suffix.lower() in (".bat", ".cmd"):
+        # Official bin/jadx.bat resolves the same lib/* classpath. Bypass cmd parsing entirely.
+        distribution = target.parent.parent
+        if not (distribution / "lib").is_dir():
+            return {"tool": "jadx", "status": "skipped", "version": "unknown", "sources": [],
+                    "error": "A batch launcher requires the official jadx distribution with sibling lib/"}
+        target = distribution
     timeout = _timeout(budget)
     env = _clean_env()
     try:
@@ -208,6 +220,12 @@ def apktool(apk_path: Path, output: Path, budget: Budget, executable: str | None
     if not target.exists() or (target.is_dir() and not target.suffix == ".jar"):
         return {"tool": "apktool", "status": "skipped", "version": "unknown", "sources": [],
                 "error": f"RE_RUN_APKTOOL must reference an existing apktool jar or wrapper: {configured}"}
+    if target.suffix.lower() in (".bat", ".cmd"):
+        jar = target.parent / "apktool.jar"
+        if not jar.is_file():
+            return {"tool": "apktool", "status": "skipped", "version": "unknown", "sources": [],
+                    "error": "A batch launcher requires the official sibling apktool.jar"}
+        target = jar
     timeout = _timeout(budget)
     env = _clean_env()
     try:
