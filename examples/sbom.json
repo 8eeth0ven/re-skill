@@ -1,0 +1,6 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "version": 1,
+  "components": [{"type": "library", "name": "example-package", "version": "1.2.3", "purl": "pkg:pypi/example-package@1.2.3"}]
+}

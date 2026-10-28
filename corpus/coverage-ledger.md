@@ -43,7 +43,7 @@ User ruling: "too much data; reduce data but keep functional semantics": 17 file
 
 ## Long term
 
-- Essentials vol 26 (651 articles from 2025): not officially released; the directory is prepared (`../data/精华26索引.md`); once released, re-run digest_crawl.py to backfill, then distill the same way
+- Essentials vol 26 (651 articles from 2025): not officially released; the index is prepared locally (`data/精华26索引.md`, not shipped); once released, re-run digest_crawl.py to backfill, then distill the same way
 - Clusters in each file's "skip ledger": on continuation, re-check first whether they should be promoted to formal entries
 
 ## Western sources wave (2026-10-19)

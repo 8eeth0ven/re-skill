@@ -18,6 +18,15 @@ radar/工具测试报告.md
 # System
 .DS_Store
 *.pyc
+__pycache__/
+.venv/
+.ruff_cache/
+re-runs/
+*.egg-info/
 
 # Large tool binaries (codeql/ghidra/joern etc.) — whole directory not uploaded
 tools-env/
+SECURITY-AUDIT.md
+
+# CI workflow: pusher token lacks workflow scope; add via GitHub web UI (content kept locally)
+.github/workflows/acceptance.yml

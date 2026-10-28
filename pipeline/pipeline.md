@@ -1,15 +1,26 @@
-# pipeline branch: the fully automated RE chain (pipeline)
+# pipeline branch: agent-executed APK analysis workflow
 
-> Zero-human DAG: input the absolute path of an APK → five stages advance automatically → the report lands on disk.
-> Iron rule: **persist artifacts and close each stage as PASS or documented DEGRADED before the next stage; a failed gate is never relabeled as success. Apply its fallback, record any missing evidence, and continue to the mandatory report without interruption**.
-> Executor: the main agent orchestrates. Dispatch independent S1 work in the same round to 3 subagents: A-1/A-2, B-1/B-2, and C-1/C-3. After the join, the main agent runs B-3/C-2/C-4 because they consume A artifacts; S2–S4 then run in order. No worker writes another worker's files.
+> Input an APK path and an authorized analysis scope. An agent executes the five
+> stages using available tools and writes a report. This is the deeper workflow:
+> `re-run analyze --type android` provides bounded static APK/AAB analysis, not
+> the complete S0–S4 dynamic chain. See the [runner matrix](../docs/runner.zh-CN.md)
+> and [execution handoff](../docs/agent-completion-prompt.zh-CN.md).
+> Persist artifacts and close each stage as PASS or documented DEGRADED before
+> the next stage; failed gates never become success. Apply the fallback and
+> preserve missing evidence. Scope, cancellation, and host permission limits
+> remain controlling conditions, not tool failures to bypass.
+> Executor: the main agent orchestrates. When the user or applicable instructions
+> authorize delegation, dispatch independent S1 work together: A-1/A-2, B-1/B-2,
+> and C-1/C-3. After the join, the main agent runs B-3/C-2/C-4 because they consume
+> A artifacts; S2–S4 follow in order. Otherwise run that same dependency graph
+> locally. Workers never write one another's files.
 > Command baseline: identical across the three platforms (macOS/Linux/Windows) — jadx/apktool/adb etc. are always invoked by their PATH command names; installation and per-platform paths are in `../setup.md` §1–§2, the venv in §3; the check runs `pipeline/env_check.py` (cross-platform; the older `env_check.sh` is macOS-only).
 > Command interpreter: bash syntax (native on macOS/Linux; Windows goes through Git-Bash/WSL).
 
 ## Full-chain DAG overview (at a glance)
 
 ```
-Input: <absolute APK path> ──[ -f fails = the only hard stop ]
+Input: <absolute APK path> ──[ missing file = stop; execution limits still apply ]
   │
   ▼
 S0 environment check (≤2min, serial)          python3 env_check.py → env_report.txt / status.md / 黑板.md
@@ -35,7 +46,7 @@ S4 report (≤5min, purely local, must-deliver)          03-report.md seven-sect
 Output: 输出/<package>-<date>/03-report.md + the "skipped items and reasons" list returned to the user
 ```
 
-Every step's degradation exit feeds into section 7 of S4; no branch can block the chain.
+Every tool/capability degradation feeds into section 7 of S4. Honor scope, cancellation, and permission limits; preserve the available evidence and handover state rather than continuing prohibited work.
 
 ## MCP tool mapping (for S3; calls other than Bash)
 
@@ -71,7 +82,7 @@ Default artifacts remain next to the APK at `输出/<package>-<date>/`. Set `RE_
 
 - **Timeout discipline**: long commands always `run_to <seconds> <cmd>` (the cross-platform wrapper from 0.1, Python process-group timeout inside; on linux plain `timeout` also works, macOS needs gtimeout, Windows git-bash often has neither → run_to uniformly avoids the differences); decompilation defaults to 900s, 1800s for jadx on large APKs; rc=124 means timeout — log it to run.log and take the degradation.
 - **Logging discipline**: every command appends `>> "$OUT/00-环境/run.log" 2>&1`, with one `echo "[$(date +%T)] <stage>-<step> start/end rc=$?"` line before and after; write incrementally — never dump everything at the end.
-- **General degradation rule**: tool missing / command non-zero → write one `DEGRADED: <reason>` line into the artifacts and continue with the next item; only a missing `$APK` is a hard stop.
+- **General degradation rule**: tool missing / command non-zero → write one `DEGRADED: <reason>` line into the artifacts and continue with the next item; a missing `$APK` stops input processing. Scope/cancellation/permission limits still stop the affected execution rather than being treated as bypassable tool failures.
 - **MCP discipline**: for ida-pro-mcp run `check_connection` first; on failure → note in the report "IDA MCP not started, skipped"; fofa without a key is skipped outright; neither blocks the main line.
 - **Stage ceilings and global budget**: S0 ≤2min / S1 ≤35min / S2 ≤15min / S3 ≤10min / S4 ≤5min. These are individual ceilings (67min summed), not guaranteed allocations: the separate **60min global hard limit takes precedence**. Reserve the final 5min for S4, stop starting analysis when 5min remain, harvest existing evidence at either the stage ceiling or global cutoff, and record D. Use the saved monotonic deadline across workers; do not reset the clock on resume.
 - **Device ownership**: S3 uses a selected, isolated test emulator. Record its serial in `RE_DEVICE_SERIAL`, choose the intended AVD through `RE_AVD` or `android_list_avds`, and bind every MCP action to that device through its actual supported interface. If MCP cannot target it unambiguously, use `"$ADB_BIN" -s "$RE_DEVICE_SERIAL" ...`. Physical devices use `../device-testing.md`; do not silently treat a connected user phone as the emulator. Record pre-existing packages/files/services before mutations and clean only this run's changes. After selecting the emulator, persist its resolved serial/AVD using Bash-safe `printf 'RE_DEVICE_SERIAL=%q\nRE_AVD=%q\n' "$RE_DEVICE_SERIAL" "$RE_AVD" >> "$OUT/env.sh"`; never rely on an empty initializer default. Saved monotonic deadlines are valid within the same host boot; after a reboot, preserve the interrupted run's partial report and initialize a distinct run rather than reusing a stale monotonic deadline.
@@ -106,7 +117,7 @@ Default artifacts remain next to the APK at `输出/<package>-<date>/`. Set `RE_
 
 ## S1 Information Gathering (Parallel Independent Work, Then Dependency Join)
 
-Dispatch A-1/A-2, B-1/B-2, and C-1/C-3 in the same round. B-3 consumes the completed A/B outputs; C-2 and C-4 consume A/C outputs and run only after those producers finish or explicitly degrade. Never interpret a not-yet-created producer file as an empty analysis result. If workers are unavailable, preserve this same dependency order locally.
+When delegation is authorized, dispatch A-1/A-2, B-1/B-2, and C-1/C-3 in the same round. B-3 consumes the completed A/B outputs; C-2 and C-4 consume A/C outputs and run only after those producers finish or explicitly degrade. Never interpret a not-yet-created producer file as an empty analysis result. If delegation is not authorized or workers are unavailable, preserve this same dependency order locally.
 
 ### S1-A Unpacking and decompilation (dual engines as mutual backup)
 
@@ -239,12 +250,12 @@ Enter S4 while its reserved 300s remain; set `RE_REPORT_RESERVE_SECONDS=0` after
 | step | action | artifact | acceptance gate | failure degradation |
 |---|---|---|---|---|
 | S4-1 aggregate | the main agent reads the blackboard + the head of each stage's artifacts and writes `03-report.md` (template below); SHA256 via `shasum -a 256 "$APK"` (mac; linux uses `sha256sum "$APK"`; win uses `certutil -hashfile "$APK" SHA256`) | `03-report.md` | all seven section titles present + section 7 non-empty | none: even if unfinished, first write in the known facts and the skipped items |
-| S4-2 wrap-up | record PASS/DEGRADED outcomes and the timestamp in status.md; add Hints to the blackboard; stop only task-started frida/hooks, remove only task-created device temp files, and uninstall only task-installed packages absent from the baseline. Preserve pre-existing applications/services and shared adb state. Keep local evidence artifacts. | incremental | timestamp, per-stage outcomes, and task-owned cleanup results exist | unverified cleanup is explicitly listed in section 7 |
+| S4-2 wrap-up | record actual PASS/DEGRADED/blocked outcomes and the timestamp in status.md; add evidence-based next steps to the blackboard; stop only task-started frida/hooks, remove only task-created device temp files, and uninstall only task-installed packages absent from the baseline. Preserve pre-existing applications/services and shared adb state. Keep local evidence artifacts. | incremental | recorded stage outcomes match artifacts and task-owned cleanup results exist | unverified cleanup is explicitly listed in section 7; a finished report does not imply every stage passed |
 
 ### 03-report.md fixed template (seven sections; a missing section gets N/A + reason)
 
 ```markdown
-# <PKG> fully automated RE report
+# <PKG> APK analysis report
 - APK: <absolute path> | size: <ls -lh> | SHA256: <shasum -a 256 / sha256sum / certutil per platform>
 - analysis time: <start-end> | chain: pipeline branch pipeline <date> | environment: env_report EXIT_CODE=<>
 
@@ -293,7 +304,7 @@ one line per DEGRADED: stage-step-reason-suggested fix; even when all green writ
 2. **Per-command timeout**: decompilation / whole-tree greps must use `run_to` (or linux `timeout`); rc=124 triggers the degradation.
 3. **60min total budget**: stage ceilings do not sum to guaranteed allocations; use the global monotonic deadline, reserve 5min for S4, harvest immediately at either cutoff, and record D on the blackboard.
 4. **Incremental logging**: run.log is append-only, with timestamps before and after every command.
-5. **Never ask the user**: every anomaly becomes one line in report section 7 — no blocking, no polling.
+5. **Handle routine tool failures autonomously**: record each unavailable capability in report section 7 and take its documented fallback without idle polling. Explicit scope, cancellation, permission, or missing-required-input limits remain stop conditions; preserve a partial report/handover instead of bypassing them.
 6. **Blackboard append-only**: facts/deadends are appended; cite artifact paths, never paste content.
 7. **Artifacts built once**: jadx/apktool outputs are shared across the whole chain; later references never rerun them.
 8. **Deep dives move out**: the chain ends at the report; unpacking/algorithm/countermeasure details move to the matching articles under ../techniques/, never expanded inside the chain.

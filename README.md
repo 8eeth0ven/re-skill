@@ -4,6 +4,7 @@
 
 <p align="center">
   <a href="SKILL.md"><strong>Open the skill</strong></a> ·
+  <a href="README.zh-CN.md">简体中文</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="usage-scenarios.md">Find your scenario</a> ·
   <a href="techniques/INDEX.md">Explore techniques</a>
@@ -11,7 +12,7 @@
 
 # re — Reverse Engineering Knowledge and Automation
 
-A task-routed skill that connects platform knowledge, runtime techniques, and concrete cases with executable research workflows. Start from an APK, binary, algorithm, or runtime obstacle; follow the relevant route and leave a traceable record of what the evidence supports.
+A task-routed skill and asset-analysis runner that connect platform knowledge, runtime techniques, and concrete cases with executable research workflows. Start from an APK, binary, algorithm, or runtime obstacle; follow the relevant route and leave a traceable record of what the evidence supports.
 
 - **One entry, focused reading.** [SKILL.md](SKILL.md) selects the workflow; branch indexes lead to the articles needed for that task.
 - **Knowledge connected to execution.** Move between hooking, unpacking, traffic capture, algorithm restoration, tracing, and root-cause analysis without rebuilding a toolchain from scattered notes.
@@ -21,6 +22,7 @@ A task-routed skill that connects platform knowledge, runtime techniques, and co
 
 | What you have or need | Start here |
 |---|---|
+| Assets to inspect through the CLI, with reports and resumable state | [Runner guide and capability matrix](docs/runner.zh-CN.md) (Chinese) |
 | An APK to analyze from environment check through report | [APK pipeline](pipeline/pipeline.md) |
 | A hook, detection, encryption, or tracing problem | [Technique index](techniques/INDEX.md) |
 | A platform-specific question or vulnerability root cause | [Platform index](platforms/INDEX.md) |
@@ -35,6 +37,8 @@ Not sure which route fits? [Usage scenarios](usage-scenarios.md) map common situ
 
 ## Quick Start
 
+### Browse or use the agent skill
+
 Use this repository as the `re` skill folder in your agent's supported skill location, then start with [SKILL.md](SKILL.md). The entry and its relative references stay together; individual articles can also be read directly.
 
 From the repository root, check the library and available environment:
@@ -47,7 +51,7 @@ python3 scripts/validate_library.py
 python3 pipeline/env_check.py
 ```
 
-These checks do not install packages. On a new machine, follow [setup.md](setup.md) to prepare the dependencies you need. The repository does **not** include the local `tools-env/` binaries/venv, raw `data/` corpus, or machine snapshots.
+These checks do not install packages. The environment checker may probe adb/MCP and build a temporary smoke sample; defer it when execution or device checks are outside the requested task. On a new machine, follow [setup.md](setup.md) to prepare the dependencies you need. The repository does **not** include the local `tools-env/` binaries/venv, raw `data/` corpus, or machine snapshots.
 
 Then give the agent a concrete task, for example:
 
@@ -61,6 +65,29 @@ Restore this .so's signing algorithm and document what remains unverified.
 ```
 
 For an autonomous run, use the task brief in [unattended.md](unattended.md). Its existing execution and submission boundaries still apply.
+
+### Run the asset-analysis CLI
+
+The repository also includes `re-run`, a bounded runner for mobile packages,
+native binaries, firmware, source, containers, traffic, and other supported asset
+profiles. It records evidence, coverage, logs, state, and JSON/Markdown reports;
+analysis depth depends on the profile and available engines.
+
+Use **Python 3.11+** and `uv` for the runner. From a working checkout:
+
+```bash
+uv sync --locked --all-extras --group dev
+uv run --no-sync re-run inspect --asset /absolute/path/sample.apk
+uv run --no-sync re-run doctor --profile android
+uv run --no-sync re-run analyze --asset /absolute/path/sample.apk --output re-runs --language en
+```
+
+Use `re-run doctor --help` or the [runner guide](docs/runner.zh-CN.md) for other supported profiles. Local input analysis does not authorize following discovered network
+endpoints. Network/device reads use the runner's explicit scope mechanism.
+See the [input examples](examples/README.md), [delivery status](docs/delivery-status.zh-CN.md),
+and [completion/acceptance guide](docs/agent-completion-prompt.zh-CN.md) for
+profile limits and work requiring deeper verification. The runner does not
+claim a reproduced vulnerability from a heuristic or a successful exit alone.
 
 ## APK to Report
 
@@ -80,6 +107,7 @@ The result is `输出/<package>-<date>/03-report.md`, alongside the supporting l
 | [techniques/](techniques/INDEX.md) | Hooking, unpacking, evasion, algorithms, tracing, kernel observation, and tool selection |
 | [corpus/](corpus/INDEX.md) | Distilled cases and historical methods, with completed and pending coverage recorded separately |
 | `breach-tables/` | Recognition signals, validation actions, confirmation criteria, and false-positive exclusions, routed by the research entry |
+| `src/re_runner/` · [examples/](examples/README.md) | Bounded asset-analysis CLI, input contracts, reports, resume/cancel, and engine adapters |
 | [pipeline/](pipeline/README.md) | APK analysis orchestration and report artifacts |
 | [cve-hunter/](cve-hunter/README.md) · [fw-discover/](fw-discover/README.md) | Known-CVE matching and public-firmware candidate triage |
 | [radar/](radar/README.md) | Tool discovery, baseline maintenance, and local smoke-test records |

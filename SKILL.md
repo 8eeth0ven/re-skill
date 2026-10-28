@@ -3,7 +3,7 @@ name: re
 description: >-
   Unified reverse engineering for Windows, Android, Linux, iOS, WEB, binary vulnerabilities,
   smart devices, business, AI, blockchain, and root-cause analysis. Routes platform knowledge,
-  techniques, cases, APK automation, CVE research, and tool discovery.
+  techniques, cases, APK automation, bounded asset-analysis CLI, CVE research, and tool discovery.
   Use for reverse engineering, Android RE, iOS RE, IoT, frida, hook, unpacking, traffic capture,
   SSL pinning, anti-debugging, root detection, app packers, OLLVM, obfuscation, VMP,
   algorithm restoration, risk control, RPC, syscall, eBPF, kernel hook, bypass, RASP,
@@ -24,6 +24,7 @@ then follow additional references only as needed. Do not read the whole library 
 
 | Task or available input | Start here | Continue with |
 |---|---|---|
+| Analyze one or multiple assets through the CLI | [Runner guide and capability matrix](docs/runner.zh-CN.md) | `re-run` supplies bounded profile analysis, evidence, reports, resume/cancel, and adapters; depth varies by profile |
 | APK analysis or "run the full chain" | [pipeline/pipeline.md](pipeline/pipeline.md) | Five-stage DAG, acceptance gates, and fallbacks; artifact layout in [pipeline/README.md](pipeline/README.md) |
 | Find a CVE or investigate a vulnerability hypothesis | [breach-tables-cve.md](breach-tables-cve.md) | Recognition → verification → acceptance → false-positive exclusions; [re-to-cve-audit.md](re-to-cve-audit.md) for research and [disclosure-cve.md](disclosure-cve.md) for disclosure preparation |
 | Match components against known CVEs | [cve-hunter/README.md](cve-hunter/README.md) | Version-match candidates and the N-day ledger; a version match alone is not a confirmed vulnerability |
@@ -60,6 +61,26 @@ packing, detection, signatures, or binary behavior blocks that work.
 - **Unattended execution:** follow [unattended.md](unattended.md) for "unattended: reverse ..." or "unattended: hunt CVEs ...". Persist incremental evidence, follow acceptance gates, and use [racing.md](racing.md) when an approach fails. Keep the existing boundaries for outbound submission, spending, irreversible changes, scope, and physical actions.
 - **Test values and cleanup:** follow [test-values.md](test-values.md): `[RE]` / `[REPROBE]`, `0x52455052`, `REPROBE-<date>-<seq>`, and device names prefixed with `re_`. High-collision probes such as `0x42` and `deadbeef` are forbidden. Check the value families at wrap-up and remove only the current task's temporary device state; retain labeled evidence.
 - **Scheduled radar:** daily 09:00 execution depends on a configured host schedule. A copied directory does not install a scheduler. See [setup.md](setup.md) and [radar/README.md](radar/README.md) for migration or manual execution.
+
+## CLI Runner and Execution Readiness
+
+The repository includes the `re-run` CLI (`src/re_runner/`), `pyproject.toml`,
+and `uv.lock`. The runner requires Python 3.11+; skill discovery alone does not
+install its dependencies, external engines, or MCP connections. Follow
+[setup.md](setup.md) and the user's installation/testing limits.
+
+When execution is requested, inspect the asset and use the runner's profile
+readiness report before analysis. Refer to the [runner guide](docs/runner.zh-CN.md)
+for actual CLI options and profile coverage. Network and live-device reads use
+its explicit scope mechanism; APK-derived URLs are not automatically follow-up
+targets. Agent-driven APK analysis remains the separate staged workflow above.
+
+Distinguish observations, heuristic candidates, and reproduced findings. A
+private-key string, source/sink co-occurrence, version match, zero NVD hits, or
+exit code zero does not prove exploitability or novelty. The runner's protection
+routes are indicators/plans with `bypass_executed: false`; deeper work belongs in
+the [completion handoff](docs/agent-completion-prompt.zh-CN.md). Compare a baseline
+and negative control before claiming a successful bypass.
 
 ## Tool Environment
 

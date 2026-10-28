@@ -4,12 +4,19 @@
 # Pipeline: seed queue → download → magic scan (TRX/uImage/squashfs/gzip) → unsquashfs (falls back to sasquatch) → analyzer discovery rules → findings.jsonl + ledger
 # Difference from ../cve-hunter: that side matches known CVEs by version (N-day ledger); this side mines candidates with our own rules (0day candidate ledger)
 # Red line: candidates are for local research only; external reporting goes through a human + the disclosure process
-import argparse, gzip, hashlib, json, re, shutil, struct, subprocess, sys, time, urllib.error, urllib.request
+import argparse
+import hashlib
+import json
+import re
+import struct
+import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from analyzers import scan_rootfs, test_des_creds  # noqa: E402
+from _legacy_safety import KernelLock, atomic_bytes, atomic_text, bounded_gzip, http_get as safe_http_get, safe_name  # noqa: E402
 
 DATA = ROOT.parent / "data" / "fw-discover"
 FWDIR = DATA / "fw"          # raw firmware
@@ -24,6 +31,8 @@ LOG = DATA / "fw.log"
 TARGET = 100
 UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) research-re-lab"}
 MAX_FW_MB = 64
+MAX_ATTEMPTS = 3
+_LOCK_OWNER = None
 
 DDWRT = "https://download1.dd-wrt.com/dd-wrtv2/downloads/betas/"
 OPENWRT = "https://downloads.openwrt.org/releases/"
@@ -37,14 +46,10 @@ def log(msg):
 
 
 def http_get(url, timeout=60):
-    # DD-WRT sits behind the Anubis anti-bot; python urllib's UA gets blocked by the challenge page, curl's default UA passes in practice
-    r = subprocess.run(["curl", "-sL", "--max-time", str(timeout), url],
-                       capture_output=True, timeout=timeout + 15)
-    if r.returncode != 0 or not r.stdout:
-        raise RuntimeError(f"curl {url} rc={r.returncode}")
-    if b"anubis" in r.stdout[:600].lower() and len(r.stdout) < 4096:
+    blob = safe_http_get(url, UA, timeout=timeout, limit=MAX_FW_MB << 20)
+    if b"anubis" in blob[:600].lower() and len(blob) < 4096:
         raise RuntimeError(f"anti-bot challenge page {url}")
-    return r.stdout
+    return blob
 
 
 def http_cached(url):
@@ -53,41 +58,38 @@ def http_cached(url):
         return cp.read_bytes()
     blob = http_get(url)
     CACHE.mkdir(parents=True, exist_ok=True)
-    cp.write_bytes(blob)
+    atomic_bytes(cp, blob)
     return blob
 
 
 def list_html(url):
     """Directory page → list of relative links"""
     html = http_cached(url).decode("utf-8", "replace")
-    return re.findall(r'href="([^"?/][^"?]*)"', html)
+    links = re.findall(r'href="([^"?/][^"?]*)"', html)
+    from urllib.parse import unquote
+    return [link for link in links if not link.startswith((".", "/"))
+            and ":" not in link and "\\" not in unquote(link)
+            and ".." not in unquote(link).split("/")]
 
 
 def acquire_lock():
-    DATA.mkdir(parents=True, exist_ok=True)
-    if LOCK.exists():
-        try:
-            pid = int(LOCK.read_text().strip() or "0")
-            import os
-            os.kill(pid, 0)
-            print(f"instance already running (pid={pid}), exiting")
-            return False
-        except (ValueError, ProcessLookupError):
-            pass
-        except PermissionError:
-            return False
-    LOCK.write_text(str(__import__("os").getpid()))
+    global _LOCK_OWNER
+    owner = KernelLock(LOCK)
+    if not owner.acquire():
+        print("instance already running; kernel lock is held")
+        return False
+    _LOCK_OWNER = owner
     return True
 
 
 def queue_load():
     if QUEUE.exists():
-        return [json.loads(l) for l in QUEUE.read_text("utf-8").splitlines() if l.strip()]
+        return [json.loads(line) for line in QUEUE.read_text("utf-8").splitlines() if line.strip()]
     return []
 
 
 def queue_save(items):
-    QUEUE.write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in items) + "\n", encoding="utf-8")
+    atomic_text(QUEUE, "\n".join(json.dumps(x, ensure_ascii=False) for x in items) + "\n")
 
 
 # ---------- Seeds ----------
@@ -173,24 +175,15 @@ def find_magics(blob):
 
 
 def extract_squashfs(slice_path, outdir):
-    """unsquashfs → sasquatch fallback. Success is judged by produced content, not rc: as non-root, failing device nodes can give rc!=0 while the files are already unpacked"""
-    if shutil.which("unsquashfs"):
-        r = subprocess.run(["unsquashfs", "-d", str(outdir), "-f", "-n", str(slice_path)],
-                           capture_output=True, text=True, timeout=300)
-        got = outdir.exists() and sum(1 for _ in outdir.rglob("*")) > 20
-        if got:
-            return "unsquashfs"
-        log(f"unsquashfs failed {slice_path.name}: {(r.stderr or r.stdout).strip()[-160:]}")
-    if shutil.which("sasquatch"):
-        r = subprocess.run(["sasquatch", "-d", str(outdir), str(slice_path)],
-                           capture_output=True, text=True, timeout=300)
-        if r.returncode == 0 and outdir.exists() and any(outdir.iterdir()):
-            return "sasquatch"
+    """Opaque filesystem extraction requires an isolated provider; never run on host implicitly."""
+    log(f"isolated squashfs provider required: {slice_path.name}; use re-run --type firmware")
     return None
 
 
 def extract_firmware(binpath, out_root):
     """Unpack one firmware → (rootfs dir | None, unpacker, note)"""
+    if binpath.stat().st_size > MAX_FW_MB << 20:
+        return None, None, "input byte budget exceeded"
     blob = binpath.read_bytes()
     fwdir = out_root.parent
     fwdir.mkdir(parents=True, exist_ok=True)
@@ -202,8 +195,7 @@ def extract_firmware(binpath, out_root):
         kind, off = magics[0]
         if kind == "gzip":
             try:
-                blob = gzip.decompress(blob)
-                binpath.write_bytes(blob[:1])  # placeholder, not needed
+                blob = bounded_gzip(blob, limit=128 << 20)
                 continue
             except Exception:
                 return None, None, "gzip decompression failed"
@@ -245,9 +237,9 @@ def read_findings():
     if not FINDINGS.exists():
         return []
     out = []
-    for l in FINDINGS.read_text("utf-8").splitlines():
+    for line in FINDINGS.read_text("utf-8").splitlines():
         try:
-            out.append(json.loads(l))
+            out.append(json.loads(line))
         except Exception:
             pass
     return out
@@ -272,7 +264,7 @@ def write_ledger():
     L.append("| Class | Count | Description |")
     L.append("|---|---|---|")
     desc = {"verified-weak-cred": "factory weak password hit by wordlist (verified locally)", "shipped-private-key": "private key shipped in firmware",
-            "cmdi-candidate": "network parameter × exec function in the same file (command-injection flow candidate)", "cmdi-script": "CGI/shell script eval consuming external parameters",
+            "cmdi-candidate": "network parameter and exec strings co-occur; flow and reachability unverified", "cmdi-script": "CGI/shell script eval consuming external parameters",
             "telnetd-enabled": "boot script enables telnetd by default", "default-cred": "nvram/config default-password literal",
             "hardcoded-account": "passwd/shadow account with an active hash"}
     for k, v in sorted(by_cls.items(), key=lambda x: -x[1]):
@@ -286,9 +278,9 @@ def write_ledger():
     L.append("|---|---|---|---|---|---|")
     for i, r in enumerate(rows[:400], 1):
         ev = r["evidence"].replace("|", "\\|")[:120]
-        escaped_path = r["path"].replace("|", "\\|")
-        L.append(f"| {i} | {r['pri']} | {r['fw']} | {r['cls']} | {escaped_path} | {ev} |")
-    LEDGER.write_text("\n".join(L) + "\n", encoding="utf-8")
+        path = r["path"].replace("|", "\\|")
+        L.append(f"| {i} | {r['pri']} | {r['fw']} | {r['cls']} | {path} | {ev} |")
+    atomic_text(LEDGER, "\n".join(L) + "\n")
 
 
 def load_progress():
@@ -303,7 +295,7 @@ def load_progress():
 def save_progress(p):
     p["target"] = TARGET
     p["updated"] = time.strftime("%F %T")
-    PROGRESS.write_text(json.dumps(p, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic_text(PROGRESS, json.dumps(p, ensure_ascii=False, indent=1))
 
 
 # ---------- Main flow ----------
@@ -311,26 +303,23 @@ def save_progress(p):
 def process_one(item, prog):
     """Download → unpack → analyze one firmware"""
     url, name = item["url"], item["name"]
+    from urllib.parse import urlsplit
+    if urlsplit(url).hostname not in ("download1.dd-wrt.com", "downloads.openwrt.org"):
+        return "blocked-scope: catalog host is not allowed"
+    name = safe_name(name)
     fwfile = FWDIR / (name + ".bin")
     fwfile.parent.mkdir(parents=True, exist_ok=True)
     if not fwfile.exists():
         try:
             blob = http_get(url, timeout=180)
             if len(blob) > MAX_FW_MB << 20:
-                return "skip-too-large"
-            fwfile.write_bytes(blob)
+                return "blocked-too-large"
+            atomic_bytes(fwfile, blob)
         except Exception as e:
-            return f"skip-download-failed {e}"
-    if fwfile.suffix == ".zip":
-        subprocess.run(["unzip", "-o", "-q", str(fwfile), "-d", str(fwfile.with_suffix(""))], capture_output=True, timeout=120)
-        zips = list(fwfile.with_suffix("").rglob("*"))
-        inner = [z for z in zips if z.is_file() and z.suffix.lower() in (".bin", ".img", ".trx")]
-        if not inner:
-            return "skip-no-bin-in-zip"
-        fwfile = inner[0]
+            return f"error-download-failed {type(e).__name__}"
     rootfs, tool, note = extract_firmware(fwfile, ROOTFS / name / "rootfs")
     if rootfs is None:
-        return f"skip-extract: {note}"
+        return f"blocked-extract: {note}"
     # analyze
     keys = {hashlib.sha1((r["fw"] + r["cls"] + r["path"] + r["evidence"]).encode()).hexdigest() for r in read_findings()}
     rows = scan_rootfs(rootfs, name)
@@ -348,7 +337,6 @@ def process_one(item, prog):
     n = len(read_findings())
     log(f"OK {name} unpack={tool} found+{added} total={n}")
     print(f"[fw] {name} unpack={tool}/{note} found+{added}, total {n}/{TARGET}")
-    shutil.rmtree(ROOTFS / name / "rootfs" / "rootfs", ignore_errors=True)  # clean nested dir
     return f"ok+{added}"
 
 
@@ -362,21 +350,27 @@ def run_once(batch=4):
     for it in items:
         if did >= batch:
             break
-        if it.get("status") == "done":
+        if it.get("status") in ("done", "blocked") or it.get("attempts", 0) >= MAX_ATTEMPTS:
             continue
-        res = process_one(it, prog)
-        it["status"] = "done" if res.startswith(("ok", "skip")) else "error"
+        it["attempts"] = it.get("attempts", 0) + 1
+        try:
+            res = process_one(it, prog)
+        except Exception as exc:
+            res = "error-analysis: " + type(exc).__name__
+        it["status"] = "done" if res.startswith("ok") else "blocked" if res.startswith("blocked") else "error"
         it["result"] = res
         did += 1
+        queue_save(items)
     queue_save(items)
     prog["findings_count"] = len(read_findings())
     prog["done"] = sum(1 for i in items if i.get("status") == "done")
     prog["failed"] = sum(1 for i in items if i.get("status") == "error")
     save_progress(prog)
-    if not sum(1 for i in items if i.get("status") == "pending"):
-        prog["phase"] = "queue-empty"
+    retryable = [i for i in items if i.get("status") in ("pending", "error") and i.get("attempts", 0) < MAX_ATTEMPTS]
+    if not retryable:
+        prog["phase"] = "queue-finished-with-gaps" if any(i.get("status") != "done" for i in items) else "queue-empty"
         save_progress(prog)
-        print(f"queue exhausted: cumulative candidates {prog['findings_count']}")
+        print(f"queue finished: candidates {prog['findings_count']}; blocked/failed items retain their reasons")
     else:
         print(f"[batch done] candidates {prog['findings_count']}, {sum(1 for i in items if i.get('status') == 'pending')} left in queue")
 
@@ -400,14 +394,24 @@ def main():
     a = ap.parse_args()
     DATA.mkdir(parents=True, exist_ok=True)
     if a.reset:
-        for p in (FINDINGS, PROGRESS, LOCK, QUEUE, LEDGER):
-            p.unlink(missing_ok=True)
+        if not acquire_lock():
+            sys.exit(3)
+        try:
+            for p in (FINDINGS, PROGRESS, QUEUE, LEDGER):
+                p.unlink(missing_ok=True)
+        finally:
+            _LOCK_OWNER.release()
         print("cleared")
         return
     if a.seed:
-        cmd_seed()
+        if not acquire_lock():
+            sys.exit(3)
+        try:
+            cmd_seed()
+        finally:
+            _LOCK_OWNER.release()
         return
-    if a.status or not a.once:
+    if not a.once:
         show_status()
         return
     if a.once:
@@ -417,7 +421,7 @@ def main():
             run_once()
             write_ledger()
         finally:
-            LOCK.unlink(missing_ok=True)
+            _LOCK_OWNER.release()
 
 
 if __name__ == "__main__":

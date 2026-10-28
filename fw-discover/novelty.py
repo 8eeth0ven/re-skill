@@ -1,87 +1,122 @@
 #!/usr/bin/env python3
-"""Search NVD keywords for disclosure deduplication; zero hits do not prove novelty.
-
-Usage: python3 novelty.py <component> [extra terms ...]
-"""
-# Evidence gate ②: cached keyword search with rate limiting
-# Usage: python3 novelty.py bpalogin [fstools openwrt ...]
-# Output: keyword hit counts/CVEs; NEW means no keyword matches, not proof of novelty. ERR takes precedence when any query is incomplete.
-import json, sys, time, urllib.request, urllib.parse
+"""NVD context lookup. Zero keyword hits never establishes vulnerability novelty."""
+import hashlib
+import json
+import sys
+import time
+import urllib.request
+import urllib.parse
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+from _legacy_safety import KernelLock, atomic_text, read_bounded  # noqa: E402
 
 CACHE = Path(__file__).parent.parent / "data" / "fw-discover" / "nvd-cache"
 UA = {"User-Agent": "research-re-lab"}
-PROXY = {"https": "http://127.0.0.1:7897", "http": "http://127.0.0.1:7897"}
-OPENER = urllib.request.build_opener(urllib.request.ProxyHandler(PROXY))
+OPENER = urllib.request.build_opener()
+CACHE_TTL = 86400
 
 
-def nvd(keyword):
-    CACHE.mkdir(parents=True, exist_ok=True)
-    safe_keyword = keyword.replace(" ", "_")
-    if any(value in safe_keyword for value in ("/", "\\", "..")):
-        safe_keyword = __import__("hashlib").sha256(keyword.encode()).hexdigest()
-    cp = CACHE / (safe_keyword + ".json")
-    if cp.exists():
-        try:
-            return json.loads(cp.read_text())
-        except (OSError, ValueError):
-            print(f"NVD-CACHE-ERR {keyword}: invalid cache; querying again")
-    url = "https://services.nvd.nist.gov/rest/json/cves/2.0?" + urllib.parse.urlencode({"keywordSearch": keyword})
-    req = urllib.request.Request(url, headers=UA)
-    for _ in range(3):
-        try:
-            with OPENER.open(req, timeout=30) as r:
-                data = json.loads(r.read())
-            cp.write_text(json.dumps(data, ensure_ascii=False))
-            time.sleep(6)  # no-key rate limit: 5 requests / 30s
-            return data
-        except Exception as e:
-            log = f"NVD-ERR {keyword}: {e}"
-            print(log)
-            time.sleep(10)
-    return None
+def valid_result(value, require_entries=True):
+    """Reject malformed/incomplete NVD payloads without converting them to zero hits."""
+    if not isinstance(value, dict):
+        return False
+    count = value.get("totalResults")
+    if type(count) is not int or count < 0:
+        return False
+    if "vulnerabilities" not in value:
+        return not require_entries
+    entries = value["vulnerabilities"]
+    if not isinstance(entries, list) or len(entries) > count or bool(entries) != bool(count):
+        return False
+    return all(isinstance(entry, dict) and isinstance(entry.get("cve"), dict)
+               and isinstance(entry["cve"].get("id"), str)
+               and bool(entry["cve"]["id"].strip()) for entry in entries)
+
+
+def aggregate(results):
+    # Accept count-only summaries for callers, but nvd/main require complete payloads.
+    if not results or any(not valid_result(value, require_entries=False) for value in results):
+        return "UNKNOWN (lookup failed; semantic/advisory comparison required)"
+    if any(value.get("totalResults", 0) > 0 for value in results):
+        return "RELATED-ADVISORIES (compare root cause, affected version and patches)"
+    return "NO-KEYWORD-HITS (novelty remains unknown)"
 
 
 def summarize_verdict(verdicts):
-    """A failed keyword search must never be promoted to a novelty conclusion."""
-    if not verdicts or "ERR" in verdicts:
-        return "ERR (incomplete search; manual recheck required)"
-    if "KNOWN" in verdicts:
-        return "KNOWN (keyword matches; manual root-cause/affected-version comparison needed)"
-    return "NEW (no keyword matches; novelty is not established)"
+    """Compatibility helper: old labels never restore a claim that zero hits prove novelty."""
+    if not verdicts or any(value not in ("NEW", "KNOWN") for value in verdicts):
+        return aggregate([None])
+    return aggregate([{"totalResults": 1 if value == "KNOWN" else 0} for value in verdicts])
+
+
+def nvd(keyword):
+    if not keyword.strip() or len(keyword) > 256 or any(ord(c) < 32 for c in keyword):
+        raise ValueError("Keyword must contain 1–256 printable characters")
+    CACHE.mkdir(parents=True, exist_ok=True)
+    cp = CACHE / (hashlib.sha256(keyword.encode("utf-8")).hexdigest() + ".json")
+    if cp.is_file() and not cp.is_symlink() and cp.stat().st_size < 8 << 20 and time.time() - cp.stat().st_mtime < CACHE_TTL:
+        try:
+            data = json.loads(cp.read_text("utf-8"))
+            if valid_result(data):
+                return data
+        except (OSError, ValueError, AttributeError):
+            pass
+    url = "https://services.nvd.nist.gov/rest/json/cves/2.0?" + urllib.parse.urlencode({"keywordSearch": keyword, "resultsPerPage": 50})
+    req = urllib.request.Request(url, headers=UA)
+    for attempt in range(3):
+        lock = KernelLock(CACHE / ".rate-lock")
+        if not lock.acquire():
+            time.sleep(1)
+            continue
+        try:
+            timestamp = CACHE / "last-request.txt"
+            try:
+                previous = float(timestamp.read_text("ascii"))
+            except (OSError, ValueError):
+                previous = 0
+            delay = min(6.1, max(0, 6.1 - (time.time() - previous)))
+            if delay:
+                time.sleep(delay)
+            atomic_text(timestamp, str(time.time()))
+            with OPENER.open(req, timeout=20) as r:
+                data = json.loads(read_bounded(r, 8 << 20))
+            if not valid_result(data):
+                raise ValueError("Invalid NVD response")
+            atomic_text(cp, json.dumps(data, ensure_ascii=False))
+            return data
+        except Exception as exc:
+            print(f"NVD-ERR {keyword}: {type(exc).__name__} (attempt {attempt + 1}/3)")
+        finally:
+            lock.release()
+    return None
 
 
 def main():
     words = sys.argv[1:]
     if not words:
         print(__doc__)
-        return
-    verdicts = []
+        return 2
+    results = []
     for w in words:
-        data = nvd(w)
+        try:
+            data = nvd(w)
+        except (OSError, ValueError) as exc:
+            print(f"{w}: query failed ({type(exc).__name__}), manual recheck")
+            data = None
+        if not valid_result(data):
+            data = None
+        results.append(data)
         if data is None:
-            print(f"{w}: query failed (network), manual recheck")
-            verdicts.append("ERR")
+            print(f"{w}: lookup failed or response incomplete; manual recheck")
             continue
-        n = data.get("totalResults") if isinstance(data, dict) else None
-        if not isinstance(n, int) or isinstance(n, bool) or n < 0:
-            print(f"{w}: incomplete/malformed NVD result; manual recheck")
-            verdicts.append("ERR")
-            continue
-        entries = data.get("vulnerabilities")
-        valid_entries = isinstance(entries, list) and all(
-            isinstance(entry, dict) and isinstance(entry.get("cve"), dict)
-            and isinstance(entry["cve"].get("id"), str) and entry["cve"]["id"].strip()
-            for entry in entries)
-        if not valid_entries or bool(n) != bool(entries) or len(entries) > n:
-            print(f"{w}: malformed/incomplete vulnerability list; manual recheck")
-            verdicts.append("ERR")
-            continue
-        ids = [entry["cve"]["id"] for entry in entries[:8]]
+        n = data.get("totalResults", 0)
+        ids = [v.get("cve", {}).get("id") for v in data.get("vulnerabilities", [])][:8]
         print(f"{w}: hits {n} {ids}")
-        verdicts.append("KNOWN" if n else "NEW")
-    print("verdict:", summarize_verdict(verdicts))
+    print("verdict:", aggregate(results))
+    return 2 if any(value is None for value in results) else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

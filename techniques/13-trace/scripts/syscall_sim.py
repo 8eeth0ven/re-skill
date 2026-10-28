@@ -9,7 +9,6 @@ Usage:
   ./syscall_sim.py <target-program> [arguments...] # Start with Popen, attach, observe for 20 seconds
   ./syscall_sim.py --attach <pid> [--seconds 20]
 """
-import json
 import subprocess
 import sys
 import time
@@ -61,7 +60,8 @@ send({tag: 'ready', hooked: hooked});
 
 def main():
     if sys.argv[1] == '--attach':
-        pid = int(sys.argv[2]); secs = float(sys.argv[4]) if len(sys.argv) > 4 else 20.0
+        pid = int(sys.argv[2])
+        secs = float(sys.argv[4]) if len(sys.argv) > 4 else 20.0
         proc = None
     else:
         proc = subprocess.Popen(sys.argv[1:])

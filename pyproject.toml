@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "re-skill-runner"
+version = "0.1.0"
+description = "Bounded, evidence-first static asset analysis for re-skill"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+  "jsonschema>=4.23,<5",
+  "defusedxml>=0.7.1,<1",
+  "PyYAML>=6.0.2,<7",
+  "lief>=0.17,<0.18",
+  "capstone>=5.0.3,<6",
+  "dnfile>=0.17,<0.19",
+  "cryptography>=46,<47",
+]
+
+[project.optional-dependencies]
+devices = ["pyserial>=3.5,<4"]
+grpc = ["grpcio>=1.70,<2", "grpcio-reflection>=1.70,<2"]
+traffic-deep = ["scapy>=2.6,<3"]
+source-deep = ["bandit>=1.8,<2"]
+
+[project.scripts]
+re-run = "re_runner.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/re_runner"]
+
+[dependency-groups]
+dev = ["ruff>=0.12,<1", "grpcio-tools>=1.70,<2"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

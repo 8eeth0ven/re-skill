@@ -1,6 +1,6 @@
 # Platforms Branch Master Index (one of the re entry points · read-only router)
 
-> Start from [`../SKILL.md`](../SKILL.md), select the relevant area, and open 1–2 named references. Avoid reading the entire library. For corpus extraction and maintenance, read [`maintenance.md`](maintenance.md).
+> Start from [`../SKILL.md`](../SKILL.md), select the relevant area, and open 1–2 named references. Avoid reading the entire library. For corpus extraction and maintenance, read [`maintenance.md`](maintenance.md). Original CHM archives and generated `data/` indexes are optional local resources, not part of this repository.
 
 ## Sister libraries (overlapping cross-links, no duplication here)
 
@@ -142,15 +142,17 @@
 | [injection-logic-root-causes.md](11-root-cause/injection-logic-root-causes.md) | The essence of injection = interpreter boundary (SQL parser illustrated / why parameterization cures it), root causes of nine injection surfaces, SSRF as the network version of TOCTOU, five logic-bug classes mapped as "developer mental model vs actual semantics" (IDOR = missing row-level ownership in the architecture), three-layer failure of permission models |
 | [root-cause-to-technique-map.md](11-root-cause/root-cause-to-technique-map.md) | **Closing chapter**: 25 root causes × fault pattern / evolution into primitives / exploitation techniques (with in-library sources) / root-cause detection (grep patterns) / cure master table; audit grep checklists for seven stacks (kernel C/Java/V8/contracts/Go/IoT); history of mitigation deprecation |
 
-## data/ (corpus indexes, directly usable by subagents)
+## data/ (optional local corpus indexes — generated on your machine, not shipped in this repo)
+
+The full-text index, annual index, and knowledge-base tree are local acquisition artifacts under the skill root's `data/`, intentionally excluded from Git. Paths below are relative to this index. On machines with those artifacts, use them for source lookup; on a fresh clone, skip unavailable source lookups. The maintained technique articles do not require the original corpus.
 
 | File | Description |
 |------|-----------|
-| `../data/精华全量索引.md` | **Full index of Jinghua vols 1-24, 18,915 articles** (2000-2023), grep by title → get pediyNN + path |
-| `../data/精华26索引.md` + `../data/精华26索引_原始.jsonl` | **2025 annual Jinghua index** (coverage and acquisition status are recorded in `../data/精华26获取报告.md`) |
-| `../data/digest_crawl.py` | Re-runnable incremental crawler (state + rate limiting + 429 backoff); re-run once Jinghua 26 is published to get the full set |
-| `../data/完整目录树.md` / `../data/tree.json` | Knowledge-base chm.htm tree, 1702 nodes (ten-category skeleton) |
-| `../data/精华26获取报告.md` | Results of five acquisition routes / interface parameters / chm-search usage / watch recommendations |
+| `../data/精华全量索引.md` | **Optional local full index of Jinghua vols 1–24, 18,915 articles** (2000–2023); grep by title to find pediyNN and the source path |
+| `../data/精华26索引.md` + `../data/精华26索引_原始.jsonl` | Optional local annual index; coverage and acquisition status are recorded in `../data/精华26获取报告.md` |
+| `../data/digest_crawl.py` | Optional local incremental crawler (state, rate limiting, and 429 backoff); not bundled here |
+| `../data/完整目录树.md` / `../data/tree.json` | Optional local knowledge-base tree: historical 1702-node, ten-category skeleton |
+| `../data/精华26获取报告.md` | Optional local acquisition-route results, interface parameters, CHM-search usage, and follow-up notes |
 
 ## Maintenance
 

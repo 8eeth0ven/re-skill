@@ -11,7 +11,7 @@
   <rect x="1" y="1" width="1278" height="438" rx="24" fill="url(#grid)"/>
   <ellipse cx="1010" cy="170" rx="360" ry="245" fill="url(#glow)"/>
   <g font-family="Arial, Helvetica, sans-serif">
-    <rect x="48" y="40" width="219" height="28" rx="14" fill="#172940" stroke="#2d4960"/>
+    <rect x="48" y="40" width="236" height="28" rx="14" fill="#172940" stroke="#2d4960"/>
     <circle cx="64" cy="54" r="3.5" fill="#67e8f9"/>
     <text x="78" y="58" fill="#b9d9ec" font-size="10" font-weight="700" letter-spacing="1.7">REVERSE ENGINEERING SKILL</text>
     <text x="45" y="207" fill="#f1f5ff" font-family="Menlo, Consolas, monospace" font-size="146" font-weight="700" letter-spacing="-13">re</text>

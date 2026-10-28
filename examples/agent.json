@@ -1,0 +1,8 @@
+{
+  "asset_kind": "ai",
+  "model": "demonstration-only",
+  "tools": [
+    {"name": "read_document", "permissions": ["read"], "requires_approval": true, "input_trust": "untrusted-data"}
+  ],
+  "data_sources": ["local documents"]
+}

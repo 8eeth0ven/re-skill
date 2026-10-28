@@ -1,48 +1,81 @@
-# fw-discover · Autonomous Firmware Vulnerability Discovery (0day candidates, not CVE matching)
+# fw-discover · Firmware Static-Candidate Triage
 
-**Division of labor with ../cve-hunter**: cve-hunter is the "known CVE × version matching" N-day ledger; this side **discovers on its own** — download public router firmware → unpack the filesystem → mine candidates with the rules in this directory (`analyzers.py`). Every entry comes from local static analysis, not from a lookup table.
+Maintain a queue of publicly released DD-WRT/OpenWrt images and a local candidate
+ledger. This branch discovers static observations rather than matching component
+versions against a CVE table. A rule hit is a hypothesis; the
+[verification and disclosure workflow](cve-pipeline.md) separates authenticity,
+novelty, reachability and evidence for reporting.
 
-**To land a real CVE, read [`cve-pipeline.md`](cve-pipeline.md) first**: candidates → four kill-gates (dual evidence / novelty / reachability / PoC) → disclosure-ready → manual reporting; the tally ledger lives in there too. For the static-scan battery's installation and dual-lane usage see `static-scan-tool-matrix.md`.
-
-## Pipeline
-
-```
-Seed queue (DD-WRT betas, real router firmware + OpenWrt factory images as the unpack-chain validation channel)
-  → download (curl; DD-WRT sits behind the Anubis anti-bot, must go through curl's default UA — urllib gets blocked by the challenge page)
-  → magic-number scan (TRX HDR0 / uImage / squashfs four byte-orders / gzip, strip at most 3 layers)
-  → unsquashfs 4.7.5 unpack (old modified lzma variants won't unpack → flagged and skipped; sasquatch no longer builds on macOS, dropped)
-  → the analyzer rule classes below → findings.jsonl + ledger
-```
-
-## Discovery rules (all local rules; a hit is a candidate)
-
-| Class | Priority | Meaning |
-|---|---|---|
-| verified-weak-cred | 4 | DES hash in passwd/shadow cracked locally by a small wordlist (verified with `openssl passwd -crypt`) |
-| shipped-private-key | 4 | PEM private key shipped in the firmware |
-| cmdi-candidate | 3 | Network parameter sources (QUERY_STRING/websGetVar/nvram_get, etc.) × system/popen/exec family within the same binary |
-| cmdi-script | 3 | CGI/shell script eval consuming external parameters |
-| telnetd-enabled | 2 | Boot script launches telnetd by default |
-| default-cred | 2 | Non-empty default password literal in nvram/config |
-| hardcoded-account | 1 | Account with an active hash in passwd/shadow |
-
-## Usage
+## Local Firmware Through the Runner
 
 ```bash
-cd fw-discover
-python3 fw.py --seed     # build the seed queue (dedup + incremental)
-python3 fw.py --once     # process a small batch: download → unpack → discover (repeatable; single-instance lock)
-python3 fw.py --status   # progress
+re-run analyze --asset /absolute/path/to/rootfs --type firmware --output re-runs
+re-run analyze --asset /absolute/path/to/firmware.tar --type firmware --output re-runs
 ```
 
-Data lives in `../data/fw-discover/` (queue / findings / ledger / firmware and unpack trees). The initial milestone is 100 candidate entries. **Half-hour keepalive**: `keepalive-fw.sh` dispatches incremental `--once` batches 1800s apart, for at most 40 rounds (~20 hours). The current stop gate is queue exhaustion after one seed refresh, rather than the candidate count: reaching 100 starts the screening milestone but does not discard pending firmware. The loop then exits and hands the accumulated candidates to manual/subagent screening. Run only when requested or from an already configured host schedule; the script does not install a schedule.
+The runner accepts extracted rootfs trees and bounded TAR/ZIP/gzip input.
+Opaque filesystems require the appropriate isolated extractor provider; indicator
+scans are not proof of successful extraction. The current format/depth matrix
+is in the [runner guide](../docs/runner.zh-CN.md), with remaining work in the
+[execution handoff](../docs/agent-completion-prompt.zh-CN.md). The optional static
+analysis battery is described in [static-scan-tool-matrix.md](static-scan-tool-matrix.md).
 
-## Screening stage (mandatory after hitting the target; human or subagent)
+## Legacy Public-Image Queue
 
-The ledger holds candidates, not conclusions. Pull the top-20 by priority: ① for cmdi-candidate, use r2 `axt @ sym.imp.system` to check whether the caller function actually takes parameters (false-lead pattern: boot-time-only calls); ② validate private keys with `openssl rsa -in <f> -check -noout`; ③ for weak credentials, write out the reproduction command. Write output to `../data/fw-discover/screening/`; an entry only moves on to disclosure after passing the three questions (security-policy violation + proof of exploitability + impact scope).
+```bash
+python3 fw-discover/fw.py --seed    # discover/deduplicate public catalog seeds
+python3 fw-discover/fw.py --once    # one small download/extract/analyze batch
+python3 fw-discover/fw.py --status  # local progress; default action
+```
 
-## Red lines
+State, original images, extracted trees and the ledger live under ignored
+`data/fw-discover/`; they are not part of a public clone. The script uses kernel
+file locks, atomic state updates, approved catalog hosts, bounded downloads and
+gzip expansion, and at most three container-stripping layers. Original inputs
+are preserved. Only successful analysis becomes `done`; retryable download or
+analysis failures have finite attempts, while unavailable extraction or scope
+mismatches become `blocked` with recorded reasons.
 
-- Everything in the ledger is an **autonomously discovered candidate**; auto-submitting to any external platform is forbidden; external reporting goes through a human + `../disclosure-cve.md`
-- Dynamic emulation (FirmAE / qemu system-mode running the firmware live) is the next stage — not done on this macOS machine
-- Only test publicly released firmware images; never touch live devices
+**The legacy script does not automatically execute unsquashfs/sasquatch on the
+host.** Without an isolated extractor adapter it records the opaque filesystem
+as blocked. Queue completion does not mean every firmware was analyzed.
+Already extracted rootfs trees remain usable through the unified runner.
+
+## Rule Meaning
+
+| Class | Priority | Observation | Still to establish |
+|---|---|---|---|
+| verified-weak-cred | 4 | Local password/hash comparison matched | Account enabled, login surface, product impact |
+| shipped-private-key | 4 | A private-key block is present | Usability, deployment trust, exposure and impact |
+| cmdi-candidate | 1 | Network-source and system/popen/exec strings co-occur in a file | Caller, parameter propagation, configuration and reachability |
+| cmdi-script | 3 | Suspicious shell/CGI use of external parameters | Actual input control and trigger behavior |
+| telnetd-enabled | 2 | Startup text enables telnetd | Effective default configuration and exposure |
+| default-cred | 2 | Configuration contains a password literal | Whether that credential is active/default |
+| hardcoded-account | 1 | Account text contains an active hash | Runtime account use and authentication path |
+
+The shared analyzer ignores symlinks. Legacy classification names do not map to
+the unified runner's `verified` status. The 100-entry milestone is a candidate
+triage target, never a confirmed-vulnerability count.
+
+## Screening and Finite Continuation
+
+Review the top 20 candidates by priority: inspect command callers and input flow
+(e.g. r2 cross-references), validate private-key structure, and retain the exact
+local credential-reproduction command. Save screening evidence under
+`data/fw-discover/screening/`. Security-policy violation, exploitability and
+impact scope must be supported before disclosure preparation.
+
+```bash
+uv run --no-sync bash fw-discover/keepalive-fw.sh
+```
+
+The wrapper requires the prepared runner environment, calls
+`python -m re_runner.keepalive --profile firmware`, and retains a maximum of
+40 rounds at a default 1800-second interval. It stops when no retryable queue
+entries remain; blocked/failed records remain visible. It installs no scheduler,
+and its live batch loop was not run during this merge.
+
+Only publicly released firmware images are used by this queue; it does not
+access live devices. Dynamic firmware execution belongs in an explicitly
+prepared isolated environment, not on the daily host. External reports follow
+manual review and [disclosure](../disclosure-cve.md).

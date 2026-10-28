@@ -11,7 +11,7 @@ system_profiler SPUSBDataType | grep -E "Product|Vendor|Serial"
 ls /dev/cu.* | grep -v Bluetooth
 ```
 
-Rerun `python3 pipeline/env_scan.py` to save tool/device/root-evidence/app-list details. Select the intended device serial and include `adb -s "$RE_DEVICE_SERIAL"` in every subsequent device command. With multiple devices, use the task's named device; never guess. If no device is detected, record "not detected; physical connection required" and finish without idle polling.
+Rerun `python3 pipeline/env_scan.py` for the portable tool/version inventory and serial-port descriptors only; it does not read live phone identity, root status, application lists, or firmware details. Record live Android identity, root evidence, and application state separately through the explicit steps in §I.1–§I.2 and the change register below, or through the runner's device profile with an exact identity and `device-read` scope. Select the intended device serial and include `adb -s "$RE_DEVICE_SERIAL"` in every subsequent device command. With multiple devices, use the task's named device; never guess. If no device is detected, record "not detected; physical connection required" and finish without idle polling.
 
 Before any mutation, write a task-owned change register under `输出/真机-<date>/`: selected serial, package existence/version, files copied by this task, spawned PIDs, and pre-existing frida/adb state. The existing output directory name is retained for compatibility. Do not overwrite a pre-existing temporary file or update a pre-existing user application merely to run the self-test.
 

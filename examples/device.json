@@ -1,0 +1,7 @@
+{
+  "asset_kind": "device",
+  "identity": "demonstration-board",
+  "interfaces": [{"type": "uart", "baud": 115200}],
+  "observations": [{"source": "supplied-record", "firmware_version": "demo-1.0"}],
+  "firmware_artifacts": []
+}
