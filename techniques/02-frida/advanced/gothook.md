@@ -22,7 +22,7 @@ function parse_elf_headers(pbuff) {
 
     // Check ELF class
     if (ei_class !== 2) {
-        throw new Error('仅支持 64 位 ELF 文件');
+        throw new Error('Only 64-bit ELF files are supported');
     }
 
     // Create a DataView
@@ -98,7 +98,7 @@ function parse_dynamic_section(pbuff, littleEndian, program_headers) {
         }
     }
     if (dynamic_offset === null) {
-        throw new Error("未找到 PT_DYNAMIC 段");
+        throw new Error("PT_DYNAMIC segment not found");
     }
     let dv = new DataView(pbuff.buffer, pbuff.byteOffset, pbuff.byteLength);
     let dynamic_entries = [];
@@ -151,7 +151,7 @@ function extract_dynamic_info(dynamic_entries) {
 function parse_dynsym(pbuff, littleEndian, program_headers, dynsym_addr, dynsym_entsize) {
     let dynsym_offset = vaddr_to_offset(program_headers, Number(dynsym_addr));
     if (dynsym_offset === null) {
-        throw new Error("无法找到 dynsym 的文件偏移");
+        throw new Error("Cannot locate dynsym file offset");
     }
 
     let dynsym_size = 0x1000;
@@ -194,7 +194,7 @@ function parse_dynsym(pbuff, littleEndian, program_headers, dynsym_addr, dynsym_
 function parse_dynstr(pbuff, program_headers, dynstr_addr) {
     let dynstr_offset = vaddr_to_offset(program_headers, Number(dynstr_addr));
     if (dynstr_offset === null) {
-        throw new Error("无法找到 dynstr 的文件偏移");
+        throw new Error("Cannot locate dynstr file offset");
     }
 
     let dynstr_size = 0x1000;
@@ -207,7 +207,7 @@ function parse_dynstr(pbuff, program_headers, dynstr_addr) {
 function parse_rela_plt(pbuff, littleEndian, program_headers, rela_plt_addr, rela_plt_size) {
     let rela_plt_offset = vaddr_to_offset(program_headers, Number(rela_plt_addr));
     if (rela_plt_offset === null) {
-        throw new Error("无法找到 .rela.plt 的文件偏移");
+        throw new Error("Cannot locate .rela.plt file offset");
     }
 
     let rela_size = 24;
@@ -258,7 +258,7 @@ function find_function_got_entry(function_name, dynsym_entries, dynstr_data, rel
     }
 
     if (symbol_index === null) {
-        console.log(`未找到函数 ${function_name} 的符号`);
+        console.log(`Symbol not found for ${function_name}`);
         return null;
     }
 
@@ -267,12 +267,12 @@ function find_function_got_entry(function_name, dynsym_entries, dynstr_data, rel
         let rel_sym = Number(r_info >> 32n);
         if (rel_sym === symbol_index) {
             let got_entry_addr = Number(rela.r_offset);
-            console.log(`函数 ${function_name} 的 GOT 表项地址为: 0x${got_entry_addr.toString(16).toUpperCase()}`);
+            console.log(`GOT entry address for ${function_name}: 0x${got_entry_addr.toString(16).toUpperCase()}`);
             return got_entry_addr;
         }
     }
 
-    console.log(`未找到函数 ${function_name} 的重定位条目`);
+    console.log(`Relocation entry not found for ${function_name}`);
     return null;
 }
 
@@ -318,7 +318,7 @@ function create_android_dlopen_ext() {
         ['pointer', 'int', 'pointer'] // Argument types
     );
     return new NativeCallback((parg0, parg1, parg2) => {
-        console.log("android_dlopen_ext hook成功")
+        console.log("android_dlopen_ext hook installed")
         // A successful call returns 0
         return android_dlopen_ext(parg0, parg1, parg2)
     }, "pointer", ["pointer", "int", "pointer"])
@@ -412,7 +412,7 @@ function getPltAddr(so_name, funcName) {
         }
     }
     if (!elf64Rela) {
-        throw new Error("找不到符号")
+        throw new Error("Symbol not found")
     }
     console.log("got hook offset:", elf64Rela.r_offset.toString(16))
     return soInfo.base.add(elf64Rela.r_offset)

@@ -52,6 +52,32 @@ Trigger: "phone plugged in, run real-device validation". Persist each step befor
 
 5. **Report**: include the three checks' measured outputs, cleanup results, and a comparison with emulator observations. Partial capability is explicitly marked with its reason.
 
+## Apple/iOS: State-Preserving Evidence Collection
+
+This route is read-only and separate from the Android test-APK chain. Select the exact UDID
+and preserve the existing pairing, application, signing, and debugging state. Use already
+available trusted interfaces only; inventory absence is not permission to prepare the device.
+
+1. With an existing paired/trusted connection and installed `ideviceinfo`, collect identity via
+   `ideviceinfo -u "<exact-udid>"`, or `re-run analyze --asset "ios://<exact-udid>" --type device`
+   with a scope allowing that exact locator and `device-read`. The runner records identity only;
+   it does not collect decrypted applications or prove instrumentation capability.
+2. Inspect an existing user-supplied IPA/App/decrypted artifact offline. Retain original hashes,
+   bundle/version/UUID, encrypted ranges, and any acquisition provenance. Do not infer a matching
+   runtime image from a filename alone. Existing exported logs may be copied/read when that
+   collection is within the task; preserve their source state and redact shared evidence.
+3. If the task requires dynamic/decrypted evidence, report the exact missing interface,
+   entitlement, authorized test build, or existing debug session. Missing pairing/trust, debug
+   access, or decrypt capability is blocked/requires-environment with a concrete human setup
+   action. A trust-dialog click, pairing change, or app installation is not an automatic fallback.
+4. Do not copy or re-sign debugserver, change entitlements, re-sign/repackage an application,
+   install Frida/Gadget/Tweaks, inject into an application, launch/kill it, jailbreak, or deploy
+   a debugging service as part of this state-preserving route. Those methods in
+   [iOS fundamentals](platforms/04-ios/ios-re-fundamentals.md) describe separate laboratory
+   workflows and require a task that actually requests those changes on a suitable test setup.
+5. Report measured identity/offline evidence, missing prerequisites, and the unchanged-state
+   check. Do not describe an Android emulator or descriptor mock as iOS device validation.
+
 ## II. Microcontroller / Serial Chain
 
 Trigger: "microcontroller plugged in, run serial validation".

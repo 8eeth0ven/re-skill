@@ -1,5 +1,6 @@
 # iOS RE Fundamentals (Mach-O / runtime / dumping / debugging / Hook / signing / jailbreak and Tweak)
 
+> For state-preserving device evidence, follow [the read-only iOS route](../../device-testing.md#appleios-state-preserving-evidence-collection). Debugserver copying/re-signing, injection, app deployment, and entitlement changes below are separate lab workflows, not prerequisites automatically authorized by an identity/evidence task. If existing access is insufficient, record blocked/requires-environment rather than altering the device.
 > Knowledge base 04-iOS security · file 1 of 2. File 2: [ios-offense-defense.md](ios-offense-defense.md) (anti-debug/jailbreak detection/hardening/malware/protocols/kernel/localization).
 > Cross-platform links: the Android-side methodology is at `re/techniques/` (Frida quick refs/unpacking/evasion); for overlapping content this file gives anchors only, no expansion.
 

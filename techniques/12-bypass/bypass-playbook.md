@@ -18,10 +18,16 @@ In any confrontation failure, first split into two cases: **"my hook never took 
 
 ### Tree 1: Hook Killed (function never reached / crash right after hooking)
 
+Label scope: A = hook detection, B = copied implementation, C = bypassed observation layer,
+and T = hook installed too late. A/B/C agree with the fallback article. Its D means measurable
+hook **side effects** after the hook works (time delta/errno/state), not startup timing;
+use [fallback cause D](../09-function-map/hook-fallback-playbook.md#1-fallback-decision-tree-diagnose-first-then-act)
+for that case. Compare the evidence, not an assumed shared A–D numbering scheme.
+
 ```
 hook has no effect, or dies as soon as it lands
 │
-├─ Cause of death D "timing": detection code runs before the hook (init_array/JNI_OnLoad wins the race)
+├─ Cause of death T "startup timing": detection code runs before the hook (init_array/JNI_OnLoad wins the race)
 │    Evidence: spawn passes but attach does not; or the hooked function never appears in call logs
 │    → Way out: switch startup mode to grab the timing first (zygisk > spawn > gadget > attach;
 │      timing-line evidence in area 11 process-memory-chain.md, injection-timing section);
@@ -80,7 +86,7 @@ detection hit
 ### 1.1 One-Screen Recap (the whole playbook)
 
 ```
-hook killed   → Tree 1, determine cause of death: timing A (pre-empt) / detection A (switch to a traceless layer) / copy B (locate the real body) / direct-call C (Stalker|patch|kernel)
+hook killed   → Tree 1, determine cause of death: startup timing T (pre-empt) / detection A (switch to a traceless layer) / copy B (locate the real body) / direct-call C (Stalker|patch|kernel)
 detection hit → Tree 2, determine layer: Java < JNI < libc < svc < kernel < key binding
                  bypass layer must be ≥ detection layer; symptoms unchanged no matter the tuning = layer misjudged
 resource ceiling: no root (gadget/patch) < root (Shamiko/Stalker/feed-original-apk) < kernel (KPM/wxshadow) < offline (derivation/unidbg)
@@ -375,7 +381,7 @@ Symptom → most likely cause → next action. The first three columns cover 90%
 | 14 | Behavioral diff between two devices (no popup) | silent flagging: the reporting channel is alive | intercept the reporting domain + forge responses (§2.14); check device-fingerprint consistency |
 | 15 | SEGV_MAPERR while dumping DEX | anti-dump unmap (region cleared after decryption) | change the timing (the decryption instant); dump from the eBPF side (area 03) |
 | 16 | App freezes with Stalker on / caught by timing detection | translation-execution overhead too large | narrow with exclude + short window + unfollow (area 09 §3.2 three performance laws) |
-| 17 | Spawn passes but attach does not | timing cause of death D: detection runs before the hook | switch to spawn/gadget/zygisk to grab the timing (Tree 1 cause of death D) |
+| 17 | Spawn passes but attach does not | startup-timing cause T: detection runs before the hook | switch to spawn/gadget/zygisk to grab the timing (Tree 1 cause T) |
 | 18 | frida itself crashes after the soinfo unlink | unlinked too early; lazy symbol resolution still needs the chain | do it immediately after attach completes (frida-anti-detection.md §2.4) |
 | 19 | Kernel solution deployed but the app still senses | residual surface: timing side channel or root exposure (not the hook surface) | area 07 §8 red-team self-check list; tighten the environment layer further (§2.10) |
 | 20 | Everything normal but the server blacklists | historical flags / behavioral fingerprint | change device fingerprint; restrain the testing rhythm (§4.3 third layer) |

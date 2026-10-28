@@ -129,25 +129,25 @@ function intent() {
 
     // Hook the no-argument constructor
     Intent.$init.overload().implementation = function () {
-        console.log("[$init.overload()] Intent的无参构造函数被调用");
+        console.log("[$init.overload()] Intent no-argument constructor called");
         // Call the original constructor
         var result = this.$init();
         // Print the stack trace to identify the caller
-        console.log("调用堆栈:\n" + Java.use("android.util.Log").getStackTraceString(Java.use("java.lang.Exception").$new()));
+        console.log("Backtrace:\n" + Java.use("android.util.Log").getStackTraceString(Java.use("java.lang.Exception").$new()));
         return result;
     };
 
     // Hook the constructor taking an Action
     Intent.$init.overload("java.lang.String").implementation = function (action) {
-        console.log("[$init.overload('java.lang.String')] Intent构造函数被调用，action: " + action);
+        console.log("[$init.overload('java.lang.String')] Intent constructor called, action: " + action);
         var result = this.$init(action);
-        console.log("调用堆栈:\n" + Java.use("android.util.Log").getStackTraceString(Java.use("java.lang.Exception").$new()));
+        console.log("Backtrace:\n" + Java.use("android.util.Log").getStackTraceString(Java.use("java.lang.Exception").$new()));
         return result;
     };
 
     // Hook the constructor taking another Intent (copy constructor)
     Intent.$init.overload("android.content.Intent").implementation = function (otherIntent) {
-        console.log("[$init.overload('android.content.Intent')] Intent复制构造函数被调用");
+        console.log("[$init.overload('android.content.Intent')] Intent copy constructor called");
         // Read the original Intent's information
         if (otherIntent != null) {
             var action = otherIntent.getAction();
@@ -156,7 +156,7 @@ function intent() {
             var packageName = otherIntent.getPackage();
             var flags = otherIntent.getFlags();
 
-            console.log("原始Intent信息: " +
+            console.log("Original Intent information: " +
                 "Action=" + action +
                 ", Data=" + dataString +
                 ", Component=" + component +
@@ -164,25 +164,25 @@ function intent() {
                 ", Flags=" + flags);
         }
         var result = this.$init(otherIntent);
-        console.log("调用堆栈:\n" + Java.use("android.util.Log").getStackTraceString(Java.use("java.lang.Exception").$new()));
+        console.log("Backtrace:\n" + Java.use("android.util.Log").getStackTraceString(Java.use("java.lang.Exception").$new()));
         return result;
     };
 
     // Hook the constructor taking Action and Uri
     Intent.$init.overload("java.lang.String", "android.net.Uri").implementation = function (action, uri) {
-        console.log("[$init.overload('java.lang.String', 'android.net.Uri')] Intent构造函数被调用");
+        console.log("[$init.overload('java.lang.String', 'android.net.Uri')] Intent constructor called");
         console.log("Action: " + action + ", URI: " + (uri ? uri.toString() : "null"));
         var result = this.$init(action, uri);
-        console.log("调用堆栈:\n" + Java.use("android.util.Log").getStackTraceString(Java.use("java.lang.Exception").$new()));
+        console.log("Backtrace:\n" + Java.use("android.util.Log").getStackTraceString(Java.use("java.lang.Exception").$new()));
         return result;
     };
 
     // Hook the constructor taking Context and Class
     Intent.$init.overload("android.content.Context", "java.lang.Class").implementation = function (context, cls) {
-        console.log("[$init.overload('android.content.Context', 'java.lang.Class')] Intent构造函数被调用");
+        console.log("[$init.overload('android.content.Context', 'java.lang.Class')] Intent constructor called");
         console.log("Class: " + cls.getName());
         var result = this.$init(context, cls);
-        console.log("调用堆栈:\n" + Java.use("android.util.Log").getStackTraceString(Java.use("java.lang.Exception").$new()));
+        console.log("Backtrace:\n" + Java.use("android.util.Log").getStackTraceString(Java.use("java.lang.Exception").$new()));
         return result;
     };
 

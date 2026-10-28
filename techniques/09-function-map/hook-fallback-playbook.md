@@ -6,7 +6,10 @@
 
 ## 1. Fallback Decision Tree: Diagnose First, Then Act
 
-Four causes of hook failure, mapping to four classes of action:
+Four causes of hook failure, mapping to four classes of action. Here D means side effects
+of a hook that runs; a hook installed after detection is the separate startup-timing cause T in
+[the convergence playbook](../12-bypass/bypass-playbook.md#tree-1-hook-killed-function-never-reached--crash-right-after-hooking).
+A/B/C retain the same detection/copy/bypassed-layer meanings across both articles:
 
 ```
 Hook has no effect / gets countered

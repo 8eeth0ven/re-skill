@@ -42,7 +42,7 @@ function usb_anti() {
             return ret;
         };
     })
-    console.log("[ * ] USB调试检测Hook完成");
+    console.log("[ * ] USB-debug detection hook installed");
 }
 ```
 

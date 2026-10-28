@@ -173,7 +173,7 @@ The "type tag → execution" paths of three ecosystems side by side (three entra
 
 ```
 Native Java stream: class descriptor (fully qualified name) → Class.forName → newInstance → custom readObject
-Fastjson: {"@type":"类名"} → autoType reflection → setter/getter chain
+Fastjson: {"@type":"ClassName"} → autoType reflection → setter/getter chain
 pickle: REDUCE opcode → protocol-level instructions → direct callable(*args)
         ↑ All three allow input to select a callable and arguments; protocol syntax differs
 ```

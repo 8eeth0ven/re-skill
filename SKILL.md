@@ -1,15 +1,11 @@
 ---
 name: re
 description: >-
-  Unified reverse engineering for Windows, Android, Linux, iOS, WEB, binary vulnerabilities,
-  smart devices, business, AI, blockchain, and root-cause analysis. Routes platform knowledge,
-  techniques, cases, APK automation, bounded asset-analysis CLI, CVE research, and tool discovery.
-  Use for reverse engineering, Android RE, iOS RE, IoT, frida, hook, unpacking, traffic capture,
-  SSL pinning, anti-debugging, root detection, app packers, OLLVM, obfuscation, VMP,
-  algorithm restoration, risk control, RPC, syscall, eBPF, kernel hook, bypass, RASP,
-  pwn, CTF, vulnerability root cause, unidbg, full-chain execution, tool radar,
-  frida-mcp, jadx-mcp, ghidra-mcp, attack-and-evasion, and AI RE.
-  Also use for "look at this app's encryption", "how do I reverse this .so", or "run the pipeline".
+  Reverse engineering of binaries, mobile apps, firmware, algorithms, and runtime behavior.
+  Use to choose RE techniques, inspect supported assets with the bounded re-run CLI,
+  run the staged APK workflow, investigate binary vulnerability hypotheses, or discover RE tools.
+  For a standalone API penetration test or full source-code security audit, use the corresponding
+  specialist skill; basic API/source asset inspection remains supported here.
 ---
 
 # Reverse Engineering: One Entry, Task-Based Routing
@@ -24,8 +20,9 @@ then follow additional references only as needed. Do not read the whole library 
 
 | Task or available input | Start here | Continue with |
 |---|---|---|
-| Analyze one or multiple assets through the CLI | [Runner guide and capability matrix](docs/runner.zh-CN.md) | `re-run` supplies bounded profile analysis, evidence, reports, resume/cancel, and adapters; depth varies by profile |
-| APK analysis or "run the full chain" | [pipeline/pipeline.md](pipeline/pipeline.md) | Five-stage DAG, acceptance gates, and fallbacks; artifact layout in [pipeline/README.md](pipeline/README.md) |
+| Analyze one or multiple assets through the CLI | [Runner guide and capability matrix](docs/runner.md) | `re-run` supplies bounded profile analysis, evidence, reports, resume/cancel, and adapters; depth varies by profile |
+| APK static information, candidates, and a complete report | [Runner guide](docs/runner.md) | Use the Android profile or requested static stages; a complete static report does not require an emulator |
+| Explicit APK S0–S4/full-chain or requested dynamic analysis | [pipeline/pipeline.md](pipeline/pipeline.md) | Five-stage DAG with scoped device/emulator work, gates, and fallbacks; artifacts in [pipeline/README.md](pipeline/README.md) |
 | Find a CVE or investigate a vulnerability hypothesis | [breach-tables-cve.md](breach-tables-cve.md) | Recognition → verification → acceptance → false-positive exclusions; [re-to-cve-audit.md](re-to-cve-audit.md) for research and [disclosure-cve.md](disclosure-cve.md) for disclosure preparation |
 | Match components against known CVEs | [cve-hunter/README.md](cve-hunter/README.md) | Version-match candidates and the N-day ledger; a version match alone is not a confirmed vulnerability |
 | Discover candidates in publicly released router firmware | [fw-discover/README.md](fw-discover/README.md) | Firmware extraction, static rules, and candidate triage; rule hits are hypotheses pending verification |
@@ -35,9 +32,18 @@ then follow additional references only as needed. Do not read the whole library 
 | Discover or fill a tool gap | [radar/README.md](radar/README.md) | [Tool selection table](techniques/05-toolbox/tool-master-table.md); discovery → catalog → smoke test → log |
 | Initialize a new machine | [setup.md](setup.md) | Inventory first, install missing dependencies, then run the cross-platform health check |
 
-An API-only vulnerability assessment belongs to the separate `skill` skill;
-a source-code audit belongs to `secure-code-audit`. Use RE here when runtime visibility,
-packing, detection, signatures, or binary behavior blocks that work.
+Resolve the input before choosing the DAG. A URL may identify a Web/API asset or an APK download;
+use the supplied artifact/type/context to distinguish them. If “full pipeline” plus a bare URL
+leaves that unresolved, clarify the intended asset before device work or package execution.
+A Web URL does not enter the APK DAG. Clear local APK or documentation-only tasks need no extra
+confirmation; select the requested static/dynamic depth directly.
+
+The runner's Web/API/source profiles provide bounded asset inspection, structural evidence,
+and declared candidate checks. A standalone API penetration test belongs to `api-pentest`
+(or the broader `skill` workflow); a full source-code security audit belongs to
+`secure-code-audit`. Use RE to supply binary/runtime evidence, unpacking, detection analysis,
+or restored signatures when those investigations need it. Profile presence does not imply
+full protocol/business testing or a full interprocedural source audit.
 
 ## Direct Technique Routes
 
@@ -62,40 +68,14 @@ packing, detection, signatures, or binary behavior blocks that work.
 - **Test values and cleanup:** follow [test-values.md](test-values.md): `[RE]` / `[REPROBE]`, `0x52455052`, `REPROBE-<date>-<seq>`, and device names prefixed with `re_`. High-collision probes such as `0x42` and `deadbeef` are forbidden. Check the value families at wrap-up and remove only the current task's temporary device state; retain labeled evidence.
 - **Scheduled radar:** daily 09:00 execution depends on a configured host schedule. A copied directory does not install a scheduler. See [setup.md](setup.md) and [radar/README.md](radar/README.md) for migration or manual execution.
 
-## CLI Runner and Execution Readiness
+## Execution and Maintenance Details
 
-The repository includes the `re-run` CLI (`src/re_runner/`), `pyproject.toml`,
-and `uv.lock`. The runner requires Python 3.11+; skill discovery alone does not
-install its dependencies, external engines, or MCP connections. Follow
-[setup.md](setup.md) and the user's installation/testing limits.
-
-When execution is requested, inspect the asset and use the runner's profile
-readiness report before analysis. Refer to the [runner guide](docs/runner.zh-CN.md)
-for actual CLI options and profile coverage. Network and live-device reads use
-its explicit scope mechanism; APK-derived URLs are not automatically follow-up
-targets. Agent-driven APK analysis remains the separate staged workflow above.
-
-Distinguish observations, heuristic candidates, and reproduced findings. A
-private-key string, source/sink co-occurrence, version match, zero NVD hits, or
-exit code zero does not prove exploitability or novelty. The runner's protection
-routes are indicators/plans with `bypass_executed: false`; deeper work belongs in
-the [completion handoff](docs/agent-completion-prompt.zh-CN.md). Compare a baseline
-and negative control before claiming a successful bypass.
-
-## Tool Environment
-
-- Common CLI tools: `jadx`, `apktool`, `r2`, `adb`, and `7z`; detect availability before use.
-- Python environment: `tools-env/.venv`. On this machine, use `UV_CACHE_DIR=/tmp/uv-cache uv pip install -p tools-env/.venv/bin/python <package>`; the venv has no pip and this cache path avoids known sandbox cache failures. Windows equivalents are in [setup.md](setup.md).
-- Prefer `python3 pipeline/env_check.py` for cross-platform health checks. Keep `pipeline/env_check.sh` as the legacy macOS Bash fallback.
-- Optional local MCP observations: `radar/MCP测试报告.md`; tool observations: `radar/工具测试报告.md`. These machine-local records are excluded from Git and may be absent in a fresh clone. They are dated observations, not a live capability guarantee. Check the installed client/server version and architecture before a dynamic session; prepared server binaries are under `tools-env/frida-server/` when installed.
-
-## Maintenance Rules
-
-1. Route through this entry and the selected INDEX; read relevant articles progressively. Each INDEX owns its branch's file list.
-2. Method bodies contain methods and code, without new external links, attributions, or personal names. Preserve existing source lookup metadata and historical evidence; use the data index to locate original corpus material.
-3. APK full-chain requests enter `pipeline/pipeline.md`; acceptance and artifact structure come from that workflow.
-4. Apply `test-values.md` to probes, hooks, and output, including the verification and cleanup loop.
-5. Ingest techniques into the matching `techniques/` area, domain knowledge into `platforms/`, and tools into the selection table plus radar baseline. Smoke-test installable tools before marking them usable.
-6. Before maintenance, read [maintenance.md](maintenance.md) for current conventions and any available local historical audit for known regressions. Do not turn old smoke tests into current results.
-7. [SSL pinning bypass](techniques/04-evasion/ssl-pinning-bypass.md) is the primary methodology. [Java certificate snippets](techniques/02-frida/java-layer/sslpinning-and-certificates.md), [capture scenarios](techniques/04-evasion/capture-all-scenarios.md), and the [vendor archive](techniques/04-evasion/vendor-capture-countermeasures.md) are subordinate; the primary article resolves conflicts.
-8. On a new machine, follow `setup.md` first and restore the optional radar schedule separately. Leave raw corpus data, installed tools, and existing historical records intact during documentation maintenance.
+Before running tools, read [execution readiness](docs/execution-reference.md#cli-runner-and-execution-readiness)
+and the selected workflow. It defines runner limitations, scoped network/device reads,
+observation/candidate/verified distinctions, and the baseline/control gate for bypass claims.
+For installation or machine-local observations, use the [tool environment](docs/execution-reference.md#tool-environment).
+For library updates, read [maintenance.md](maintenance.md) and the
+[maintenance rules](docs/execution-reference.md#maintenance-rules); preserve raw corpus,
+installed tools, and dated evidence. SSL pinning's authoritative methodology is
+[ssl-pinning-bypass.md](techniques/04-evasion/ssl-pinning-bypass.md); other articles provide
+snippets, scenarios, or vendor examples.

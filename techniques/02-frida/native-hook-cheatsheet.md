@@ -24,13 +24,13 @@ function hook_NewStringUTF() {
         Interceptor.attach(newStringUTF, {
             onEnter: function (args) {
                 let string = args[1].readCString()
-                console.log("[字符串]:", string);
-                console.log("[调用栈]:",Thread.backtrace(this.context, Backtracer.FUZZY).map(DebugSymbol.fromAddress).join('\n') + '\n');
+                console.log("[String]:", string);
+                console.log("[Backtrace]:",Thread.backtrace(this.context, Backtracer.FUZZY).map(DebugSymbol.fromAddress).join('\n') + '\n');
             }, onLeave: function (retval) {
             }
         })
     } else {
-        console.log("没有这个函数")
+        console.log("Function not found")
     }
 }
 ```
@@ -52,7 +52,7 @@ function hook_dlsym(){
         onLeave:function(retval){
             let md= Process.findModuleByAddress(retval);
             if(md==null)return;
-            console.log("函数："+this.args1.readCString(),"模块："+md.name,"地址："+retval,"偏移："+retval.sub(md.base));
+            console.log("Function: "+this.args1.readCString(),"Module: "+md.name,"Address: "+retval,"Offset: "+retval.sub(md.base));
         }
     })  
 }
@@ -119,7 +119,7 @@ function hook_dlopen(so_name) {
         },
         onLeave: function (retval) {
             if (this.match) {
-                console.log(so_name, "加载成功")
+                console.log(so_name, "Loaded successfully")
             }
         }
     });
@@ -308,7 +308,7 @@ function replace_clone() {
                 console.log(so_name, new_p_arg3, offset.toString(16));
 
                 if (libNameList.indexOf(so_name) !== -1) {
-                    console.warn("已跳过指定线程创建 -> ", offset);
+                    console.warn("Skipped selected thread creation -> ", offset);
                     return 0;
                 }
             }
@@ -379,12 +379,12 @@ When to use: the packer decrypts an encrypted instruction block and memcpys it b
         if (this.size === 4) {
             // Check whether the address lies in a code segment
             if (textRange && (this.src.compare(textRange.base) >= 0 && this.src.compare(textRange.base.add(textRange.size)) < 0)) {
-                console.log("可能是ARM64指令的memcpy:");
+                console.log("Possible ARM64 memcpy:");
 
-                console.log("复制地址: " + this.dst);
-                console.log("源地址: " + this.src);
-                console.log("复制位数大小: " + this.size);
-                console.log("字节打印：")
+                console.log("Destination address: " + this.dst);
+                console.log("Source address: " + this.src);
+                console.log("Copy size: " + this.size);
+                console.log("Bytes:")
                 console.log(hexdump(this.dst, { offset: 0, length: this.size }));
 
                 // Confirm with common ARM64 instruction patterns, for example by inspecting the leading bits
@@ -446,7 +446,7 @@ function hook_RegisterNatives() {
                 var sig = methods_ptr.add(i * Process.pointerSize * 3 + Process.pointerSize).readPointer().readCString();
                 var fnPtr_ptr = methods_ptr.add(i * Process.pointerSize * 3 + Process.pointerSize * 2).readPointer();
                 var find_module = Process.findModuleByAddress(fnPtr_ptr);
-                console.log("类: ", class_name, "方法: ", name, "签名: ", sig, "函数地址: ", fnPtr_ptr, "模块名: ", find_module.name, "函数偏移: ", ptr(fnPtr_ptr).sub(find_module.base));
+                console.log("Class: ", class_name, "Method: ", name, "Signature: ", sig, "Function address: ", fnPtr_ptr, "Module: ", find_module.name, "Function offset: ", ptr(fnPtr_ptr).sub(find_module.base));
             }
         },
         onLeave: function (retval) {}
@@ -488,7 +488,7 @@ function hook_init_array() {
         },
         onLeave: function (retval) {
             if (this.match) {
-                console.log("libDexHelper.so", "加载成功")
+                console.log("libDexHelper.so", "Loaded successfully")
                 const module = Process.findModuleByName("libDexHelper.so");
                 // Initialization has completed; dlopen runs next
             }

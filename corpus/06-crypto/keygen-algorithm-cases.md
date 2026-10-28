@@ -20,8 +20,8 @@
 - The essence is a micro-debugger: CreateProcess launches the target DEBUG-style → write INT3 at the address where the real code is computed → WaitForDebugEvent suspends → ReadProcessMemory/GetThreadContext fetches the real code for display; works on packed targets too (the shell unpacks and the code lands at its address, then you break). Skeleton:
 ```asm
 ; Omitted: CreateProcess(..., DEBUG_PROCESS, ...) startup and the outer .while TRUE loop
-.if DBEvent.dwDebugEventCode == EXCEPTION_DEBUG_EVENT && dword ptr [DBEvent.u.Exception.ExceptionRecord.ExceptionAddress] == 断点地址
-    invoke ReadProcessMemory, pi.hProcess, 真码地址, addr buffer, len, NULL  ; Restore the original byte / set EIP-1 first
+.if DBEvent.dwDebugEventCode == EXCEPTION_DEBUG_EVENT && dword ptr [DBEvent.u.Exception.ExceptionRecord.ExceptionAddress] == BREAKPOINT_ADDRESS
+    invoke ReadProcessMemory, pi.hProcess, REGISTRATION_CODE_ADDRESS, addr buffer, len, NULL  ; Restore the original byte / set EIP-1 first
 .endif
 invoke ContinueDebugEvent, DBEvent.dwProcessId, DBEvent.dwThreadId, DBG_CONTINUE
 ```

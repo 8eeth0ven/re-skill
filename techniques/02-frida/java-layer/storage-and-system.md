@@ -174,7 +174,7 @@ PackageManager["getInstalledPackages"].implementation = function (i4) {
             // Keep packages absent from the hidden-package list
             filteredList.add(pkgInfo);
         } else {
-            console.log("解决检测包名")
+            console.log("Package-name detection handled")
         }
     }
     return filteredList;
@@ -219,7 +219,7 @@ Java.enumerateClassLoadersSync().forEach(classLoader => {
 ```javascript
 var IdProviderImpl = Java.use("com.android.id.impl.IdProviderImpl");
 IdProviderImpl["getOAID"].implementation = function (context) {
-    console.log("调用了")
+    console.log("Called")
     const result = this.getOAID(context)
     console.log(result)
     return result
@@ -291,7 +291,7 @@ function hook_pkms() {
 
         }
     })
-    console.log("pkms hook成功")
+    console.log("pkms hook installed")
 }
 ```
 
@@ -343,7 +343,7 @@ public class ServiceManagerWraper {
     }
 
     public static void hookPMS(Context context) {
-        String Sign = "原包的签名信息";
+        String Sign = "ORIGINAL_PACKAGE_SIGNATURE";
         hookPMS(context, Sign, "com.zj.hookpms", 0);
     }
 }
@@ -426,7 +426,7 @@ public class PmsHookBinderInvocationHandler implements InvocationHandler {
 
             // Check whether this is the target package
             if (isTargetPackage(packageInfo.packageName)) {
-                Log.d(TAG, "拦截到目标包的getPackageInfo调用: " + packageInfo.packageName);
+                Log.d(TAG, "Intercepted target getPackageInfo: " + packageInfo.packageName);
                 return modifyPackageInfo(packageInfo);
             }
         }
@@ -444,7 +444,7 @@ public class PmsHookBinderInvocationHandler implements InvocationHandler {
             PackageInfo packageInfo = (PackageInfo) result;
 
             if (isTargetPackage(packageInfo.packageName)) {
-                Log.d(TAG, "拦截到目标包的getPackageInfoVersioned调用: " + packageInfo.packageName);
+                Log.d(TAG, "Intercepted target getPackageInfoVersioned: " + packageInfo.packageName);
                 return modifyPackageInfo(packageInfo);
             }
         }
@@ -471,7 +471,7 @@ public class PmsHookBinderInvocationHandler implements InvocationHandler {
             String pkg2 = (String) args[1];
 
             if (isTargetPackage(pkg1) || isTargetPackage(pkg2)) {
-                Log.d(TAG, "拦截到签名比较调用，强制返回SIGNATURE_MATCH");
+                Log.d(TAG, "Intercepted signature comparison; returning SIGNATURE_MATCH");
                 return 0; // PackageManager.SIGNATURE_MATCH
             }
         }
@@ -487,7 +487,7 @@ public class PmsHookBinderInvocationHandler implements InvocationHandler {
             String packageName = (String) args[0];
 
             if (isTargetPackage(packageName)) {
-                Log.d(TAG, "拦截到hasSigningCertificate调用，强制返回true");
+                Log.d(TAG, "Intercepted hasSigningCertificate; returning true");
                 return true;
             }
         }
@@ -508,7 +508,7 @@ public class PmsHookBinderInvocationHandler implements InvocationHandler {
                 // Replace the signatures field
                 if (packageInfo.signatures != null && packageInfo.signatures.length > 0) {
                     packageInfo.signatures[0] = fakeSignature;
-                    Log.d(TAG, "已替换signatures字段");
+                    Log.d(TAG, "Replaced signatures field");
                 }
 
                 // Handle signingInfo on Android P+
@@ -517,15 +517,15 @@ public class PmsHookBinderInvocationHandler implements InvocationHandler {
                         try {
                             // Use reflection to replace the signatures in signingInfo
                             modifySigningInfo(packageInfo.signingInfo, fakeSignature);
-                            Log.d(TAG, "已替换signingInfo字段");
+                            Log.d(TAG, "Replaced signingInfo field");
                         } catch (Exception e) {
-                            Log.e(TAG, "修改signingInfo失败", e);
+                            Log.e(TAG, "Failed to modify signingInfo", e);
                         }
                     }
                 }
             }
         } catch (Exception e) {
-            Log.e(TAG, "修改PackageInfo签名失败", e);
+            Log.e(TAG, "Failed to modify PackageInfo signature", e);
         }
 
         return packageInfo;
@@ -558,7 +558,7 @@ public class PmsHookBinderInvocationHandler implements InvocationHandler {
             }
         } catch (NoSuchFieldException e) {
             // If this field is absent, try another lookup route
-            Log.w(TAG, "SigningInfo字段结构可能已变化: " + e.getMessage());
+            Log.w(TAG, "SigningInfo field layout may have changed: " + e.getMessage());
         }
     }
 
@@ -596,10 +596,10 @@ function print_pkms() {
                 var base64String = Base64.encodeToString(signatureBytes, 2);
                 console.log([base64String]);
             } else {
-                console.log("[-] 未找到签名信息");
+                console.log("[-] Signature information not found");
             }
         } catch (e) {
-            console.log("[-] 获取签名失败: " + e);
+            console.log("[-] Failed to obtain signature: " + e);
         }
     });
 }

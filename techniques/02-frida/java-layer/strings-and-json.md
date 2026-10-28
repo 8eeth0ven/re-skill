@@ -134,14 +134,14 @@ function hookApp() {
                 // Observe serialization
                 fastJson.toJSONString.overload('java.lang.Object').implementation = function (obj) {
                     var jsonStr = this.toJSONString(obj);
-                    console.log("\n=== 序列化监控 ===");
-                    console.log("JSON 结果 =>", jsonStr);
+                    console.log("\n=== Serialization monitor ===");
+                    console.log("JSON result =>", jsonStr);
                     return jsonStr;
                 };
                 // Observe deserialization
                 fastJson.parseObject.overload('java.lang.String').implementation = function (jsonStr) {
-                    console.log("\n=== 反序列化监控 ===");
-                    console.log("输入 JSON =>", jsonStr);
+                    console.log("\n=== Deserialization monitor ===");
+                    console.log("Input JSON =>", jsonStr);
                     var result = this.parseObject(jsonStr);
                     return result;
                 };

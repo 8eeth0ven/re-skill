@@ -1,6 +1,6 @@
 """A-lane round-3 extractors: UBI / TRX containers and OCI merged rootfs.
 
-Covers the 6d acceptance gaps ``UBI/TRX 真解包`` and ``OCI registry 拉取/merged
+Covers the 6d acceptance gaps ``actual UBI/TRX extraction`` and ``OCI registry pull/merged
 filesystem`` that 7-Zip 25.01 cannot route (no UBI handler; inner squashfs at a
 non-zero offset is invisible to ``7z l`` on the outer image).
 

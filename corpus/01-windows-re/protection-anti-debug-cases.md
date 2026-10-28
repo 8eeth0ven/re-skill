@@ -1,6 +1,6 @@
 # Protection & Anti-Debug Cases (Windows)
 
-> Positioning: complements platforms/01-windows-security/protection.md — that file holds the generic principle matrix (PEB/NtQIP/DRx/rdtsc/exceptions/Anti-OD/junk-code principles/VMProtect handlers); this library keeps only **hands-on case detail**: teardowns of specific software protection schemes, concrete implementation code of detection points, bypass scripts, combined protections and novel detection points. Generic principles are not repeated — check the protection file for theory.
+> Positioning: complements [platforms/01-windows/protection.md](../../platforms/01-windows/protection.md) — that file holds the generic principle matrix (PEB/NtQIP/DRx/rdtsc/exceptions/Anti-OD/junk-code principles/VMProtect handlers); this library keeps only **hands-on case detail**: teardowns of specific software protection schemes, concrete implementation code of detection points, bypass scripts, combined protections and novel detection points. Generic principles are not repeated — check the protection file for theory.
 
 ## 1. Anti-Debug Detection Points in Practice
 

@@ -147,7 +147,7 @@ for name in SENSITIVE:
                   caller.getName() if caller else "?", ref.getFromAddress()))
             hits += 1
     if hits == 0:
-        print("[%s] NO XREF (Probe 缺失则全用户输入皆裸奔)" % name)
+        print("[%s] NO XREF (missing Probe leaves all user input unchecked)" % name)
 ```
 
 **Script two: IOCTL dispatch location** (C:\scripts\find_ioctl_dispatch.py):
@@ -265,7 +265,7 @@ list_strings_filter "IOCTL|\\\\Device\\\\"   → Obtain device names/CTL strings
 get_function_by_name "SubIoctlHandler" → Locate the function
 decompile_function <addr>              → Read pseudocode and identify vulnerability patterns
 get_xrefs_to <ProbeForRead ea>         → Negative evidence: callers that do not use it
-set_comment <addr> "AUDIT: UAF 假设#2" → Persist the conclusion
+set_comment <addr> "AUDIT: UAF hypothesis#2" → Persist the conclusion
 rename_function <addr> "vuln_read_oob" → Function names become report evidence
 ```
 
@@ -433,8 +433,8 @@ The localization routine (fixed order):
 ```
 !analyze -v            → Does FAILURE_BUCKET_ID point to mydrv+offset? → RVA=offset-ImageBase
 kb                     → Find frames belonging to the target driver
-!irp <arg2寄存器存的irp> → Confirm this is our IOCTL (ctl code/process)
-dq/bl 数据指针          → Check for a user address or pool-boundary violation
+!irp <irp-stored-in-arg2> → Confirm this is our IOCTL (ctl code/process)
+dq/bl <data-pointer>          → Check for a user address or pool-boundary violation
 !pool <fault_addr>     → A free pool block indicates UAF; check tag ownership
 ```
 

@@ -9,17 +9,17 @@ from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ESP
 # (name, capstone arch, capstone mode, hex bytes, expected mnemonics contained in the disassembly)
 PATTERNS = [
     ("arm64 NOP",              CS_ARCH_ARM64, 0, "1f2003d5", ["nop"]),
-    ("arm64 返回1",             CS_ARCH_ARM64, 0, "200080 52c0035fd6".replace(" ", ""), ["mov\tw0, #1", "ret"]),
-    ("arm64 返回0",             CS_ARCH_ARM64, 0, "00008052c0035fd6", ["mov\tw0, #0", "ret"]),
+    ("arm64 return1",             CS_ARCH_ARM64, 0, "200080 52c0035fd6".replace(" ", ""), ["mov\tw0, #1", "ret"]),
+    ("arm64 return0",             CS_ARCH_ARM64, 0, "00008052c0035fd6", ["mov\tw0, #0", "ret"]),
     ("arm NOP(mov r0,r0)",     CS_ARCH_ARM, CS_MODE_ARM, "00 00 a0 e1".replace(" ", ""), ["mov\tr0, r0"]),
-    ("arm 返回1",               CS_ARCH_ARM, CS_MODE_ARM, "0100a0e31eff2fe1", ["mov\tr0, #1", "bx\tlr"]),
+    ("arm return1",               CS_ARCH_ARM, CS_MODE_ARM, "0100a0e31eff2fe1", ["mov\tr0, #1", "bx\tlr"]),
     ("thumb NOP",              CS_ARCH_ARM, CS_MODE_THUMB, "00bf", ["nop"]),
-    ("thumb 返回1",             CS_ARCH_ARM, CS_MODE_THUMB, "0120 7047".replace(" ", ""), ["movs\tr0, #1", "bx\tlr"]),
+    ("thumb return1",             CS_ARCH_ARM, CS_MODE_THUMB, "0120 7047".replace(" ", ""), ["movs\tr0, #1", "bx\tlr"]),
     ("x86 NOP",                CS_ARCH_X86, CS_MODE_32, "90", ["nop"]),
-    ("x86 返回1",               CS_ARCH_X86, CS_MODE_32, "b801000000c3", ["mov\teax, 1", "ret"]),
-    ("x86 返回0(xor+ret)",     CS_ARCH_X86, CS_MODE_32, "31c0c3", ["xor\teax, eax", "ret"]),
+    ("x86 return1",               CS_ARCH_X86, CS_MODE_32, "b801000000c3", ["mov\teax, 1", "ret"]),
+    ("x86 return0(xor+ret)",     CS_ARCH_X86, CS_MODE_32, "31c0c3", ["xor\teax, eax", "ret"]),
     ("x86_64 NOP",             CS_ARCH_X86, CS_MODE_64, "90", ["nop"]),
-    ("x86_64 返回1",            CS_ARCH_X86, CS_MODE_64, "b801000000c3", ["mov\teax, 1", "ret"]),
+    ("x86_64 return1",            CS_ARCH_X86, CS_MODE_64, "b801000000c3", ["mov\teax, 1", "ret"]),
 ]
 
 
@@ -32,7 +32,7 @@ def disasm_check():
         good = all(e in text for e in expect)
         ok += good
         flag = "PASS" if good else "FAIL"
-        print(f"[{flag}] {name}: {hx} -> {text or '(反汇编为空)'}")
+        print(f"[{flag}] {name}: {hx} -> {text or '(empty disassembly)'}")
     return ok
 
 
@@ -48,7 +48,7 @@ def unicorn_demo():
         uc.reg_write(UC_ARM64_REG_LR, 0x2000)
         uc.emu_start(0x1000, 0x2000)
         res[label] = uc.reg_read(UC_ARM64_REG_X0)
-    print(f"[unicorn/arm64] {list(res)}  (原函数 x0={res['原函数']}, 补丁后 x0={res['补丁后']})")
+    print(f"[unicorn/arm64] original / patched  (original x0={res['原函数']}, patched x0={res['补丁后']})")
     return res
 
 
@@ -64,7 +64,7 @@ def x86_demo():
         uc.reg_write(UC_X86_REG_ESP, 0x3000)
         uc.emu_start(0x1000, 0x2000)
         res[label] = uc.reg_read(UC_X86_REG_EAX)
-    print(f"[unicorn/x86] {list(res)}  (原函数 eax={res['原函数']}, 补丁后 eax={res['补丁后']})")
+    print(f"[unicorn/x86] original / patched  (original eax={res['原函数']}, patched eax={res['补丁后']})")
     return res
 
 
@@ -72,7 +72,7 @@ if __name__ == "__main__":
     n = disasm_check()
     a = unicorn_demo()
     x = x86_demo()
-    print(f"\n结论: 反汇编 {n}/{len(PATTERNS)} PASS;arm64 原返0/补丁返1={'正确' if a['原函数']==0 and a['补丁后']==1 else '异常'};x86 同理={'正确' if x['原函数']==0 and x['补丁后']==1 else '异常'}")
+    print(f"\nResult: disassembly {n}/{len(PATTERNS)} PASS;arm64 original returns0/patched returns1={'correct' if a['原函数']==0 and a['补丁后']==1 else 'unexpected'};x86 same check={'correct' if x['原函数']==0 and x['补丁后']==1 else 'unexpected'}")
 
     success = n == len(PATTERNS) and a["原函数"] == 0 and a["补丁后"] == 1 and x["原函数"] == 0 and x["补丁后"] == 1
     raise SystemExit(0 if success else 1)

@@ -30,3 +30,9 @@ SECURITY-AUDIT.md
 
 # CI workflow: pusher token lacks workflow scope; add via GitHub web UI (content kept locally)
 .github/workflows/acceptance.yml
+
+# English canonical editions of the same local historical observations
+quality-audit.md
+radar/discovery-log.md
+radar/mcp-test-report.md
+radar/tool-test-report.md

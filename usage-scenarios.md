@@ -7,7 +7,7 @@
 **re's role in SRC**: your goal is vulnerabilities, but the app hides the APIs — re handles "surface acquisition" (APIs/parameters/signatures); once acquired, hand off to `skill` (the SRC library) for vulnerability testing.
 
 ### Scenario 1: "The target is only an app; no web surface to be found"
-- **Steps**: ① run the `pipeline/pipeline.md` full chain on the APK (component surface / exported Activities / sensitive strings / URLs; a historical small-sample run took 9 minutes, not a runtime guarantee) → ② follow `techniques/04-evasion/capture-all-scenarios.md` and its scenario matrix to capture the API inventory → ③ hand the API list + parameters to skill (SRC) and attack with the idor-test/injection-test matrices
+- **Steps**: ① inspect the APK with the Android runner/static stages for components, exported Activities, sensitive strings, and URLs; use `pipeline/pipeline.md` S0–S4 only when the task calls for its dynamic chain (the historical small-sample full run took 9 minutes, not a runtime guarantee) → ② follow `techniques/04-evasion/capture-all-scenarios.md` and its scenario matrix to capture the API inventory → ③ hand the API list + parameters to skill (SRC) and attack with the idor-test/injection-test matrices
 - **Output**: an API-surface inventory → SRC vulnerabilities
 - **Handoff**: if the APIs turn out to have signature parameters, go to Scenario 3
 
@@ -66,19 +66,19 @@
 - **Practice**: the KCTF problem table in platforms/06
 
 ### Scenario 14: "Quickly look up a concept/function/term"
-- Direct examples: "what is Nterp" → techniques/11-syscall-chain/dex-load-exec-chain.md; "tcache double free" → platforms/06 heap exploitation; "/dev/tun" → techniques/11/network-chain.md; "which packer is this .so" → `techniques/05-toolbox/recon-and-specials.md`
+- Direct examples: "what is Nterp" → techniques/11-syscall-chain/dex-load-exec-chain.md; "tcache double free" → platforms/06 heap exploitation; "/dev/tun" → techniques/11-syscall-chain/network-chain.md; "which packer is this .so" → `techniques/05-toolbox/recon-and-specials.md`
 - **How to look up**: SKILL.md quick-picker table → INDEX → open by name
 
 ### Scenario 15: "Find a tool"
 - Known need: the selection decision tree in `techniques/05-toolbox/tool-master-table.md`
-- Want to see what's new lately: `radar/发现日志.md` (updated by configured daily runs or manual rounds)
+- Want to see what's new lately: `optional-local:radar/discovery-log.md` (updated by configured daily runs or manual rounds)
 - **Runs daily at 09:00 when a host schedule is configured**: the radar discovers new tools → evaluates → catalogs → smoke-tests locally. Copying the library does not create the schedule; see `setup.md` §7
 
 ## V. Automation (driven by a single sentence)
 
 | You say | What happens |
 |------|---------|
-| "Run the full chain on /path/xx.apk" | Five stages, zero human effort: dual static engines → packer verdict → hook candidates → emulator dynamics → seven-section report (runtime depends on the sample and available tools; see the pipeline budget) |
+| "Run the full chain on /path/xx.apk" | Explicit local-APK S0–S4 request: dual static engines → packer verdict → hook candidates → selected test-emulator dynamics → seven-section report; blocked capabilities remain explicit. Static information/report requests use the runner without automatically starting an emulator (runtime varies; see pipeline budgets). |
 | "Run one round of the tool radar" | Immediately executes one round manually: discover → catalog → smoke test |
 | "Environment health check" | `python3 pipeline/env_check.py` (cross-platform preferred; `env_check.sh` is the legacy macOS fallback; historical green/yellow counts are not a current health verdict; run after installing new tools) |
 
@@ -109,3 +109,19 @@
 | Data analysis / report writing and layout | data-analyst / tech-doc |
 
 **One-sentence summary**: anything stuck at the RE stage of "can't see it / can't get in / can't compute it / being detected" → re; anything at "got the APIs and parameters, now test for bugs" → skill; "got the source code" → secure-code-audit.
+
+
+## Compatibility Search Vocabulary
+
+Older host prompts may use the following phrases. They select existing routes rather than
+requiring every term in the skill's discovery description.
+
+| Terms in a task | Route |
+|---|---|
+| reverse engineering; Android RE; iOS RE; IoT; pwn; CTF; vulnerability root cause | [Platform index](platforms/INDEX.md), then the matching domain/root-cause article |
+| frida; hook; frida-mcp; jadx-mcp; ghidra-mcp; unidbg; AI RE | [Technique index](techniques/INDEX.md), especially Frida, emulation, and AI/MCP methods |
+| unpacking; app packers; OLLVM; obfuscation; VMP; algorithm restoration; “look at this app's encryption”; “how do I reverse this .so” | [Unpacking](techniques/03-unpacking/dex-unpacking.md) or [algorithm restoration](techniques/10-algo-restore/algo-restoration-methodology.md) |
+| traffic capture; SSL pinning; anti-debugging; root detection; risk control; bypass; RASP | [Bypass decision playbook](techniques/12-bypass/bypass-playbook.md), then the relevant evasion method |
+| RPC; syscall; eBPF; kernel hook | [Observation matrix](techniques/11-syscall-chain/observation-matrix.md) or [offline RPC](techniques/10-algo-restore/protocol-offline-rpc.md) |
+| full-chain execution; “run the pipeline” | For an explicit APK/dynamic request use [APK S0–S4](pipeline/pipeline.md); static/report requests use [runner](docs/runner.md). Resolve a bare URL as Web versus APK input first. |
+| tool radar | [Tool radar](radar/README.md) |

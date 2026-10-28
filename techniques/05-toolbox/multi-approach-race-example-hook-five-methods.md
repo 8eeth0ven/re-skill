@@ -57,11 +57,11 @@ Conventional wisdom says "macOS attach to someone else's process is denied -> sp
 Hook all four layers - `open` / `openat` / `fopen` / `open_nocancel` - run 10s and count:
 
 ```
-[RE] DIAG 已挂 open @ 0x18f6438b0
-[RE] DIAG open_nocancel -> 无此导出符号
-[RE] DIAG 已挂 openat @ 0x18f6541bc
-[RE] DIAG 已挂 fopen @ 0x18f5196e0
-[RE] DIAG 计数 open(total=10, probe=10) | openat(total=0, probe=0) | fopen(total=0, probe=0)
+[RE] DIAG Hooked open @ 0x18f6438b0
+[RE] DIAG open_nocancel -> export not found
+[RE] DIAG Hooked openat @ 0x18f6541bc
+[RE] DIAG Hooked fopen @ 0x18f5196e0
+[RE] DIAG count open(total=10, probe=10) | openat(total=0, probe=0) | fopen(total=0, probe=0)
 ```
 
 **Conclusion: CPython's `os.open` traffic goes 100% through the `open` symbol; `openat`/`fopen` are empty lanes.** This one data point decided S3's fate and S1's win.
@@ -111,22 +111,22 @@ Interceptor.attach(openAddr, {
     const p = args[0].readCString();
     if (p && p.indexOf("/tmp/re_probe_") === 0) {
       hits++;
-      if (hits <= 3) send('[RE] S1 命中#' + hits + ' open("' + p + '", flags=0x' +
-        (args[1].toInt32() >>> 0).toString(16) + ") 调用点=" +
+      if (hits <= 3) send('[RE] S1 hit#' + hits + ' open("' + p + '", flags=0x' +
+        (args[1].toInt32() >>> 0).toString(16) + ") callsite=" +
         DebugSymbol.fromAddress(this.returnAddress).toString());
     } else others++;
   }
 });
-setInterval(() => send("[RE] S1 累计: 探针命中=" + hits + " 非探针 open=" + others), 5000);
+setInterval(() => send("[RE] S1 Totals: probe hits=" + hits + " non-probe open=" + others), 5000);
 ```
 
 Measured output (excerpt):
 
 ```
 [RE] S1 open @ 0x18f6438b0 (libsystem_kernel.dylib)
-[RE] S1 命中#1 open("/tmp/re_probe_target.txt", flags=0x1000202) 调用点=0x1017f57d8 Python!os_open
-[RE] S1 命中#2 ... 调用点=0x1017f57d8 Python!os_open
-[RE] S1 累计: 探针命中=10 非探针 open=0
+[RE] S1 hit#1 open("/tmp/re_probe_target.txt", flags=0x1000202) callsite=0x1017f57d8 Python!os_open
+[RE] S1 hit#2 ... callsite=0x1017f57d8 Python!os_open
+[RE] S1 Totals: probe hits=10 non-probe open=0
 === S1 finished, target rc=0, total 14.1s ===
 ```
 
@@ -143,7 +143,7 @@ Interceptor.replace(openAddr, new NativeCallback(function (path, flags, mode) {
   const p = path.readCString();
   const isProbe = p && p.indexOf("/tmp/re_probe_") === 0;
   const fd = origOpen(path, flags, mode);      // manual forward to the original implementation
-  if (isProbe && ++seen <= 3) send('[RE] S2 接管 open("' + p + '") 转发原实现 -> fd=' + fd);
+  if (isProbe && ++seen <= 3) send('[RE] S2 Intercepted open("' + p + '") forwarding original -> fd=' + fd);
   return fd;
 }, "int", ["pointer", "int", "int"]));
 ```
@@ -151,10 +151,10 @@ Interceptor.replace(openAddr, new NativeCallback(function (path, flags, mode) {
 Measured output (excerpt):
 
 ```
-[RE] S2 已整体替换 open,语义=原样转发;靶子应无感知地继续写探针文件
-[RE] S2 接管 open("/tmp/re_probe_target.txt") 转发原实现 -> fd=3 (第1次)
+[RE] S2 Replaced open; forwards unchanged; target should keep writing the probe file
+[RE] S2 Intercepted open("/tmp/re_probe_target.txt") forwarding original -> fd=3 (first occurrence)
 [TARGET] iter 03 ok fd=3 ...        ← target fully unaware throughout, 14/14 rounds normal
-[RE] S2 累计接管探针 open 次数=10
+[RE] S2 Total intercepted probe opens=10
 ```
 
 - Verification point: after replacement, **all** opens pass through our hands; forwarding to the original leaves behavior unchanged (target rc=0, probe file written as usual).
@@ -165,11 +165,11 @@ Measured output (excerpt):
 Scenario assumption: open's entry is under anti-debug watch / the symbol is unavailable - switch to equivalent functions for observation. All three equivalent lanes hooked (`openat`/`fopen`/`open_nocancel`), open itself untouched:
 
 ```
-[RE] S3 已挂等价道 openat @ 0x18f6541bc
-[RE] S3 已挂等价道 fopen @ 0x18f5196e0
-[RE] S3 open_nocancel 无导出符号,跳过
-[RE] S3 等价道计数 openat(total=0, probe=0) | fopen(total=0, probe=0)
-[TARGET] iter 03~14 全 ok(探针照开,等价道全程没看见)
+[RE] S3 Hooked equivalent path openat @ 0x18f6541bc
+[RE] S3 Hooked equivalent path fopen @ 0x18f5196e0
+[RE] S3 open_nocancel not exported; skipped
+[RE] S3 Equivalent-path counts openat(total=0, probe=0) | fopen(total=0, probe=0)
+[TARGET] iter 03~14 all ok (probe still opens; equivalent paths never observed it)
 ```
 
 - **The defeat is data, not posture**: CPython's `os.open` lands directly on the `open` symbol (Section 1.3); the equivalent lanes physically carry no traffic.
@@ -181,9 +181,9 @@ Scenario assumption: open's entry is under anti-debug watch / the symbol is unav
 The v1 call-target filter **missed everything** (the target made 6 opens, 0 hits). Attribution (T4/T5):
 
 ```
-[RE] T4 call总数=1230 ... open精确地址 0x18f6438b0 计数=0   ← the open address simply isn't among the call events
-[RE] T5 exec总数=48055 | open 内指令执行=42 样例@0x18f6438b0,0x18f6438b4   ← open is clearly executing
-[RE] T5 call总数=1097 | target==open 的 call=0
+[RE] T4 total calls=1230 ... exact open address 0x18f6438b0 count=0   ← the open address simply isn't among the call events
+[RE] T5 total exec=48055 | instructions executed inside open=42 sample@0x18f6438b0,0x18f6438b4   ← open is clearly executing
+[RE] T5 total calls=1097 | calls with target==open=0
 ```
 
 **Root cause: between os_open and open sits a stub (BL stub -> `br x16` -> open); the call event's target is the stub's address, not open itself.** The correct posture is the **exec-entry method**: open's first instruction being executed == one call to open, and the "location of the most recent call event" correlates out the effective call site:
@@ -214,10 +214,10 @@ setTimeout(() => { Stalker.unfollow(tid); Stalker.flush(); /* report */ }, 6000)
 Measured output (v2):
 
 ```
-[RE] S4 结果: 6 秒窗口 exec 事件=96101, call 事件=2203
-[RE] S4 open 入口指令执行次数=6 (每次==一次 open 调用)     ← exactly 6 probe opens in the window, precise correspondence
-[RE] S4 调用点关联采样: 入口#1 前序call点=0x104ee97d4 Python!os_open
-[RE] S4 结论: 未碰 open 一个字节(无 trampoline),纯旁路指令流 trace 确认探针 open
+[RE] S4 Result: 6-second window exec events=96101, call events=2203
+[RE] S4 open entry executions=6 (each equals one open call)     ← exactly 6 probe opens in the window, precise correspondence
+[RE] S4 Correlated callsite sample: entry#1 preceding callsite=0x104ee97d4 Python!os_open
+[RE] S4 Conclusion: open bytes untouched (no trampoline); side-channel instruction trace confirms probe opens
 ```
 
 - Pitfall 1: `Stalker.parse(..., {annotate:false})` strips the event-type tags, `ev[0]` becomes a pointer, and `ev[0]==='call'` is forever false -> a silent 0 hits (the nastiest bug class: no error, just nothing).
@@ -233,14 +233,14 @@ Goal: write `mov x0,#-1; ret` (`0x92800000` + `0xd65f03c0`) at open's entry - pe
 const openAddr = Module.findGlobalExportByName("open");
 const hex8 = p => Array.from(new Uint8Array(p.readByteArray(8)))
   .map(b => ("0" + b.toString(16)).slice(-2)).join(" ");
-send("[RE] S5 原始 8 字节: " + hex8(openAddr) + " (首指令 pacibsp)");
+send("[RE] S5 Original 8 bytes: " + hex8(openAddr) + " (first instruction pacibsp)");
 
 setTimeout(() => {
   Memory.patchCode(openAddr, 8, function (code) {      // code is a writable code pointer, not a writer
     code.writeU32(0x92800000);                         // mov x0, #-1
     code.add(4).writeU32(0xd65f03c0);                  // ret
   });
-  send("[RE] S5 patch 后字节回读: " + hex8(openAddr));  // ground-truth verification
+  send("[RE] S5 Bytes read back after patch: " + hex8(openAddr));  // ground-truth verification
 }, 2500);
 
 setTimeout(() => {                                     // restore at 9.5s
@@ -248,21 +248,21 @@ setTimeout(() => {                                     // restore at 9.5s
     code.writeU32(0xd503237f);                         // pacibsp (the original first instruction)
     code.add(4).writeU32(0xd10103ff);                  // sub sp,sp,#0x40 (the original second instruction)
   });
-  send("[RE] S5 恢复后字节回读: " + hex8(openAddr));
+  send("[RE] S5 Bytes read back after restoration: " + hex8(openAddr));
 }, 9500);
 ```
 
 Measured output (v3, full success):
 
 ```
-[RE] S5 原始 8 字节: 7f 23 03 d5 ff 03 01 d1 (首指令 pacibsp)
-[RE] S5 patch 前全新探针 -> fd=3 errno=0 (期望 fd>=0)
-[RE] S5 patch 后字节回读: 00 00 80 92 c0 03 5f d6     ← shared-cache page COW write succeeded, bytes match exactly
-[RE] S5 patch 后全新探针 -> fd=-1 errno=0 (期望 fd=-1)
+[RE] S5 Original 8 bytes: 7f 23 03 d5 ff 03 01 d1 (first instruction pacibsp)
+[RE] S5 Fresh probe before patch -> fd=3 errno=0 (expected fd>=0)
+[RE] S5 Bytes read back after patch: 00 00 80 92 c0 03 5f d6     ← shared-cache page COW write succeeded, bytes match exactly
+[RE] S5 Fresh probe after patch -> fd=-1 errno=0 (expected fd=-1)
 [TARGET] iter 06 open FAILED errno=[Errno 60] Operation timed out: '/tmp/re_probe_target.txt'
-[TARGET] iter 07~12 同上 FAILED                        ← patch window 2.5~9.5s, exactly 7 rounds, seam-perfect
-[RE] S5 恢复后字节回读: 7f 23 03 d5 ff 03 01 d1        ← original bytes restored
-[RE] S5 恢复后全新探针 -> fd=4 errno=0 (期望 fd>=0)
+[TARGET] iter 07~12 same FAILED                        ← patch window 2.5~9.5s, exactly 7 rounds, seam-perfect
+[RE] S5 Bytes read back after restoration: 7f 23 03 d5 ff 03 01 d1        ← original bytes restored
+[RE] S5 Fresh probe after restoration -> fd=4 errno=0 (expected fd>=0)
 [TARGET] iter 13 ok fd=5 / iter 14 ok                  ← behavior restored
 ```
 

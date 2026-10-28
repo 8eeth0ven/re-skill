@@ -166,7 +166,7 @@ Locally verified capture output:
 [cfg] {"tid": 259, "module": "Python", "base": "0x102260000", "events": ["call","block"], "limit": 3000}
 [done] seen=3000 elapsed=16ms
     2747  block
-     309  Python!0x187eb4      ← 块热点 top1
+     309  Python!0x187eb4      ← hottest block
      253  call
      104  Python!0x187ee4
      ...
@@ -199,19 +199,19 @@ python3 scripts/calltree.py ev.jsonl --top 8 --children 2
 Output essentials for 100k call events (verified locally):
 
 ```
-== 调用树 ==
+== Call tree ==
 |- Python!0xc39a8 x99988            ← PyObject_GenericGetAttr
 |  |- Python!0x256b64 x99981        ← _io_TextIOWrapper_read
 |  |  `- Python!0x25263c x99980
 |  |     `- Python!0x120650 x99979
 |  |        |- Python!0x7fcc0 x99971
 |  |        |  |- Python!0x241f74 x99967
-== 热点目标 ==
+== Hot targets ==
    31244  Python!0x3e9d4            ← PyMapping_GetOptionalItem
-== 去重统计 ==
-  call 事件总数: 100000
-  唯一 from->to 边: 31 (去重率 100.0%)
-  唯一目标符号: 27
+== Deduplication ==
+  Total call events: 100000
+  Unique from->to edges: 31 (Deduplication rate 100.0%)
+  Unique target symbols: 27
 ```
 
 **Key reading: a loop-shaped workload produces only 31 unique edges from 100k events** - trace data explodes along the "time-dimension repetition" axis; the first cut of post-processing is always `(from,to) dedup + frequency`: no information lost, volume collapses to zero.
@@ -236,12 +236,12 @@ macOS syscalls are forwarded through libsystem_kernel.dylib's exported functions
 ```
 [ready] hooked 32 functions in libsystem_kernel
 open           "/etc/hosts"                    ret=3
-read           fd=3                            ret=213     ← 字节数
+read           fd=3                            ret=213     ← bytes
 close          fd=3                            ret=0
 stat64         "/tmp"                          ret=0
 getcwd         ""                              ret=1757872128
 access         "/etc/hosts"                   ret=0
-write          fd=1                            ret=8       ← 正是 "W2_DONE\n" 8 字节
+write          fd=1                            ret=8       ← exactly "W2_DONE\n" 8 bytes
 ```
 
 Extend coverage by adding to the `fam` table as needed (openat/fstatat64/posix_spawn/mmap/connect...); fd-type and path-type argument decoding are already split in the script (mind that fstat*'s first arg is an fd - don't let the stat regex swallow it). Equivalence with strace: you see the same layer of information (paths, return values, timing); the difference is you only see libsystem's forwarding surface, not the kernel-side failure details (errno-grade semantics need you to read retval yourself).

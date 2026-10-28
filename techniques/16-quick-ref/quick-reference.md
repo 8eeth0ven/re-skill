@@ -273,20 +273,20 @@ Measured results (local capstone 5.0.7 + unicorn 2.x):
 
 ```text
 [PASS] arm64 NOP: 1f2003d5 -> nop
-[PASS] arm64 返回1: 20008052c0035fd6 -> mov w0, #1; ret
-[PASS] arm64 返回0: 00008052c0035fd6 -> mov w0, #0; ret
+[PASS] arm64 return1: 20008052c0035fd6 -> mov w0, #1; ret
+[PASS] arm64 return0: 00008052c0035fd6 -> mov w0, #0; ret
 [PASS] arm NOP(mov r0,r0): 0000a0e1 -> mov r0, r0
-[PASS] arm 返回1: 0100a0e31eff2fe1 -> mov r0, #1; bx lr
+[PASS] arm return1: 0100a0e31eff2fe1 -> mov r0, #1; bx lr
 [PASS] thumb NOP: 00bf -> nop
-[PASS] thumb 返回1: 01207047 -> movs r0, #1; bx lr
+[PASS] thumb return1: 01207047 -> movs r0, #1; bx lr
 [PASS] x86 NOP: 90 -> nop
-[PASS] x86 返回1: b801000000c3 -> mov eax, 1; ret
-[PASS] x86 返回0(xor+ret): 31c0c3 -> xor eax, eax; ret
+[PASS] x86 return1: b801000000c3 -> mov eax, 1; ret
+[PASS] x86 return0(xor+ret): 31c0c3 -> xor eax, eax; ret
 [PASS] x86_64 NOP: 90 -> nop
-[PASS] x86_64 返回1: b801000000c3 -> mov eax, 1; ret
-[unicorn/arm64] 原函数 x0=0, 补丁后 x0=1
-[unicorn/x86]   原函数 eax=0, 补丁后 eax=1
-结论: 反汇编 12/12 PASS;arm64/x86 模拟执行 补丁前后行为变化正确
+[PASS] x86_64 return1: b801000000c3 -> mov eax, 1; ret
+[unicorn/arm64] original x0=0, patched x0=1
+[unicorn/x86]   original eax=0, patched eax=1
+Result: disassembly 12/12 PASS;arm64/x86 emulation before/after behavior changed correctly
 ```
 
 Two pitfalls you only hit by actually running it (the script already avoids both):

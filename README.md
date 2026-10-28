@@ -4,7 +4,6 @@
 
 <p align="center">
   <a href="SKILL.md"><strong>Open the skill</strong></a> ·
-  <a href="README.zh-CN.md">简体中文</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="usage-scenarios.md">Find your scenario</a> ·
   <a href="techniques/INDEX.md">Explore techniques</a>
@@ -22,8 +21,9 @@ A task-routed skill and asset-analysis runner that connect platform knowledge, r
 
 | What you have or need | Start here |
 |---|---|
-| Assets to inspect through the CLI, with reports and resumable state | [Runner guide and capability matrix](docs/runner.zh-CN.md) (Chinese) |
-| An APK to analyze from environment check through report | [APK pipeline](pipeline/pipeline.md) |
+| Assets to inspect through the CLI, with reports and resumable state | [Runner guide and capability matrix](docs/runner.md) |
+| APK static information and a full report | [Runner guide](docs/runner.md) |
+| An explicit APK dynamic/full-chain request | [APK pipeline](pipeline/pipeline.md) |
 | A hook, detection, encryption, or tracing problem | [Technique index](techniques/INDEX.md) |
 | A platform-specific question or vulnerability root cause | [Platform index](platforms/INDEX.md) |
 | A concrete case, historical technique, or protection lineage | [Case corpus](corpus/INDEX.md) · [coverage ledger](corpus/coverage-ledger.md) |
@@ -82,10 +82,10 @@ uv run --no-sync re-run doctor --profile android
 uv run --no-sync re-run analyze --asset /absolute/path/sample.apk --output re-runs --language en
 ```
 
-Use `re-run doctor --help` or the [runner guide](docs/runner.zh-CN.md) for other supported profiles. Local input analysis does not authorize following discovered network
+Use `re-run doctor --help` or the [runner guide](docs/runner.md) for other supported profiles. Local input analysis does not authorize following discovered network
 endpoints. Network/device reads use the runner's explicit scope mechanism.
-See the [input examples](examples/README.md), [delivery status](docs/delivery-status.zh-CN.md),
-and [completion/acceptance guide](docs/agent-completion-prompt.zh-CN.md) for
+See the [input examples](examples/README.md), [delivery status](docs/delivery-status.md),
+and [completion/acceptance guide](docs/agent-completion-prompt.md) for
 profile limits and work requiring deeper verification. The runner does not
 claim a reproduced vulnerability from a heuristic or a successful exit alone.
 
@@ -95,7 +95,7 @@ claim a reproduced vulnerability from a heuristic or a successful exit alone.
   <img src="assets/readme/workflow.svg" alt="APK analysis workflow: S0 environment check, S1 information gathering and dependency join, S2 static analysis, S3 dynamic analysis, S4 report." width="100%">
 </p>
 
-The [pipeline](pipeline/README.md) defines commands, artifacts, acceptance gates, and fallback paths for each stage. Independent information gathering runs in parallel before dependent analysis joins; dynamic work uses the selected test emulator. Unavailable capabilities become explicit degradation entries rather than invented results.
+For an explicit APK S0–S4 or dynamic request, the [pipeline](pipeline/README.md) defines commands, artifacts, acceptance gates, and fallback paths for each stage. Static information/report requests can use the runner without starting an emulator. A bare URL must first be resolved as a Web asset or package download. Independent information gathering runs in parallel before dependent analysis joins; dynamic work uses the selected test emulator. Unavailable capabilities become explicit degradation entries rather than invented results.
 
 The result is `输出/<package>-<date>/03-report.md`, alongside the supporting logs and artifacts. Continue from the report into the relevant technique or case article when deeper work is needed.
 

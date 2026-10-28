@@ -54,7 +54,7 @@ Interceptor.attach(JNI_OnLoad, {
         })
     },
     onLeave: function (retval) {
-        console.log("结束");
+        console.log("Finished");
         Stalker.unfollow();
         Stalker.garbageCollect();
     }
@@ -84,7 +84,7 @@ Interceptor.attach(module.base.add(0x4b614), {
             })
         },
         onLeave: function (retval) {
-            console.log("结束");
+            console.log("Finished");
             Stalker.unfollow();
             Stalker.garbageCollect();
         }
@@ -182,7 +182,7 @@ const cm = new CModule(`
 #include <stdio.h>
 
 void onEvent(const GumEvent *event, GumCpuContext *cpu_context, gpointer user_data) {
-  printf("成功");
+  printf("Succeeded");
 }
 `);
 

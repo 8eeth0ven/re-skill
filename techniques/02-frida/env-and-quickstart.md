@@ -27,7 +27,7 @@ First write a minimal runnable script to check whether the environment works:
 // Minimal script: verify that the Java layer is available
 function main(){
     Java.perform(()=>{
-        console.log("成功运行")
+        console.log("Running successfully")
     })
 }
 setImmediate(main)

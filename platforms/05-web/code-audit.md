@@ -175,7 +175,7 @@ class SsrfConfig extends TaintTracking::Config {
 }
 from SsrfConfig cfg, DataFlow::PathNode source, DataFlow::PathNode sink
 where any(TaintTracking::Path p).hasFlowPath(source, sink)
-select sink.getNode(), source, sink, "SSRF: $@ → URL 打开", source, "用户输入"
+select sink.getNode(), source, sink, "SSRF: $@ → URL open", source, "user input"
 ```
 
 Essentials: run the framework's built-in query set first (security-extended), then adapt source/sink to the business; with Tabby, compute reachability on very large projects before reading closely — an order of magnitude in time saved.

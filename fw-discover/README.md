@@ -16,8 +16,8 @@ re-run analyze --asset /absolute/path/to/firmware.tar --type firmware --output r
 The runner accepts extracted rootfs trees and bounded TAR/ZIP/gzip input.
 Opaque filesystems require the appropriate isolated extractor provider; indicator
 scans are not proof of successful extraction. The current format/depth matrix
-is in the [runner guide](../docs/runner.zh-CN.md), with remaining work in the
-[execution handoff](../docs/agent-completion-prompt.zh-CN.md). The optional static
+is in the [runner guide](../docs/runner.md), with remaining work in the
+[execution handoff](../docs/agent-completion-prompt.md). The optional static
 analysis battery is described in [static-scan-tool-matrix.md](static-scan-tool-matrix.md).
 
 ## Legacy Public-Image Queue

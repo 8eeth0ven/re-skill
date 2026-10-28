@@ -111,7 +111,7 @@ Typical AI-orchestrated flow: headless-import the driver/kernel module → `Deco
 ### 2.3 IDA (Optional)
 
 - Free IDA Free 9.1: https://hex-rays.com/ida-free (latest verified that day is 9.1; includes x86/x64 decompilation, commercial use prohibited; no SDK/limited IDAPython support). FLARE VM has preinstalled IDA Free 9.1 since 2025-06
-- With an existing IDA Pro license: after installing, install the MCP plugin (see `../../../radar/MCP测试报告.md` — the local IDA MCP needs its service started manually once inside IDA); also usable inside the VM
+- With an existing IDA Pro license: after installing, install the MCP plugin (see `../../../radar/mcp-test-report.md` — the local IDA MCP needs its service started manually once inside IDA); also usable inside the VM
 - No license, no need: Ghidra + radare2 cover 90% of static needs
 
 ### 2.4 radare2
@@ -192,16 +192,16 @@ Essentials: **the target's bitness must match the winafl.dll bitness** (64-bit p
 $ErrorActionPreference = 'Continue'
 $results = @()
 function Step($name, $check, $install) {
-    if (& $check) { $script:results += [pscustomobject]@{Item=$name;Status='已装'}; return }
+    if (& $check) { $script:results += [pscustomobject]@{Item=$name;Status='present'}; return }
     try { & $install
-        if (& $check) { $script:results += [pscustomobject]@{Item=$name;Status='新装'} }
-        else          { $script:results += [pscustomobject]@{Item=$name;Status='装后检测失败'} } }
-    catch { $script:results += [pscustomobject]@{Item=$name;Status="失败:$($_.Exception.Message)"} }
+        if (& $check) { $script:results += [pscustomobject]@{Item=$name;Status='installed'} }
+        else          { $script:results += [pscustomobject]@{Item=$name;Status='post-install check failed'} } }
+    catch { $script:results += [pscustomobject]@{Item=$name;Status="failed:$($_.Exception.Message)"} }
 }
 # 0) Prerequisites: winget + administrator privileges
-if (-not (Get-Command winget -EA SilentlyContinue)) { Write-Error '无 winget: 装 App Installer(商店) 后重跑'; exit 1 }
+if (-not (Get-Command winget -EA SilentlyContinue)) { Write-Error 'winget absent: install App Installer from Store, then rerun'; exit 1 }
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-      ).IsInRole('Administrators')) { Write-Error '需管理员 PowerShell'; exit 1 }
+      ).IsInRole('Administrators')) { Write-Error 'Administrator PowerShell required'; exit 1 }
 # 1) Base tools (all via winget; versions follow the winget source)
 $pkgs = @(
   @{n='WinDbg';      id='Microsoft.WinDbg'},
@@ -241,11 +241,11 @@ $dr = (Invoke-RestMethod 'https://api.github.com/repos/DynamoRIO/dynamorio/relea
 if ($dr) { Invoke-WebRequest $dr.browser_download_url -OutFile "$env:TEMP\drio.zip"
            7z x "$env:TEMP\drio.zip" -oC:\tools | Out-Null }   # The extracted directory name contains the version; record it in the report
 # 6) Summary (mark reboot/manual-action requirements here)
-$results += [pscustomobject]@{Item='bcdedit内核调试';Status='手动: 见 §1.2, 配完需重启'}
-$results += [pscustomobject]@{Item='winafl编译';      Status='手动: VS开发者命令行 cmake, 见 §3.1'}
+$results += [pscustomobject]@{Item='bcdedit kernel debugging';Status='Manual: see section 1.2; reboot after setup'}
+$results += [pscustomobject]@{Item='winafl compilation';      Status='Manual: VS developer shell cmake, see section 3.1'}
 $results | Format-Table -AutoSize
 $results | Export-Csv C:\tools\setup-report.csv -NoTypeInformation
-Write-Host "`n== 装完先重启一次(BuildTools/bcdedit), 再按手册 §7 自检 =="
+Write-Host "`n== Reboot after installing BuildTools/bcdedit, then run section 7 self-check =="
 ```
 
 ## 6. macOS Local-Side Notes

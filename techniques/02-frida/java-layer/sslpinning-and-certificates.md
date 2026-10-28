@@ -27,7 +27,7 @@ Java.perform(function () {
 
     // Supply the CA certificate here
     try {
-        console.log("加载ca 文件")
+        console.log("Loading CA file")
         var fileInputStream = FileInputStream.$new("/data/local/tmp/cer/desktop.cer");
     } catch (err) {
         console.log("[o] " + err);
@@ -108,7 +108,7 @@ if (Java.available) {
             console.log("dumpClinetCertificate=>" + '/data/data/' + packageName + "/files/base.p12" + '   pwd: r0ysue');
             return result;
         }
-        console.log("开始hook")
+        console.log("Starting hook")
     })
 }
 ```

@@ -87,7 +87,7 @@ SIGS = {
     "MD5/SHA1 IV":  [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476],
     "SHA256 IV":    [0x6A09E667, 0xBB67AE85],
     "TEA delta":    [0x9E3779B9],
-    "AES S-box 头": [0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5],
+    "AES S-box prefix": [0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5],
 }
 def scan_sigs():
     for seg_ea in idautils.Segments():
@@ -224,9 +224,9 @@ import string, collections
 def probe_b64(samples: list[bytes]):
     charset = set().union(*[set(s) for s in samples])
     std = set(string.ascii_letters + string.digits + "+/=")
-    print("非标准字符:", charset - std)          # Characters such as '*-&_#' indicate a custom alphabet
+    print("Nonstandard characters:", charset - std)          # Characters such as '*-&_#' indicate a custom alphabet
     # Length features: len % 4 distribution, padding presence, and a fixed-length trailing salt
-    print("长度 mod 4 分布:", collections.Counter(len(s) % 4 for s in samples))
+    print("Length mod 4 distribution:", collections.Counter(len(s) % 4 for s in samples))
     # Known-plaintext approach: supply a field with known content, such as device_id, and compare outputs
     # Misaligned 6-bit boundaries suggest an earlier XOR/shift; aligned groups with changed characters suggest an alphabet permutation
 

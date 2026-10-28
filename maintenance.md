@@ -13,9 +13,10 @@ do not duplicate those lists or manually maintained line counts here.
 - Keep active instructions and explanatory comments in English. Exact API names,
   match strings, payload bytes, source titles, historical outputs, and compatibility
   paths may retain their original language.
-- Treat `data/`, `tools-env/`, environment snapshots, and the append-only discovery
-  log as preserved resources, not text to translate or reorganize during a prose update.
-- The optional local historical quality audit, `自检报告.md`, records earlier
+- Treat `data/`, `tools-env/`, environment snapshots as preserved resources, not prose to reorganize. Preserve the
+  discovery log's dates, measured values, source locations, dispositions, and statuses during
+  editorial translation; do not turn old observations into new tests.
+- The optional local historical quality audit, `quality-audit.md`, records earlier
   findings under older Chinese directory names. It is excluded from Git and may
   be absent in a fresh clone. Its results describe that audit, not the current
   machine. Do not recreate obsolete directories from those historical labels.
@@ -44,7 +45,7 @@ python3 scripts/validate_library.py --json
 ```
 
 The standard-library validator checks local Markdown links and headings, branch
-index coverage, two-column index tables, preservation of legacy entry triggers,
+index coverage, two-column index tables, a concise English domain description and essential workflow routes,
 Python syntax, and Bash syntax. It skips raw data and installed environments,
 and never imports the analysis scripts or invokes a device, scanner, installer,
 or external service. The historical audit and discovery log are exempt from
@@ -67,8 +68,7 @@ APK, firmware, or hardware result.
 
 ## Recurring Regression Checks
 
-- Standard YAML delimiters and an indented/folded description; all legacy trigger
-  phrases retained; no escaped `\---` delimiters.
+- Standard YAML delimiters and an indented/folded description; legacy task phrases retained in the optional usage-scenario vocabulary; no escaped `\---` delimiters.
 - Branch links are relative to their containing file. From `platforms/INDEX.md`
   or `techniques/INDEX.md`, the skill entry is `../SKILL.md`.
 - Avoid duplicated empty table columns, isolated rows, and references to renamed

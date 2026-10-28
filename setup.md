@@ -1,5 +1,31 @@
 # Setup Guide — Prepare the Tools for Your Analysis
 
+## Install the Agent Skill
+
+Keep the complete repository together so relative references and helpers resolve. Choose one
+supported client/location; update an existing checkout rather than cloning over it. Create the
+parent directory if absent. Reading the knowledge library alone needs no RE tool installation.
+
+```bash
+# macOS/Linux user-level examples; choose one client.
+git clone https://github.com/8eeth0ven/re-skill.git "$HOME/.agents/skills/re"
+git clone https://github.com/8eeth0ven/re-skill.git "$HOME/.claude/skills/re"
+```
+
+```powershell
+# Windows user-level examples; choose one client.
+$reSkillPath = Join-Path $HOME '.agents\skills\re'
+git clone https://github.com/8eeth0ven/re-skill.git $reSkillPath
+$reSkillPath = Join-Path $HOME '.claude\skills\re'
+git clone https://github.com/8eeth0ven/re-skill.git $reSkillPath
+```
+
+Project-level locations are `.agents/skills/re` or `.claude/skills/re`. Discovery/invocation follows
+the installed client version: Codex `$re`, Claude Code `/re`, or read `SKILL.md` in another
+compatible client. References retained from the installation guide:
+[Codex Skills](https://developers.openai.com/codex/skills),
+[Claude Code Skills](https://code.claude.com/docs/en/skills).
+
 ## Unified runner
 
 The repository provides `pyproject.toml` and `uv.lock`; the runner requires
@@ -15,8 +41,8 @@ uv run --no-sync re-run analyze --manifest examples/assets.local.json --output r
 Without uv, `python -m pip install -e '.[devices,grpc]'` uses version ranges
 rather than the exact uv lock. External JADX, Ghidra, IDA, Frida, and extractors
 are installed separately; available adapters and supported depth vary by
-profile. `RE_RUN_R2` accepts a trusted native executable. See [runner guide](docs/runner.zh-CN.md),
-[status](docs/delivery-status.zh-CN.md) and [handoff](docs/agent-completion-prompt.zh-CN.md).
+profile. `RE_RUN_R2` accepts a trusted native executable. See [runner guide](docs/runner.md),
+[status](docs/delivery-status.md) and [handoff](docs/agent-completion-prompt.md).
 
 > Run from the repository root. Install the tools needed for the selected task,
 > using the actual host's permissions and package availability. These are setup

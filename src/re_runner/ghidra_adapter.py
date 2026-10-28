@@ -1,6 +1,6 @@
 """Ghidra headless decompile backend adapter (A-lane round 3).
 
-Covers the 6d acceptance gap ``Ghidra 深度反编译 adapter``: analyzeHeadless is
+Covers the 6d acceptance gap ``deep Ghidra decompilation adapter``: analyzeHeadless is
 wired as an independent decompile backend. decompile.py (radare2 route) is
 outside this lane's writable set, so this is a sibling module with the same
 stage shape: trusted executable resolution via RE_RUN_GHIDRA, a fixed argv run

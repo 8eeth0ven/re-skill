@@ -1,6 +1,6 @@
 # r0re Architecture Deep-Dive: a Kimi Code-driven multi-agent orchestration service for Android reverse engineering
 
-> Based on a source review of r0re (fyrlove/r0re, the full 183-file tree of the main branch + key sources), its upstream oritera/Cairn, and the borrowed-from FishCodeTech/muteki; the project's docs are bilingual (`docs/README.zh-CN.md` / `docs/README.en.md`).
+> Based on a source review of r0re (fyrlove/r0re, the full 183-file tree of the main branch + key sources), its upstream oritera/Cairn, and the borrowed-from FishCodeTech/muteki; the project's docs are bilingual (`upstream-r0re:docs/README.zh-CN.md` / `upstream-r0re:docs/README.en.md`).
 
 ## 1. What r0re is and what problem it solves
 
@@ -127,7 +127,7 @@ Design patterns worth excerpting:
 
 ## 5. Differences from upstream Cairn; the blackboard mechanism borrowed from muteki
 
-### 5.1 Original Cairn (docs/specs/dispatcher-design.md, 1181 lines)
+### 5.1 Original Cairn (upstream-Cairn:docs/specs/dispatcher-design.md, 1181 lines)
 - Positioning: "Given an origin and a goal, it searches for a path through an unknown state space"; penetration testing is merely the first proving ground;
 - Three components: Cairn Server (graph source of truth) / Dispatcher (**"the Agent never claims Intents directly, never heartbeats directly, never calls the Cairn API directly; the Dispatcher is the sole protocol writer"**) / one Worker container per project;
 - Task model: bootstrap (straight solve at the start, timeout wrapped up by bootstrap_conclude) / reason (single-project lease) / explore (heartbeat claim first, then start), two-phase conclude;

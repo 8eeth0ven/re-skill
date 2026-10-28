@@ -18,16 +18,12 @@ from urllib.parse import unquote, urlsplit
 
 SKIP_PARTS = {'.git', 'data', 'tools-env', '环境快照', '__pycache__', '输出'}
 HISTORICAL = {'自检报告.md', 'radar/发现日志.md'}
-TRIGGERS = (
-    'reverse engineering', 'Android RE', 'iOS RE', 'IoT', 'frida', 'hook',
-    'unpacking', 'traffic capture', 'SSL pinning', 'anti-debugging',
-    'root detection', 'app packers', 'OLLVM', 'obfuscation', 'VMP',
-    'algorithm restoration', 'risk control', 'RPC', 'syscall', 'eBPF',
-    'kernel hook', 'bypass', 'RASP', 'pwn', 'CTF', 'vulnerability root cause',
-    'unidbg', 'full-chain execution', 'tool radar', 'frida-mcp', 'jadx-mcp',
-    'ghidra-mcp', "look at this app's encryption", 'how do I reverse this .so',
-    'run the pipeline',
-)
+REQUIRED_ENTRY_ROUTES = {
+    'docs/runner.md', 'pipeline/pipeline.md', 'breach-tables-cve.md',
+    'platforms/INDEX.md', 'techniques/INDEX.md', 'corpus/INDEX.md',
+    'radar/README.md', 'setup.md', 'device-testing.md', 'unattended.md',
+    'test-values.md', 'docs/execution-reference.md',
+}
 
 
 def prose_lines(source):
@@ -114,6 +110,24 @@ def validate(root):
                 if content is not None and unquote(url.fragment) not in heading_ids(content):
                     errors.append(f'{rel}:{number}: missing heading {target}')
 
+    # Root-relative library routes also appear as plain prose or inline code. Do not
+    # treat generated outputs, external source trees (namespace:path), or raw data
+    # as bundled files. Markdown links and anchors are validated separately above.
+    route_pattern = re.compile(
+        r'(?<![\w/.:~-])((?:platforms|techniques|corpus|docs|pipeline|radar)/'
+        r'[A-Za-z0-9_./-]+\.md)(?![\w/-]|\.\w)'
+    )
+    for path, source in texts.items():
+        rel = path.relative_to(root).as_posix()
+        if rel in HISTORICAL:
+            continue
+        for number, line in prose_lines(source):
+            for match in route_pattern.finditer(line):
+                target = match.group(1)
+                stats['literal_routes'] += 1
+                if not (root / target).exists() and not (path.parent / target).exists():
+                    errors.append(f'{rel}:{number}: missing literal library route {target}')
+
     for branch in ('platforms', 'techniques', 'corpus'):
         folder = root / branch
         index = folder / 'INDEX.md'
@@ -140,10 +154,18 @@ def validate(root):
         desc = front.group(1)
         if not re.search(r'^name:\s*re\s*$', desc, re.M):
             errors.append('SKILL.md: expected name: re')
-        normalized = ' '.join(desc.split())
-        for trigger in TRIGGERS:
-            if trigger not in normalized:
-                errors.append(f'SKILL.md: missing legacy trigger: {trigger}')
+        description = re.search(r'^description:\s*>-?\n((?:[ \t]+[^\n]*\n?)*)', desc, re.M)
+        normalized = ' '.join(description.group(1).split()) if description else ''
+        if not normalized or len(normalized) > 500:
+            errors.append('SKILL.md: expected a nonempty folded description of at most 500 characters')
+        if 'reverse engineering' not in normalized.lower():
+            errors.append('SKILL.md: description must identify its reverse-engineering domain')
+        if re.search(r'[\u3400-\u9fff]', normalized):
+            errors.append('SKILL.md: discovery description must be English')
+        entry_targets = {unquote(urlsplit(target).path) for _, target in links(skill)
+                         if not urlsplit(target).scheme}
+        for route in sorted(REQUIRED_ENTRY_ROUTES - entry_targets):
+            errors.append(f'SKILL.md: missing essential workflow route: {route}')
     return {'root': str(root), 'passed': not errors, 'stats': dict(stats), 'errors': errors}
 
 

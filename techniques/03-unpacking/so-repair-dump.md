@@ -78,7 +78,7 @@ function parseSoInfo(soinfo_addr) {
                 // DT_STRSZ (10) contains the string-table size
                 if (d_tag === 10) {
                     const strSize = currentDyn.add(8).readULong();
-                    console.log(`从动态段获取到字符串表大小: ${strSize}`);
+                    console.log(`String-table size from dynamic segment: ${strSize}`);
                     return strSize;
                 }
 
@@ -179,7 +179,7 @@ function getSoInfoHead() {
         }
     }
     if (!soInfoHead) {
-        throw new Error("linker解析错误")
+        throw new Error("Linker parsing error")
     }
     return soInfoHead.readPointer();
 }
@@ -246,12 +246,12 @@ function dumpSoFromSoInfo(soInfo, outputPath) {
     const soBase = soInfo.base;
     const soSize = soInfo.size;
 
-    console.log(`开始导出SO: 基址=${soBase}, 大小=${soSize}`);
+    console.log(`Dumping SO: base=${soBase}, size=${soSize}`);
 
     // Create the output file handle
     const file = new File(outputPath, "wb");
     if (file === null) {
-        throw new Error(`无法创建输出文件: ${outputPath}`);
+        throw new Error(`Cannot create output file: ${outputPath}`);
     }
 
     // Visit each segment and write it to the file
@@ -259,19 +259,19 @@ function dumpSoFromSoInfo(soInfo, outputPath) {
         // Read the complete ELF header
         const elfHeader = Memory.readByteArray(soBase, 64);  // The ELF64 header is normally 64 bytes
         file.write(elfHeader);
-        console.log("已写入ELF头");
+        console.log("ELF header written");
 
         // Read the program-header table
         const phdr = soInfo.phdr;
         const e_phnum = soBase.add(56).readU16();  // ELF64 e_phnum is at offset 56
         const e_phentsize = soBase.add(54).readU16();  // ELF64 e_phentsize is at offset 54
-        console.log(`程序头表数量: ${e_phnum}, 每个条目大小: ${e_phentsize}`);
+        console.log(`Program-header count: ${e_phnum}, size per entry: ${e_phentsize}`);
 
         // Read and write the program-header table
         const phdrSize = e_phnum * e_phentsize;
         const phdrData = Memory.readByteArray(phdr, phdrSize);
         file.write(phdrData);
-        console.log("已写入程序头表");
+        console.log("Program headers written");
 
         // Iterate through the program headers and read each segment's metadata
         for (let i = 0; i < e_phnum; i++) {
@@ -294,9 +294,9 @@ function dumpSoFromSoInfo(soInfo, outputPath) {
                     try {
                         const segmentData = Memory.readByteArray(segmentAddr, p_filesz);
                         file.write(segmentData);
-                        console.log(`已写入段: 偏移=${p_offset}, 地址=${segmentAddr}, 大小=${p_filesz}`);
+                        console.log(`Segment written: offset=${p_offset}, address=${segmentAddr}, size=${p_filesz}`);
                     } catch (e) {
-                        console.error(`读取段时出错: ${e.message}`);
+                        console.error(`Error reading segment: ${e.message}`);
                     }
                 }
             }
@@ -320,7 +320,7 @@ function dumpSoFromSoInfo(soInfo, outputPath) {
                     // Read and write the dynamic-segment contents
                     const dynamicData = Memory.readByteArray(soInfo.dynamic, p_filesz);
                     file.write(dynamicData);
-                    console.log(`已写入动态段: 偏移=${p_offset}, 大小=${p_filesz}`);
+                    console.log(`Dynamic segment written: offset=${p_offset}, size=${p_filesz}`);
                     break;
                 }
             }
@@ -372,7 +372,7 @@ function dumpSoFromSoInfo(soInfo, outputPath) {
                         file.seek(symtabOffset.toUInt32());
                         const symtabData = soInfo.symtab.readByteArray(symtabSize);
                         file.write(symtabData);
-                        console.log(`已写入符号表: 偏移=${symtabOffset}, 大小=${symtabSize}`);
+                        console.log(`Symbol table written: offset=${symtabOffset}, size=${symtabSize}`);
                     }
 
                     // Check whether this segment contains the string-table address
@@ -383,7 +383,7 @@ function dumpSoFromSoInfo(soInfo, outputPath) {
                         file.seek(strtabOffset.toUInt32());
                         const strtabData = soInfo.strtab.readByteArray(strtabSize);
                         file.write(strtabData);
-                        console.log(`已写入字符串表: 偏移=${strtabOffset}, 大小=${strtabSize}`);
+                        console.log(`String table written: offset=${strtabOffset}, size=${strtabSize}`);
                     }
                 }
             }
@@ -411,7 +411,7 @@ function dumpSoFromSoInfo(soInfo, outputPath) {
                         file.seek(relaOffset.toUInt32());
                         const relaData = soInfo.rela.readByteArray(relaSize);
                         file.write(relaData);
-                        console.log(`已写入重定位表(Rela): 偏移=${relaOffset}, 大小=${relaSize}`);
+                        console.log(`Rela table written: offset=${relaOffset}, size=${relaSize}`);
                     }
                 }
             }
@@ -439,16 +439,16 @@ function dumpSoFromSoInfo(soInfo, outputPath) {
                         file.seek(pltRelaOffset.toUInt32());
                         const pltRelaData = soInfo.plt_rela.readByteArray(pltRelaSize);
                         file.write(pltRelaData);
-                        console.log(`已写入PLT重定位表: 偏移=${pltRelaOffset}, 大小=${pltRelaSize}`);
+                        console.log(`PLT relocation table written: offset=${pltRelaOffset}, size=${pltRelaSize}`);
                     }
                 }
             }
         }
 
-        console.log(`SO文件导出成功: ${outputPath}`);
+        console.log(`SO dump succeeded: ${outputPath}`);
         return true;
     } catch (e) {
-        console.error(`导出SO时出错: ${e.message}, ${e.stack}`);
+        console.error(`Error dumping SO: ${e.message}, ${e.stack}`);
         return false;
     } finally {
         file.close();

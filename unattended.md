@@ -30,7 +30,7 @@ Complete it autonomously under the following discipline; asking the human questi
 
 ## III. Continuous Tasks While Unattended (requires host scheduling)
 
-- **Daily 09:00 tool radar, when configured in the host**: discover new tools → evaluate → catalog → local smoke test → append to the discovery log. The human just occasionally browses `radar/发现日志.md`.
+- **Daily 09:00 tool radar, when configured in the host**: discover new tools → evaluate → catalog → local smoke test → append to the discovery log. The human just occasionally browses `optional-local:radar/discovery-log.md`.
 - **Batching**: process the directory queue with at most 2 APKs in flight; static work can overlap, while each emulator has a mutex and its dynamic steps run serially. Produce one summary daily report after the queue finishes.
 - Host schedules are not installed by copying this directory. Restore or inspect them per `setup.md` §7; a manual round remains available without a schedule.
 

@@ -126,21 +126,21 @@ const startAddress = ptr(0x7583c0c000)
 const endAddress = ptr(0x7583d1e000)
 Memory.scan(startAddress, endAddress.sub(startAddress).toInt32(), searchValue, {
     onMatch: function(address, size) {
-        console.log("找到数据！地址：" + address);
+        console.log("Data found at: " + address);
         // Modify the matched data here, for example:
     },
     onComplete: function() {
-        console.log("搜索完成。");
+        console.log("Search complete.");
     }
 });
 
 // Wildcard-pattern matching
 Memory.scan(ptr("0x10000000"), 0x10000, "00 01 02 03 ?? ?? 06 07 08 09 ?? ?? ?? ?? 0e 0f", {
     onMatch: function(address) {
-        console.log("找到数据！地址：" + address);
+        console.log("Data found at: " + address);
     },
     onComplete: function() {
-        console.log("搜索完成。");
+        console.log("Search complete.");
     }
 });
 ```
@@ -255,11 +255,11 @@ function fridaReplace(startAddress, endAddress) {
     let matchedAddresses = []; // Collect the matched addresses
     Memory.scan(startAddress, endAddress.sub(startAddress).toInt32(), searchValue, {
         onMatch: function (address, size) {
-            console.log("找到数据！地址：" + address);
+            console.log("Data found at: " + address);
             matchedAddresses.push(address); // Append the matching address to the array
         },
         onComplete: function () {
-            console.log("搜索完成，共找到 " + matchedAddresses.length + " 个匹配项。");
+            console.log("Search complete; matches: " + matchedAddresses.length + ".");
             // Visit and modify every matched address
             matchedAddresses.forEach(function (address) {
                 try {
@@ -270,7 +270,7 @@ function fridaReplace(startAddress, endAddress) {
                     const replacement = "6c 69 62 77 7a 64 6e 62 2d 61 67 65 6e 74"; // Hexadecimal encoding of "libwzdnb-agent"
                     const bytes = replacement.split(" ").map(byte => parseInt(byte, 16));
                     Memory.writeByteArray(address, bytes);
-                    console.log("已将 'frida' 替换为 'wzdnb'，地址：" + address);
+                    console.log("Replaced 'frida' with 'wzdnb' at: " + address);
                     // Restore the original memory permissions, selecting the appropriate protection for this region
                     Memory.protect(address, size, 'r--');
                 } catch (error) {
@@ -314,7 +314,7 @@ function replaceFrida() {
     })
     if (startAddress && endAddress) {
         fridaReplace(startAddress, endAddress);
-        console.log("检测成功");
+        console.log("Detection succeeded");
     }
 }
 
@@ -359,7 +359,7 @@ new NativeFunction(address, returnType, argTypes[, abi])
 
 ```javascript
 Interceptor.replace(module.base.add(0x4421C), new NativeCallback(function () {
-    console.log("开始")
+    console.log("Starting")
     return 1;  // Match the 'int64' return type; use 1n (BigInt) if a 64-bit integer literal is required
 }, 'int64', ["int64"]));
 ```
@@ -386,7 +386,7 @@ const cm = new CModule(`
 #include <stdio.h>
 
 void test(){
-  console.log("成功");
+  console.log("Succeeded");
 }
 `);
 // Invoke this function pointer through NativeFunction
@@ -523,11 +523,11 @@ function VMRuntime_clear() {
        var Parcel = Java.use("android.os.Parcel");
        if (Parcel.mCreators) {
            Parcel.mCreators.value.clear()
-           console.log("mCreators 清空")
+           console.log("mCreators cleared")
        }
        if (Parcel.sPairedCreators) {
            Parcel.sPairedCreators.value.clear()
-           console.log("sPairedCreators 清空")
+           console.log("sPairedCreators cleared")
        }
    }
 ```

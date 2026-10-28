@@ -215,7 +215,7 @@ def disasm(bc):                                   # First pass: collect branch t
     pc, labels = 0, set()
     while pc < len(bc):
         op = bc[pc]; info = OPS.get(op)
-        if not info: raise SystemExit(f"未知op 0x{op:x} @ {pc} —— 语义表缺口,先回§2.3补")
+        if not info: raise SystemExit(f"Unknown op 0x{op:x} @ {pc}; missing semantics, complete section 2.3 first")
         name = info["guess"]; pc += 1             # Adapt instruction length to the sample; variable-width instructions follow operandWidth in the semantic table
         if name in ("JMP", "JCC"): labels.add(read_imm(bc, pc)); pc += imm_w
         elif name in ("LDC_IMM",): pc += imm_w
@@ -232,7 +232,7 @@ def lift(bc):
         elif name == "JMP":   out.append(f"goto L{read_imm(bc, pc)}"); pc += imm_w
         elif name == "JCC":   out.append(f"if {stack.pop()} goto L{read_imm(bc, pc)}"); pc += imm_w
         # Expand the other semantic classes in the same way; CALL pops the function and argument count
-        else: raise SystemExit(f"未折叠语义 {name} @ {pc}")
+        else: raise SystemExit(f"Unfolded semantics {name} @ {pc}")
     return "\n".join(out)
 ```
 
@@ -260,12 +260,12 @@ def replay(inp):
         elif name == "ADD":     b, a = st.pop(), st.pop(); st.append(a + b)
         elif name == "ENV":     st.append(env_shim(imm))    # Environment-dependent behavior; see the shim discussion below
         elif name == "EXIT":    return st.pop(), trace
-        else: raise SystemExit(f"语义缺口 {name} @ {pc} —— 继续回§2.3补表")
+        else: raise SystemExit(f"Missing semantics {name} @ {pc}; extend section 2.3 table")
     return st[-1], trace
 
 out, trace = replay({"ts": 1760000000, "input": "..."})
 orig = open("orig_out.txt").read()                # Original VM output for identical input with time frozen
-print("输出一致" if out == orig else f"FAIL: replay={out} orig={orig}")
+print("Outputs match" if out == orig else f"FAIL: replay={out} orig={orig}")
 json.dump([{"pc": p, "op": n, "st": list(s)} for p, n, s in trace], open("replay_trace.json", "w"))
 ```
 
@@ -283,11 +283,11 @@ orig  = json.load(open("orig_trace.json"))        # Normalize [{seq,op,s1...}] t
 repl  = json.load(open("replay_trace.json"))
 for i, (a, b) in enumerate(zip(orig, repl)):
     if a["op"] != b["op"]:
-        print(f"#{i} 控制流分歧: orig op={a['op']} vs replay op={b['op']} —— 前一条 op 的语义(尤其JCC/比较类)错了"); break
+        print(f"#{i} Control-flow divergence: orig op={a['op']} vs replay op={b['op']} —— previous op semantics (especially JCC/comparison) are wrong"); break
     if list(a["st"]) != list(b["st"]):
-        print(f"#{i} 数据分歧 @ op={a['op']}: {a['st']} vs {b['st']} —— 该op语义或ENV shim取值错"); break
+        print(f"#{i} Data divergence @ op={a['op']}: {a['st']} vs {b['st']} —— op semantics or ENV shim value is wrong"); break
 else:
-    print("trace 全对齐" if len(orig) == len(repl) else "前缀对齐但长度不等:EXIT/跳转语义错")
+    print("Traces fully aligned" if len(orig) == len(repl) else "Prefix aligned but lengths differ: EXIT/jump semantics error")
 ```
 
 The divergence bisection: for a control-flow divergence, look at the previous entry (a jump condition computed wrong); for a data divergence, look at the current one (this op's semantics are wrong, or an ENV return value is wrong — distinguish per §3.2 item 2). **The verification loop = output diff passing + trace fully aligned**; only when both pass is the lifter delivered.
@@ -312,7 +312,7 @@ for i in range(256):
     ea = ida_bytes.get_qword(BASE + i * 8)
     if ea and idc.get_func(ea) or True:
         idc.add_func(ea); idc.set_name(ea, f"vm_op_{i:02x}", idc.SN_NOWARN)
-        idc.set_cmt(ea, f"handler idx={i} 表项@{BASE + i*8:X}", 0)
+        idc.set_cmt(ea, f"handler idx={i} entry@{BASE + i*8:X}", 0)
 ```
 
 ### 4.2 Dispatch-loop tracing

@@ -1,10 +1,16 @@
 # pipeline branch: agent-executed APK analysis workflow
 
+> Select this S0–S4 DAG for an explicit APK full-chain/dynamic task. For APK static information
+> and a complete static report, start with [the Android runner](../docs/runner.md) or the requested
+> static stages; do not start an emulator merely because the user asks for a report. Resolve a
+> bare URL as a Web asset versus an APK locator before entering this APK workflow.
+
+
 > Input an APK path and an authorized analysis scope. An agent executes the five
 > stages using available tools and writes a report. This is the deeper workflow:
 > `re-run analyze --type android` provides bounded static APK/AAB analysis, not
-> the complete S0–S4 dynamic chain. See the [runner matrix](../docs/runner.zh-CN.md)
-> and [execution handoff](../docs/agent-completion-prompt.zh-CN.md).
+> the complete S0–S4 dynamic chain. See the [runner matrix](../docs/runner.md)
+> and [execution handoff](../docs/agent-completion-prompt.md).
 > Persist artifacts and close each stage as PASS or documented DEGRADED before
 > the next stage; failed gates never become success. Apply the fallback and
 > preserve missing evidence. Scope, cancellation, and host permission limits

@@ -11,7 +11,7 @@ For bounded static APK/AAB analysis, use the shared CLI:
 re-run analyze --asset /absolute/path/to/sample.apk --type android --output re-runs
 ```
 
-See the [runner guide](../docs/runner.zh-CN.md). The CLI does not yet execute
+See the [runner guide](../docs/runner.md). The CLI does not yet execute
 the full S0–S4 dynamic chain; this document guides its separate integration.
 
 ## Start a task
@@ -78,4 +78,4 @@ the [technique index](../techniques/INDEX.md); historical cases are in the
 indexes are not included in the public repository.
 
 Remaining tool integration and acceptance use the
-[handoff prompt](../docs/agent-completion-prompt.zh-CN.md).
+[handoff prompt](../docs/agent-completion-prompt.md).
