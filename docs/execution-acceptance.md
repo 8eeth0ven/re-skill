@@ -200,17 +200,17 @@ skip / 0 failed, 98.4s**; `re-runs/logs/ruff-final.txt`: All checks passed.
 
 | Path/run under re-runs/results/ | Status | Notes |
 |---|---|---|
-| 20261019T125138Z-4eaa1d38edf4, fixtures | succeeded, 14 findings | **22 assets = 11 local categories + traffic-http**; actual JADX/Apktool/Bandit/solc/Scapy; 21→22 assets still 11 categories, Web absent |
-| 20261019T124756Z-2f9ed1996ce0, examples | succeeded | 5 assets |
-| 20261019T124759Z-b8edfb788c26, PE/radare2 | succeeded | 3 checks; 513 functions/48 instructions established in earlier run |
-| 20261019T125220Z-b61faa6e3b1b, Web | succeeded | Local service, 1 password-form candidate |
-| 20261019T125221Z-c221c0de6e7d, OpenAPI | succeeded | Local service |
-| 20261019T125222Z-c2411613cae5, GraphQL | succeeded | Local service |
-| 20261019T125223Z-b6899c3ffa92, WebSocket | succeeded | Actual handshake |
-| 20261019T125224Z-8c9e80c5d945, gRPC | succeeded | Reflection demo.Echo |
-| 20261019T125225Z-b6b37d14a796, chain | succeeded | JSON-RPC eth_chainId/getCode, **0x7a69=31337** |
+| historical-run-07, fixtures | succeeded, 14 findings | **22 assets = 11 local categories + traffic-http**; actual JADX/Apktool/Bandit/solc/Scapy; 21→22 assets still 11 categories, Web absent |
+| historical-run-05, examples | succeeded | 5 assets |
+| historical-run-06, PE/radare2 | succeeded | 3 checks; 513 functions/48 instructions established in earlier run |
+| historical-run-08, Web | succeeded | Local service, 1 password-form candidate |
+| historical-run-09, OpenAPI | succeeded | Local service |
+| historical-run-10, GraphQL | succeeded | Local service |
+| historical-run-11, WebSocket | succeeded | Actual handshake |
+| historical-run-12, gRPC | succeeded | Reflection demo.Echo |
+| historical-run-13, chain | succeeded | JSON-RPC eth_chainId/getCode, **0x7a69=31337** |
 
-Six local-service runs: **6/6 succeeded**. Harness [tools/local_services.py](../tools/local_services.py),
+Six local-service runs: **6/6 succeeded**. The historical local-service harness,
 rerun via tools/run_local_acceptance.py; summary re-runs/local-acceptance-summary.json.
 
 ### Round-2 Acceptance States
@@ -246,7 +246,10 @@ Fixture run had **0 verified**, consistent with no guaranteed vulnerability clai
 
 ### Historical Retest Commands
 
-These commands describe the round-2 baseline, not a request to execute them during maintenance.
+These commands describe the round-2 baseline. The regression fixtures and local-service
+harnesses were subsequently removed from the distribution; this is an archival record,
+not a runnable checkout recipe. Use [the current maintenance guide](../maintenance.md)
+for supported library checks.
 
 ```bash
 python tools/worktree_digest.py  # then 70 files and round-2 digest
@@ -277,7 +280,7 @@ one type-inference warning with body restored; intake cancellation can lose Tool
   contract level; contract fork explicitly missing anvil; **15/15**.
 - Lane C: platform-independent UPX three lanes (**7 real tests passed**, PE runs only if present),
   actual Semgrep **1.181.0**; tshark not installed.
-- Sensitive scan: **2** `/Users/Zhuanz` absolute paths in test_a_lane changed to
+- Sensitive scan: **2** developer-specific absolute paths in the historical test suite changed to
   RE_BPALOGIN/RE_GHIDRA_HOME gates. Both modes tested: no vars **23 OK/4 skip**, vars present all real
   tests passed. Credentials/device names **0**. SECURITY-AUDIT.md ignored, not published.
 - Digest **79 files**; source directs recomputation with tools/worktree_digest.py, without a fixed

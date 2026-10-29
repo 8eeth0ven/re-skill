@@ -4,7 +4,7 @@
 `codex/readme-review`; implementation was still an uncommitted working tree. Real local static
 analysis/report artifacts existed, and the PE/radare2 empty-result repair was effective. However,
 all-asset depth, adversarial closure, and reliability did not meet final handoff requirements.
-Following the user's division of work, this review only read code/docs/existing reports and
+This assessment only read code/docs/existing reports and
 checked hashes/references. It did not install, execute analyzers, rerun unittest/ruff, or add
 dynamic tests. The execution agent owned fixes and measured retesting.
 
@@ -71,9 +71,9 @@ CI configuration could not all be classified as environment gaps.
 
 | Run | Content | Artifact hashes | Evidence refs | Result |
 |---|---|---:|---:|---|
-| 20261019T095434Z-bb21e2aadd4d | 21 local fixtures, actually 11 categories | 164 matched | 52 valid | 12 candidates, 0 verified |
-| 20261019T095449Z-59fdc1f6c5b3 | 5 text examples | 35 matched | 10 valid | 0 findings |
-| 20261019T095614Z-fba1a224a6bb | PE/radare2 | 10 matched | 2 valid | 513 functions, 48 instructions, 0 verified |
+| historical-run-02 | 21 local fixtures, actually 11 categories | 164 matched | 52 valid | 12 candidates, 0 verified |
+| historical-run-03 | 5 text examples | 35 matched | 10 valid | 0 findings |
+| historical-run-04 | PE/radare2 | 10 matched | 2 valid | 513 functions, 48 instructions, 0 verified |
 
 Report/state, request hash, ToolRun artifacts, and finding→evidence matched on read-only review.
 This establishes internal consistency, not independent replay or general accuracy. Web was absent

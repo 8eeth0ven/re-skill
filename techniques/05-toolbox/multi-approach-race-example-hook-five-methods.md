@@ -10,11 +10,11 @@
 |----|----|
 | OS | macOS 26.6.2 (25G83), arm64 |
 | frida | 17.23.3 (Python side at `tools-env/.venv/bin/`) |
-| Target | `/opt/homebrew/opt/python@3.13/bin/python3` (the real Mach-O that pyenv's `which python3` resolves to; the `/usr/bin/python3` bundle build hangs - dropped) |
+| Target | Native arm64 CPython 3.13 Mach-O, selected explicitly as `RE_TARGET_PYTHON` (the `/usr/bin/python3` bundle build hung in this observation and was dropped) |
 | Target behavior | Loops 14 times: `os.open("/tmp/re_probe_target.txt")` -> write `REPROBE-20261016-NNN`+`0x52455052` -> sleep 1s |
 | Task | Observe/take over/block the target's open of the probe file - five equivalent techniques in a race |
 
-Target script (`/tmp/re_race_20261016/re_target.py`, shared by all five approaches):
+Target script (`<workspace>/hook-comparison/re_target.py`, shared by all five approaches):
 
 ```python
 import os, time
@@ -80,18 +80,21 @@ Hook all four layers - `open` / `openat` / `fopen` / `open_nocancel` - run 10s a
 
 ## 3. Per-Approach Field Records (commands + real output + pitfalls)
 
-The common runner (`/tmp/re_race_20261016/run.py`, the Popen+attach route, Section 1.2):
+The common runner (`<workspace>/hook-comparison/run.py`, the Popen+attach route, Section 1.2):
 
 ```python
-import datetime, subprocess, sys, time, frida
+import datetime, os, subprocess, sys, time, frida
+from pathlib import Path
 
-REALPY = "/opt/homebrew/opt/python@3.13/bin/python3"
+# Set these to the selected interpreter and project workspace before running.
+REALPY = os.environ["RE_TARGET_PYTHON"]
+WORKSPACE = Path(os.environ["RE_HOOK_WORKSPACE"]).expanduser().resolve()
 
 def ts(): return datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
 agent_src = open(sys.argv[1]).read()
 t0 = time.time()
-proc = subprocess.Popen([REALPY, "/tmp/re_race_20261016/re_target.py"],
+proc = subprocess.Popen([REALPY, str(WORKSPACE / "re_target.py")],
                         stdout=sys.stdout, stderr=sys.stderr)
 time.sleep(1.2)                       # wait for the target to enter its loop, dodging python's startup phase
 session = frida.get_local_device().attach(proc.pid)
@@ -306,6 +309,10 @@ $ ls /tmp/re_probe_* → (probe files all cleared)
 $ ps aux | grep re_target → (no leftover processes)
 ```
 
-Scripts and full logs archived at: `/tmp/re_race_20261016/` (s1~s5.log + the attribution _t series + diag.log). Re-run:
-`cd /tmp/re_race_20261016 && XDG_CACHE_HOME=./cache <skill-root>/tools-env/.venv/bin/python run.py s1_attach.js S1`
+The historical scripts and full logs were kept in a task workspace and are not bundled.
+Workspace paths here are generalized; the recorded measurements above are unchanged.
+For a new run, place the scripts under your project's `hook-comparison/` directory, set
+`RE_HOOK_WORKSPACE` to that directory and `RE_TARGET_PYTHON` to the selected native interpreter.
+Re-run from that workspace:
+`XDG_CACHE_HOME=./cache <skill-root>/tools-env/.venv/bin/python run.py s1_attach.js S1`
 (Note: the XDG_CACHE_HOME redirect exists because the default `~/.cache/frida` is unwritable inside the sandbox.)

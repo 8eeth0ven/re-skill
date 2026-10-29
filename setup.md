@@ -145,8 +145,17 @@ a requirement for every host.
 1. Return to the repository root and run `uv run --no-sync python pipeline/env_check.py`, or use the installed host Python directly. `env_check.sh` is a Bash compatibility shim; native Windows does not need it.
 2. For an APK smoke test, use a suitable open-source or owned lab sample and execute S0–S4 per [pipeline/pipeline.md](pipeline/pipeline.md). Check the required static artifacts and any requested dynamic steps, as well as the report's limitations; a report can also describe a degraded run and does not by itself prove full setup success.
 3. Write `setup-report-<date>.md` in the task workspace: platform / per-item install results (✓/✗/skipped) / venv version / leftover items needing a human / health-check output. Promote only reusable, scoped conclusions through the [knowledge intake gate](docs/knowledge-engineering.md#f-workspace-to-library-promotion-and-the-minimum-evidence-package).
-4. Path fixes: if stale absolute paths from the old machine linger in pipeline.md (e.g. /Users/xxx, /opt/homebrew), replace them uniformly with PATH commands (jadx/apktool as bare command names) or the actual local paths
+4. Path fixes: if stale absolute paths from the old machine linger in pipeline.md (for example a previous home directory or a host-specific package-manager prefix), replace them uniformly with PATH commands (jadx/apktool as bare command names) or the actual local paths
 
 ## 7. Post-Migration Scheduled Tasks (Optional)
 
 The daily tool radar is a machine-local scheduled task and does not migrate with the directory. To use it on a new machine: read the process in radar/README.md and rebuild the scheduled task in the host (ZCode or equivalent) as "daily 09:00, discover → catalog → local smoke test"; skip it if unwanted — the radar can also be run manually for "one round".
+
+
+## Platform-Specific Installation Authority
+
+Use the [host installation matrix](docs/host-installation-matrix.md) for current
+macOS, native Windows PowerShell, and Linux detect → install → resolve path → verify
+steps. It is the maintained installation authority when it differs from the older
+combined-host table above, which remains a historical example. Its official-source
+recipes are source-claimed guidance, not a record of installations on these hosts.

@@ -1,6 +1,6 @@
 # Injection and Logic Root Causes: Why Data Becomes Code
 
-> Division of labor: techniques and test checklists live in [05-web/web-security.md](../05-web/web-security.md) and [05-web/code-audit.md](../05-web/code-audit.md) (black-box playbooks in `~/.zcode/skills/skill/`); this piece covers only **root causes** — why this class of bugs exists, why it keeps being reinvented, and why one kind of fix cures while another merely buys time. Sister pieces: memory-corruption root causes (stack/heap/UAF/races) in [memory-error-root-causes.md](memory-error-root-causes.md); the whole-repository mapping index in [root-cause-to-technique-map.md](root-cause-to-technique-map.md).
+> Division of labor: techniques and test checklists live in [05-web/web-security.md](../05-web/web-security.md) and [05-web/code-audit.md](../05-web/code-audit.md) (black-box playbooks in `<local-skills-root>/skill/`); this piece covers only **root causes** — why this class of bugs exists, why it keeps being reinvented, and why one kind of fix cures while another merely buys time. Sister pieces: memory-corruption root causes (stack/heap/UAF/races) in [memory-error-root-causes.md](memory-error-root-causes.md); the whole-repository mapping index in [root-cause-to-technique-map.md](root-cause-to-technique-map.md).
 
 ## 0. One-Sentence Overview
 
@@ -311,4 +311,4 @@ HTTP is a stateless protocol; the cookie is state the browser attaches **automat
 | [05-web/code-audit.md](../05-web/code-audit.md) | Taint methodology/Java deserialization evolution/CodeQL (audit layer) |
 | [08-business/business-security.md](../08-business/business-security.md) | Logic-bug system/accounts & payments (business layer) |
 | [10-blockchain/blockchain-security.md](../10-blockchain/blockchain-security.md) | The ten contract bug classes (reentrancy/flash loans/oracles) |
-| `~/.zcode/skills/skill/知识库/` | Black-box test checklists (idor-supplement, the h1 high-severity series) |
+| `<local-skills-root>/skill/知识库/` | Black-box test checklists (idor-supplement, the h1 high-severity series) |

@@ -1,7 +1,7 @@
 # From Asset Input to Reviewable Results: Baseline Gaps and Completion Plan
 
 **Historical planning record, assessed 2026-10-19.** Its baseline was public checkout `0059a9a`,
-branch fixes, and local inspection, with the user's selected scope of **all asset categories**.
+branch fixes, and local inspection, covering **all asset categories**.
 The unified CLI and 12 basic profiles were subsequently added; statements below about absent
 execution/locking/dependency infrastructure describe the original baseline, not current code.
 Use [the runner matrix](runner.md), [delivery history](delivery-status.md), and

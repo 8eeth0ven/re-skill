@@ -349,3 +349,11 @@ Action versions in that example were checked against the
 on 2026-10-28. Runtime tools, devices, private samples, and model/cloud endpoints
 are not provisioned by the workflow; existing conditional tests retain their
 stated skip conditions. A green offline matrix does not certify dynamic bypasses.
+
+## Installation Authority
+
+Use the [host installation matrix](host-installation-matrix.md) for each tool's
+macOS, native Windows, and Linux detect/install/resolve/verify sequence. Its
+source-reviewed routes take precedence over an older combined-host installation
+example in setup; setup still owns skill placement and the shared runner workflow.
+The field-pitfall observations and their evidence boundaries above remain unchanged.

@@ -300,3 +300,118 @@ assertion or live tool/device success. The three [offline examples](../examples/
 [hypothesis example](../examples/knowledge/format-boundaries.md), and
 [variant example](../examples/knowledge/archive-variants.md) intentionally contain
 no real-device verification claim or fabricated test date.
+
+## Addendum: Observation Domain and Bounded Offline Records
+
+This is a backward-compatible extension of section B's `source-claimed` gate.
+The three confidence values and existing physical-device gate remain unchanged.
+Confidence describes the bounded assertion's support; observation domain describes
+where the recorded result came from. An actual host execution can have a measured
+result, while a generalization from that result remains inference. The earlier
+`offline-test` table's typical orchestration role now also includes explicitly
+scoped host, fixture and mock observations under the following proof conditions.
+The [validator](../scripts/validate_knowledge.py) implements these gates. Its
+behavioral checks were run before the regression suite was archived outside the
+public distribution; they are not a bundled runtime dependency.
+
+| Optional evidence field | Accepted input | Meaning |
+|---|---|---|
+| `observation_mode` on `kind=offline-test`, `provenance=offline` | `host` | The named host program actually ran; record host/tool versions and the exact observed scope |
+| Same field/kind/provenance | `fixture` | The recorded outcome belongs to a controlled offline input/harness |
+| Same field/kind/provenance | `mock` | The recorded outcome belongs to simulated dependencies or responses |
+| Field omitted | No new field required for old records | The report emits `unspecified`; it does not infer a mode or upgrade confidence |
+
+Only `host`, `fixture` and `mock` are accepted as explicit values. The emitted
+`unspecified` value is the compatibility default, not a new input enum or evidence
+of execution. Other evidence kinds reject `observation_mode`; a physical-device
+record cannot acquire a host/fixture label to bypass its own provenance contract.
+
+A `source-claimed` claim may now cite an `offline-test` observation when all of
+these conditions hold:
+
+1. Its explicit mode is host, fixture or mock, with offline provenance.
+2. The effective claim `last_tested` is an actual date matching the evidence's
+   `observed_at`. Record the real host/tool and target/input versions when known;
+   retain an explicit unknown scope rather than invent a version.
+3. The observation refers to a portable local attachment and supplies its final
+   stored-byte SHA-256. Strict intake requires readable, hash-matching proof within
+   the configured evidence bound. A remote URL alone cannot supply this proof.
+4. The visible claim states only what that record establishes in its stated mode,
+   including its positive/negative controls. Fixture/mock outcomes describe the
+   fixture/mock. A successful host calculation does not establish target-shell,
+   Android, device, bypass or all-version behavior. Human review checks that scope.
+
+Normal historical review preserves the claim and reports unavailable or changed
+proof as degraded; strict intake rejects it. A visible body citation to the same
+declared evidence reference follows that evidence policy. Unrelated broken body
+routes still fail, and the separate structural publication gate remains required.
+The JSON `evidence_status` exposes kind, provenance, normalized `observation_mode`,
+availability and `reexecution: not-attempted` separately from article confidence.
+Validation reads records; it does not repeat their experiments.
+
+Existing v1 records without this optional field continue to validate under their
+previous rules. Explicit mode alone supplies no proof, and none of these three
+modes can support `verified-on-device`. The
+[host observation example](../examples/knowledge/host-observation.md) records a
+small real Python arithmetic/encoding exercise and limits its result to that host.
+
+## Addendum: Per-Article Legacy Migration and Acceptance
+
+Keep a migration ledger outside the article body, in the project/maintenance
+workspace. Discover actual articles in the existing platform, technique, corpus
+and breach-table branches; classify routing nodes such as SKILL/INDEX separately.
+The current branch inventory is an input to migration, not proof that its articles
+have been reviewed. A few governed examples do not constitute full-library migration.
+
+| Ledger field | Record for each article |
+|---|---|
+| Identity and owner | Existing path, stable id, kind, owning INDEX, preserved old headings/anchors |
+| Priority | Version-sensitive/evasion/API/device behavior first; explain actual use/risk and batch selection |
+| Progress | inventory-only, header-draft, claims-reviewed, evidence-checked, routes-checked, accepted; record blocked/degraded separately |
+| Source review | Claim ids for decision-changing criteria, thresholds and behavior; explicit measured/example/policy labels; reviewer/date and remaining gaps |
+| Scope and evidence | Known versions/date or null/unknown, counterexample or untested gap, portable proof and current access, current rerun state |
+| Next step and acceptance | Concrete missing observation/action, review date, actual two-gate results and human review receipt |
+
+For each selected legacy article:
+
+1. Record its existing owner, callers, unique methods, evidence/source anchors and
+   variant distinctions before adding a header. Assign a stable id; preserve the
+   current branch and working entry/INDEX contracts.
+2. Read its full decision-bearing content. Map every criterion, threshold and
+   behavior conclusion to a claim/source/control; separate source attribution,
+   actual observed scope and inference. Record missing sources explicitly.
+3. Draft the v1 header with conservative confidence, actual versions/dates only,
+   and minimal portable references. A generic template policy claim does not cover
+   the article's unreviewed assertions. Merely adding a header is header-draft.
+4. Review each variant/counterexample, failed route and reopening condition. Add a
+   Decay Warning for version-sensitive/evasion content; explain stable none-decay.
+   Keep unresolved claims/gaps visible rather than manufacture a measurement.
+5. Check the redacted proof package and record its current access separately from
+   historical confidence. Use the observation domain above for host/fixture/mock
+   measurements. Keep private raw logs and original provenance in the workspace.
+6. Preserve old anchors, update the existing INDEX when-to-open row and affected
+   references, then run both publication gates from section G. Record actual
+   results against this article; a legacy-pending count is not a route verdict.
+7. Complete a human missed-assertion/provenance/scope review, record reviewer/date,
+   unresolved limitations and the next review trigger, and only then mark accepted.
+   Validation success alone does not certify a placeholder or unreviewed body.
+
+Report completed body reviews, evidence checks, accepted articles and blockers per
+batch, with the underlying article paths. Resume from ledger state. Global strict
+continues to leave untouched legacy articles pending; explicit strict intake is
+for the actual selected drafts. This process requires no bulk rewrite or deletion.
+
+## Addendum: Manual Review Receipt and Deferral
+
+Use the following row in the article/dossier or its maintenance ledger after an
+actual review. An event trigger needs human input; the CLI does not monitor releases.
+
+| Review date / reviewer | Trigger / scope | Source and attachment checks | Rerun state / environment | Claim changes / retained history | Outcome | Next review / reason |
+|---|---|---|---|---|---|---|
+| Fill after an actual review | Due, version or contrary result | Readable, unavailable or hash mismatch | not-rerun or a bounded actual result | Claim ids and preserved earlier dates | reviewed, deferred, blocked or retired | Planned date with explicit rationale |
+
+Changing `review_after` schedules another review; it does not prove a review or
+rerun happened. Keep earlier receipts, record an unperformed review as deferred
+with its reason, and retain unknown test dates as null. A completed source review
+can honestly say not-rerun. A fresh measurement gets its own dated evidence rather
+than silently replacing an earlier observation.

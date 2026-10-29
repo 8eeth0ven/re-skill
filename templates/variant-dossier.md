@@ -134,3 +134,63 @@ state why `decay.mode=none` is justified rather than silently omit the warning.
 Use `review_after`, version/event triggers and dated claim age to prepare a manual
 review queue. Preserve historical claims when current proof is unavailable, mark
 access degraded, and require traceable proof before promoting any new verified row.
+
+## Addendum: Copyable Per-Variant Section
+
+Copy the following section for each selected matrix row. Link the common method
+authority and fill only decision-changing deltas. Keep unknown values and an
+`unassessed` state until a real source or observation supports a narrower claim.
+Default confidence remains inference; a filled template is not an observed result.
+
+```markdown
+### <variant-id>: <version/build>
+
+#### Recognition and Exclusion
+- Metadata variant id / claim ids / evidence ids: unassigned.
+- Positive recognition signals and required conjunction: unknown.
+- Conflicting signatures, exclusions and unresolved family assignment: unknown.
+- Minimal input/sample hash and version/build/ABI: unknown; not tested.
+- Known version/platform counterexample, or explicit untested gap: untested.
+
+#### Host and Target Preconditions
+- Host OS/tool/runtime versions: unknown.
+- Target platform/build and required access/state: unknown.
+- Shared method authority; exact variant delta and actual executing call path: unknown.
+- Missing prerequisite and blocked condition: no observation supplied.
+
+#### Attack Surface and Input Control
+- Controllable boundary/field/bytes and preserved baseline: unknown.
+- Required input shape, scope and maximum permitted consequence: unknown.
+- Breakpoint/observation point and evidence that this path executes: unknown.
+- Equivalent API/path that may be misleading and how to distinguish it: unknown.
+
+#### Countermeasure Status and Bounded Procedure
+- Detection/countermeasure signal, scope and evidence: unassessed.
+- Applicable alternative and its proven prerequisite, or unresolved prerequisite: unknown.
+1. Preserve the input/state and collect the smallest baseline at the actual observation point.
+2. Match this variant's recognition claim and check its exclusions and host/target prerequisites.
+3. Select the shared method plus the specific delta; record concrete inputs/commands before use.
+4. Collect incremental output and controls; stop at the stated consequence or a blocked condition.
+5. Route to an alternative only when its prerequisite is supported by the observed evidence.
+
+#### Acceptance Criteria, Controls and Result Source
+| Route / countermeasure | Preconditions | Expected / actual | Positive control | Negative control / falsifier | Effective / ineffective / unknown | Claim / evidence ids |
+|---|---|---|---|---|---|---|
+| Not tested | Unknown | No observation | Not run | Not run | Unknown | Populate from real records |
+
+- Competing explanation and tool/environment failure discriminator: unknown.
+- Result source: inference until supported; cite source/user report or a dated observation.
+- Observation domain: host/fixture/mock/emulator/physical-device or unspecified; do not infer one.
+- Current status: unassessed. Reading a source or attachment is separate from a current rerun.
+- Historical date/build, current proof access/hash, current rerun state: null/unknown/not-rerun.
+
+#### Failure, Coverage Gaps and Reopening
+- Failed or ineffective approach and the boundary that explains it: no result supplied.
+- Smallest next observation and required environment: unknown.
+- Concrete version/call-path/tool/detection/prerequisite change that reopens this row: unknown.
+- Replacement pointer: none identified.
+- Preserve earlier bounded claims and their evidence when a current route is retired.
+```
+
+Apply the guide's [observation-domain and proof gate](../docs/knowledge-engineering.md#addendum-observation-domain-and-bounded-offline-records)
+to host/fixture/mock results; their mode never grants physical-device verification.

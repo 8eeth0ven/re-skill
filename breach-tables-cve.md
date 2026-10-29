@@ -22,3 +22,10 @@
 **Local batch-candidate workbench**: when you don't want a single target but want to grind surfaces in batch, two complementary routes — `cve-hunter/` (known CVE × version matching, an N-day ledger that ranks and picks targets) + `fw-discover/` (**autonomous discovery**: unpack DD-WRT/OpenWrt public firmware → six rule classes — shadow accounts / factory private keys / network-facing command-injection flows / telnetd / default passwords — mining 0day candidates, target 100 entries, 30-minute keepalive). Everything both produce is candidates; external reporting still goes through a human.
 
 **N-day template library**: `breach-tables/poc-reuse-nday.md` (distilled from a full pass over nomi-sec/PoC-in-GitHub filtered for RE-relevant 873 CVEs) — before attacking a new surface, check the ten hot buckets for already-weaponized bugs on the same surface to use as templates; five localization routes (commit archaeology + official regression tests / patch-diff back-inference / half-applied patches / freshly merged refactor windows / disclosure-with-self-written-exploit), a data-only anti-mitigation primitive spectrum, standard environment-engineering parts, and six fake-PoC detection rules.
+
+## Focused N-day Reference
+
+Open the [PoC reuse and N-day playbook](breach-tables/poc-reuse-nday.md) when a
+matched component needs source/patch archaeology, version comparison, or PoC
+authenticity checks. Its recorded counts and conclusions retain their stated
+historical scope; a candidate is not a current verified vulnerability.

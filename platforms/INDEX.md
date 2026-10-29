@@ -5,7 +5,7 @@
 ## Sister libraries (overlapping cross-links, no duplication here)
 
 - **Android RE techniques** (frida/unpacking/evasion/kernel-level/function panorama) → `../techniques/` branch
-- **Web vulnerability testing checklist** (idor/injection/csrf and 40+ modules) → `~/.zcode/skills/skill/知识库/` (separate skill)
+- **Web vulnerability testing checklist** (idor/injection/csrf and 40+ modules) → `<local-skills-root>/skill/知识库/` (separate skill)
 
 ## 01-windows (the *Encryption and Decryption* system)
 
@@ -157,3 +157,11 @@ The full-text index, annual index, and knowledge-base tree are local acquisition
 ## Maintenance
 
 - [maintenance.md](maintenance.md): corpus lookup, images, ingestion rules, and precedence of local rules.
+
+## Optional Local Reference Roots
+
+`<local-skills-root>`, `<local-rules-root>`, and `<local-agent-config>` in
+articles are configurable placeholders for optional resources outside this
+repository. They do not identify bundled files or a required home-directory
+layout. Resolve a placeholder only when that resource is actually installed;
+otherwise use the article's reusable method and the relevant repository route.

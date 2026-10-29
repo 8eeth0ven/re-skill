@@ -37,8 +37,9 @@ Not sure which route fits? [Usage scenarios](usage-scenarios.md) map common situ
 
 ## Quick Start
 
-For macOS and Windows commands, tool paths, and platform limits, see the
-[compatibility guide](docs/compatibility.md). The Python runner is separate
+For macOS, Windows, and Linux tool installation, use the
+[host installation matrix](docs/host-installation-matrix.md). For shell, path,
+and target behavior differences, see the [compatibility guide](docs/compatibility.md). The Python runner is separate
 from the optional Bash-based APK workflow.
 
 ### Browse or use the agent skill

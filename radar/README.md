@@ -33,3 +33,14 @@ The public [setup guide](../setup.md#3-python-re-environment-tools-env) defines 
 - Only reverse-engineering / security-analysis tools (no vulnerability PoC collections, no tutorial repos)
 - Insufficient information (unreachable / empty repo): log only, do not catalog
 - Catalog entries follow library conventions: no author names / exact star counts; status uses "usable / new / unmaintained"
+
+## Portable Intake and Baseline Route
+
+Use the [known-tools baseline](baseline-tools.md) for discovery deduplication.
+For host-specific interpreter, cache, SDK, and installation choices, follow the
+[host compatibility guide](../docs/compatibility.md) and the setup authority it
+links. The earlier `/tmp` and `bin/python` smoke command is a POSIX example, not a
+Windows instruction. Record smoke results with host OS/architecture, exact tool
+version, date, scope, and evidence kind; one host's smoke does not certify another.
+Keep raw per-task logs in the task workspace and promote only the reusable result
+and its bounded evidence through [knowledge intake](../docs/knowledge-engineering.md).

@@ -130,4 +130,4 @@ In one sentence: the mirror of Windows cracking culture on Android — ad remova
 | [file-formats.md](file-formats.md) | Byte-level detail for dex/elf/oat/vdex/cdex/arsc/AXML |
 | [malware-and-ctf.md](malware-and-ctf.md) | Malicious families + field cases + CTF challenge patterns |
 
-> Maintenance: when in conflict with `~/.zcode/rules`, rules win; when the techniques library (same skill, re/techniques) is updated, sync the cross-link rows in this file.
+> Maintenance: when in conflict with `<local-rules-root>`, rules win; when the techniques library (same skill, re/techniques) is updated, sync the cross-link rows in this file.

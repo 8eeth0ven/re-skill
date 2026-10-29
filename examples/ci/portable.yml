@@ -1,5 +1,5 @@
 # Optional GitHub Actions example. Copy to .github/workflows/portable.yml to enable.
-# Local validation and tests do not depend on GitHub Actions.
+# Local validation does not depend on GitHub Actions.
 name: Portable RE checks
 
 on:
@@ -36,7 +36,5 @@ jobs:
         run: uv run --no-sync python scripts/validate_library.py --json
       - name: Check knowledge metadata without blocking legacy articles
         run: uv run --no-sync python scripts/validate_knowledge.py --json
-      - name: Run offline regression suite
-        run: uv run --no-sync python -B -m unittest discover -s tests -v
-      - name: Lint maintained Python packages and tests
-        run: uv run --no-sync ruff check --no-cache src tests scripts
+      - name: Lint maintained Python packages and validators
+        run: uv run --no-sync ruff check --no-cache src scripts

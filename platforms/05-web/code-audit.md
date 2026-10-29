@@ -18,7 +18,7 @@
 - **Entry-point location**: WEB container mappings (servlet/filter in web.xml, struts.xml) -> annotation routing (Spring `@RequestMapping`) -> framework interceptor chains; the entry set = the attack-surface inventory.
 - **Taint propagation**: variables passed across methods/classes; audit tools (CodeQL/Tabby/fortify) automate it; manual auditing relies on IDE call-chain backtracking (IntelliJ Analyze Dataflow).
 - **Sanitizer judgment**: parameter binding (PreparedStatement) breaks the chain; `StringEscapeUtils` is only effective for its matching context; allowlists beat denylists; common fake sanitization (only stripping quotes, only one round of URL decoding) is the bypass point.
-- The master copy of process/report/verdict criteria -> `~/.zcode/skills/secure-code-audit/知识库/审计流程与报告.md`; the full sink tables -> `~/.zcode/skills/secure-code-audit/知识库/sink速查-Java.md` / `~/.zcode/skills/secure-code-audit/知识库/sink速查-PHP.md` / `~/.zcode/skills/secure-code-audit/知识库/sink速查-Go-Node.md`.
+- The master copy of process/report/verdict criteria -> `<local-skills-root>/secure-code-audit/知识库/审计流程与报告.md`; the full sink tables -> `<local-skills-root>/secure-code-audit/知识库/sink速查-Java.md` / `<local-skills-root>/secure-code-audit/知识库/sink速查-PHP.md` / `<local-skills-root>/secure-code-audit/知识库/sink速查-Go-Node.md`.
 
 ### 1.2 Audit entry order (experience-based priority)
 
@@ -69,8 +69,8 @@ Entry: ObjectInputStream.readObject / JSON.parseObject(autoType) /
  Runtime.exec / TemplatesImpl bytecode loading / JNDI lookup→LDAP/RMI remote class loading
 ```
 
-- URLDNS/CC1: the full CC1 chain notes (ConstantTransformer fixed return -> ChainedTransformer chained hand-off -> InvokerTransformer reflective invocation; the LazyMap trigger surface); CC3/CC6 are advanced entries of the same family, covered by the JSON deserialization series; URLDNS, as the dependency-free probing chain, appears across the reproduction posts. The generic master copy: `~/.zcode/skills/skill/知识库/deserialization-gadgets.md` + `~/.zcode/skills/skill/知识库/deserialization-test.md`.
-- Chain endpoints pivoting to JNDI -> `~/.zcode/skills/skill/知识库/jndi-injection-test.md` (JNDIExploit/LDAP response-body dispatching).
+- URLDNS/CC1: the full CC1 chain notes (ConstantTransformer fixed return -> ChainedTransformer chained hand-off -> InvokerTransformer reflective invocation; the LazyMap trigger surface); CC3/CC6 are advanced entries of the same family, covered by the JSON deserialization series; URLDNS, as the dependency-free probing chain, appears across the reproduction posts. The generic master copy: `<local-skills-root>/skill/知识库/deserialization-gadgets.md` + `<local-skills-root>/skill/知识库/deserialization-test.md`.
+- Chain endpoints pivoting to JNDI -> `<local-skills-root>/skill/知识库/jndi-injection-test.md` (JNDIExploit/LDAP response-body dispatching).
 
 ### 4.2 Historical component-bug patterns (memorize by "trigger surface")
 
@@ -107,30 +107,30 @@ Entry: ObjectInputStream.readObject / JSON.parseObject(autoType) /
 - Routing and auth: interceptor excludePathPatterns wildcard omissions (a high-frequency auth bypass); `@PathVariable` loose matching (`/user/{id}/../admin`).
 - SpEL: user-controllable `@Value`, direct hits on SpelExpressionParser.
 - Actuator: env/heapdump leaks (mine keys from the heapdump) -> route-registration RCE.
-- Spring EL and templates (thymeleaf/FreeMarker SSTI) -> `~/.zcode/skills/skill/知识库/ssti-专题.md`.
+- Spring EL and templates (thymeleaf/FreeMarker SSTI) -> `<local-skills-root>/skill/知识库/ssti-专题.md`.
 
 ### 4.5 The Java audit hands-on route (from code to bug)
 
 1. **Build the project view**: import into IDEA (maven dependency resolution) + decompile the dependency jars; first read web.xml/the SpringBoot bootstrap class and the Filter/Interceptor registration chain.
 2. **Draw the auth matrix first**: which paths are allowlisted, which annotations carry custom auth (`@RequiresPermission`-style) -> the difference set is the unauthenticated surface (a high-frequency bug spot).
 3. **Backward sink grep**: `readObject|parseObject|XMLDecoder|getMethod.invoke|Runtime|ProcessBuilder|SpelExpressionParser|ScriptEngine|MVEL|new File(|FileOutputStream` -> backtrack each to its source.
-4. **SQL surface**: full-text search for `${}` (MyBatis) -> determine whether it sits where parameter binding is impossible (order by/limit — a common true positive) -> `~/.zcode/skills/skill/知识库/injection-test.md`.
+4. **SQL surface**: full-text search for `${}` (MyBatis) -> determine whether it sits where parameter binding is impossible (order by/limit — a common true positive) -> `<local-skills-root>/skill/知识库/injection-test.md`.
 5. **Second-render surface**: whether freemarker/velocity template content can be written by users (a template-editing feature = a potential SSTI RCE).
-6. **Key surface**: the secret/token encryption keys in `application.yml` -> determine what can be forged (JWT signatures/API signatures) -> `~/.zcode/skills/skill/知识库/oauth-jwt-test.md`.
+6. **Key surface**: the secret/token encryption keys in `application.yml` -> determine what can be forged (JWT signatures/API signatures) -> `<local-skills-root>/skill/知识库/oauth-jwt-test.md`.
 7. Tooling acceleration: CodeQL (local database + predicate queries), Tabby (a 3-minute Java SCG, good for reachability calls on huge projects), Semgrep (lightweight rule batches).
 
 ## 5. Go / Node in one line
 
-Go: template injection, SQL concatenation, SSRF (net/http does not validate protocols); Node: prototype pollution `__proto__` (-> `~/.zcode/skills/skill/知识库/prototype-pollution-test.md`), template injection, npm dependency-chain poisoning. The sink table -> `~/.zcode/skills/secure-code-audit/知识库/sink速查-Go-Node.md`.
+Go: template injection, SQL concatenation, SSRF (net/http does not validate protocols); Node: prototype pollution `__proto__` (-> `<local-skills-root>/skill/知识库/prototype-pollution-test.md`), template injection, npm dependency-chain poisoning. The sink table -> `<local-skills-root>/secure-code-audit/知识库/sink速查-Go-Node.md`.
 
 ## 6. Frontend/JS auditing
 
-- DOM XSS source->sink positions (location->innerHTML/eval), postMessage without Origin validation; restoring packaged artifacts -> `~/.zcode/skills/skill/知识库/js-reverse-guide.md`.
+- DOM XSS source->sink positions (location->innerHTML/eval), postMessage without Origin validation; restoring packaged artifacts -> `<local-skills-root>/skill/知识库/js-reverse-guide.md`.
 
 ## 7. Auth and business-flow auditing (finding broken access control white-box)
 
 - White-box unauthenticated-access discovery: enumerate the filter/middleware allowlist against the actual routing table and take the difference set; horizontal escalation: object ids queried directly without owner checks (the taint tell: userId taken from parameters instead of session).
-- Deep-dive master copy -> `~/.zcode/skills/api-pentest/知识库/鉴权与对象图.md` + `~/.zcode/skills/skill/知识库/idor-test.md`.
+- Deep-dive master copy -> `<local-skills-root>/api-pentest/知识库/鉴权与对象图.md` + `<local-skills-root>/skill/知识库/idor-test.md`.
 
 ## 8. Code diff auditing (hunting 0days in patch diffs)
 
@@ -147,7 +147,7 @@ Monitor sources (security advisories/CVE-NVD/GitHub watch/vendor announcements)
 
 - Essentials: fix commits often carry test cases (lift the case and shift the boundaries); `git log --grep="CVE\|security\|inject"` fast-sifts historical fixes; cross-version diffs (adjacent minors) reveal patterns better than single commits.
 - Classic case shapes: the patch only adds a denylist -> encoding/case bypass (most CMSs); the patch rewrites a regex -> backtrack the uncovered paths.
-- The 1day/nday playbook (patch shipped, assets not updated) is a high-yield SRC surface, paired with FOFA fingerprint batching -> `~/.zcode/skills/skill/知识库/rce-面定位.md`.
+- The 1day/nday playbook (patch shipped, assets not updated) is a high-yield SRC surface, paired with FOFA fingerprint batching -> `<local-skills-root>/skill/知识库/rce-面定位.md`.
 - MCMS 0day: points to ve1kcon's Miku MCMS audit series (front-end injection + backend getshell). CMS-audit representative posts: the BlueCMS source audit, addslashes bypass x MacCMS, DedeCMS arbitrary front-end user password change, "A Bug-Hunting Record of a Certain CMS".
 
 ## 9. Tool matrix
@@ -182,8 +182,8 @@ Essentials: run the framework's built-in query set first (security-extended), th
 
 ## 10. Cross-link summary
 
-- Operational master copy: `~/.zcode/skills/secure-code-audit/` (SKILL.md process + 4 knowledge-base articles)
-- Deserialization/JNDI -> `~/.zcode/skills/skill/知识库/deserialization-*.md`, `~/.zcode/skills/skill/知识库/jndi-injection-test.md`
-- Injection/upload/XSS white-box counterparts -> `~/.zcode/skills/skill/知识库/injection-test.md`, `~/.zcode/skills/skill/知识库/file-upload-test.md`, `~/.zcode/skills/skill/知识库/xss-test.md`
+- Operational master copy: `<local-skills-root>/secure-code-audit/` (SKILL.md process + 4 knowledge-base articles)
+- Deserialization/JNDI -> `<local-skills-root>/skill/知识库/deserialization-*.md`, `<local-skills-root>/skill/知识库/jndi-injection-test.md`
+- Injection/upload/XSS white-box counterparts -> `<local-skills-root>/skill/知识库/injection-test.md`, `<local-skills-root>/skill/知识库/file-upload-test.md`, `<local-skills-root>/skill/知识库/xss-test.md`
 - Business-logic white box -> `../08-business/business-security.md`
 - Mobile (the Java/Android layer) -> `techniques/`

@@ -1,9 +1,8 @@
 # re-run: Execution Guide and Asset Support Matrix
 
 `re-run` is the shared CLI entry; it requires Python 3.11+. This page describes interfaces
-and implementation limits, not a fresh test certification. The original 2026-10-19 handoff
-stopped installation/testing at the user's request and described an uncommitted branch;
-those historical statements are retained in [delivery-status.md](delivery-status.md).
+and implementation limits, not a fresh test certification. Historical implementation
+and execution records are retained in [delivery-status.md](delivery-status.md).
 Later recorded results belong to [execution-acceptance.md](execution-acceptance.md).
 Use [the completion handoff](agent-completion-prompt.md) only for an explicitly requested
 implementation/acceptance task; a documentation read does not authorize its execution.

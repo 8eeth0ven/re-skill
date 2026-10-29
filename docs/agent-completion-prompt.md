@@ -1,12 +1,14 @@
 # Historical Installation, Completion, and Full-Chain Acceptance Handoff
 
 This translates the original 2026-10-19 execution handoff. Continue in the complete working
-checkout, including uncommitted/untracked files; cloning only GitHub main would lose that
-implementation. Transfer code/docs/`pyproject.toml`/`uv.lock`/`src`/`tests`/`examples` to another
-machine, excluding venvs, private samples, and downloaded tools. The coordinating agent had
-stopped installation/testing at the user's request; this prompt delegated that work to the
-receiving agent. It is task context, **not standing permission to install or execute during
+checkout, including the changes belonging to that historical handoff. Transfer
+code/docs/`pyproject.toml`/`uv.lock`/`src`/`examples` to another
+machine, excluding venvs, private samples, and downloaded tools. Installation and execution
+were delegated separately from document review. This brief is historical task context,
+**not standing permission to install or execute during
 unrelated maintenance**. Final edits had not been retested; historical passes were insufficient.
+The old regression suite and generated test harnesses have since been archived
+outside this distribution; use the current maintenance guide for available checks.
 
 ## Copyable Task Brief
 
@@ -36,7 +38,7 @@ specific remaining conditions.
 ### Resume Existing Implementation
 
 Read [delivery-status.md](delivery-status.md), [runner.md](runner.md), `SKILL.md`,
-`pyproject.toml`, then `src/re_runner/`, `tests/`, `examples/`. The shared CLI already exists:
+`pyproject.toml`, then `src/re_runner/` and `examples/`. The shared CLI already exists:
 inspect/analyze/doctor/status/resume/cancel with `--level triage|verify`; do not start a duplicate
 project. `contracts.py` owns input contracts. Each unique run has report.json/md, assets.json,
 findings.json, evidence/index.json, events.jsonl, state/request/plan/capabilities.
@@ -48,7 +50,7 @@ Ghidra/IDA/REA/MobSF/JADX adapters were incomplete; doctor profile labels alone 
 Use the matrix and later execution ledger to determine actual current state.
 
 Historical regression: 74 tests, 73 pass, 1 Windows symlink skip, before later changes.
-PE run `20261019T081446Z-f5c255f877e5` had radare2 6.2.4 exit0, `functions=[]`, missing x86 decoder.
+PE run `historical-run-01` had radare2 6.2.4 exit0, `functions=[]`, missing x86 decoder.
 The empty-output degradation patch was static and unrerun. Inspect `-NN`, `R2_NOPLUGINS`, `-S`
 and official decoder loading; restrict to trusted built-in plugin paths and reject sample/user
 startup/arbitrary plugins rather than removing every restriction.
@@ -61,10 +63,8 @@ startup/arbitrary plugins rather than removing every restriction.
 2. Retest core/CLI before expanding; repair failures first. Candidate commands:
 
    ```bash
-   uv run --no-sync python -m unittest discover -s tests -v
-   uv run --no-sync ruff check src tests pipeline/env_scan.py
-   uv run --no-sync python tests/fixture_factory.py re-runs/fixtures
-   uv run --no-sync re-run analyze --manifest re-runs/fixtures/manifest.json --output re-runs/results
+   uv run --no-sync python scripts/validate_library.py --json
+   uv run --no-sync ruff check src scripts pipeline/env_scan.py
    uv run --no-sync re-run analyze --manifest examples/assets.local.json --output re-runs/results
    git diff --check
    ```

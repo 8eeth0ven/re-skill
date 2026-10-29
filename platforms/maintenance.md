@@ -10,4 +10,4 @@
 - New content goes into the area md, then a row is added to [`INDEX.md`](INDEX.md); the index stores routes only
 - Body text keeps no external links / source attributions / personal names / verification dates, only approaches and hard-won knowledge; for corpus sources use the data/ indexes
 - Images: extract the local original and view with Read, then convert to ASCII/text and mark "local original parsed"; purely online posts are marked "restored as text"
-- When in conflict with `~/.zcode/rules`, rules win
+- When in conflict with `<local-rules-root>`, rules win

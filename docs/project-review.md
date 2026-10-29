@@ -66,7 +66,7 @@ failure. Acceptance requires byte preservation on success and failure. OpenWrt's
 | P1 | hunter marks done before download; fw marks some failures done | completed/skipped/failed/retryable and persisted reasons |
 | P1 | Download-before-size-check; unbounded gzip expansion | Streaming byte/file/path/time budgets |
 | P1 | Platform articles/manual steps lack execution/confirmation | Callable adapters/profiles/validators/integration |
-| P2 | Fixed 127.0.0.1:7897 proxy; macOS env_scan paths/system_profiler | Explicit config, PATH/platform detection |
+| P2 | Fixed developer-local proxy; macOS env_scan paths/system_profiler | Explicit config, PATH/platform detection |
 | P2 | APK Markdown init infers root from $0 (usually shell) | Loaded skill path or explicit root |
 | P2 | Ignored data/radar/private CHM; historical counts in general guidance | local-only labels, redacted examples/reproduction |
 | P2 | Entry says 18 scenarios/11 technique areas while actual scenarios=20 | Structural validation and synchronized indexes |
@@ -78,7 +78,7 @@ Priorities concern reliability/delivery, not confirmed remote-exploit severity.
 From repository root (Windows uses `python` instead of `python3`):
 
 ```bash
-python3 -m unittest discover -s tests -v
+python3 scripts/validate_library.py
 python3 cve-hunter/hunter.py --help
 python3 cve-hunter/hunter.py --status
 python3 fw-discover/fw.py --help

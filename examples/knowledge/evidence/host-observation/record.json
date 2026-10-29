@@ -1,0 +1,28 @@
+{
+  "captured_at": "2026-10-28T17:18:10+00:00",
+  "observation_mode": "host",
+  "host": {
+    "system": "Darwin",
+    "release": "25.6.0",
+    "macos_version": "26.6.2",
+    "machine": "arm64"
+  },
+  "runtime": {
+    "implementation": "CPython",
+    "version": "3.13.7"
+  },
+  "source_sha256": "eea9063aca223c3022392265d6bd9ee67ec51720a41db7ea3ad4c77ad42996f9",
+  "arithmetic": {
+    "input_hex": "0x80000000",
+    "increment_hex": "0x1000",
+    "result_decimal": 2147487744,
+    "zero_increment_control": 2147483648
+  },
+  "encoding": {
+    "input_hex": "000a0dff",
+    "length": 4,
+    "hex_roundtrip": "000a0dff",
+    "lossy_utf8_replace_control_hex": "000a0defbfbd"
+  },
+  "scope": "This Python process and generated inputs only. No Android shell, ADB, mksh, external target or device was tested."
+}

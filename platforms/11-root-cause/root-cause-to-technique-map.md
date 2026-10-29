@@ -196,5 +196,5 @@ Conclusion (echoing the sister piece §7): **the criterion for the "radical cure
 ## 5. Maintenance Conventions
 
 - New bug classes get a row in §1; the "exploitation technique" column must point at **an existing in-repo file** (in platforms/ or techniques/; verify the path with `ls` first);
-- Black-box techniques point only at the skill knowledge base (the two-library division: platforms/ covers principles, techniques/ covers reverse-engineering chains; black-box checklists live in `~/.zcode/skills/skill/知识库/`);
+- Black-box techniques point only at the skill knowledge base (the two-library division: platforms/ covers principles, techniques/ covers reverse-engineering chains; black-box checklists live in `<local-skills-root>/skill/知识库/`);
 - Root-cause theory always expands in the sister pieces; this table keeps its "one row, one verdict" index density and never copies body text.

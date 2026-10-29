@@ -90,3 +90,11 @@ For knowledge intake, evidence labels, variant dossiers, decay review, or articl
 renames, follow [knowledge engineering](docs/knowledge-engineering.md) and its
 templates. These maintenance references are conditional; analysis tasks do not
 need to preload them. Existing articles remain routable during staged migration.
+
+For overview, input examples, historical planning/review records, or retained
+compatibility addresses, use the conditional [documentation index](docs/INDEX.md).
+
+For current host-specific installation steps, open the
+[host installation matrix](docs/host-installation-matrix.md) first. It separates
+macOS, native Windows, and Linux; older combined-host examples remain available
+for compatibility and do not override that matrix.

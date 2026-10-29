@@ -31,6 +31,7 @@ PROVENANCE = {
     "historical": {"historical"},
     "user-report": {"user-report"},
 }
+OBSERVATION_MODES = {"host", "fixture", "mock"}
 VARIANT_STATES = {"unassessed", "documented", "verified-on-device", "not-reproduced", "blocked", "retired"}
 SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "data", "tools-env", "re-runs", "__pycache__", "环境快照", "输出"}
 HEADER_LIMIT = 65536
@@ -45,7 +46,7 @@ ROOT_FIELDS = {
 }
 ROOT_REQUIRED = ROOT_FIELDS - {"related_ids", "variants"}
 CLAIM_FIELDS = {"id", "statement", "confidence", "evidence", "last_tested", "target_versions", "value_kind"}
-EVIDENCE_FIELDS = {"id", "kind", "ref", "provenance", "observed_at", "target_versions", "sha256"}
+EVIDENCE_FIELDS = {"id", "kind", "ref", "provenance", "observed_at", "target_versions", "sha256", "observation_mode"}
 
 
 def _object(pairs):
@@ -295,7 +296,7 @@ class Checker:
             evs = []
         for index, ev in enumerate(evs):
             field = f"evidence[{index}]"
-            if not self.shape(ev, EVIDENCE_FIELDS - {"sha256"}, EVIDENCE_FIELDS, path, field):
+            if not self.shape(ev, EVIDENCE_FIELDS - {"sha256", "observation_mode"}, EVIDENCE_FIELDS, path, field):
                 continue
             eid = self.identifier(ev.get("id"), path, field + ".id")
             if eid in evidence:
@@ -303,6 +304,12 @@ class Checker:
             kind = ev.get("kind")
             if not isinstance(kind, str) or kind not in PROVENANCE or not isinstance(ev.get("provenance"), str) or ev.get("provenance") not in PROVENANCE.get(kind, set()):
                 self.issue("evidence-provenance", path, "Evidence kind and provenance do not agree", field)
+            mode = ev.get("observation_mode", "unspecified") if kind == "offline-test" else None
+            if "observation_mode" in ev:
+                if kind != "offline-test":
+                    self.issue("observation-mode-kind", path, "observation_mode is only defined for offline-test evidence", field + ".observation_mode")
+                elif not isinstance(mode, str) or mode not in OBSERVATION_MODES:
+                    self.issue("observation-mode", path, "Explicit observation_mode must be host, fixture, or mock; omit it for legacy unspecified evidence", field + ".observation_mode")
             date = self.date(ev.get("observed_at"), path, field + ".observed_at", True, True)
             ev_versions = self.strings(ev.get("target_versions"), path, field + ".target_versions")
             digest = ev.get("sha256")
@@ -310,9 +317,12 @@ class Checker:
                 self.issue("evidence-digest", path, "sha256 must be 64 lowercase hexadecimal characters", field + ".sha256")
                 digest = None
             access = self.reference(ev.get("ref"), path, field + ".ref", True, digest)
-            self.evidence_status.append({"article_id": stable_id, "evidence_id": eid, **access, "claim_confidence_preserved": True})
+            self.evidence_status.append({"article_id": stable_id, "evidence_id": eid, "kind": kind,
+                                         "provenance": ev.get("provenance"), "observation_mode": mode,
+                                         **access, "claim_confidence_preserved": True})
             if eid:
-                evidence[eid] = {**ev, "date": date, "versions": ev_versions, "access": access, "digest_valid": bool(digest)}
+                evidence[eid] = {**ev, "observation_mode": mode, "date": date, "versions": ev_versions,
+                                 "access": access, "digest_valid": bool(digest)}
         claims, cs = {}, meta.get("claims")
         if not isinstance(cs, list) or not cs:
             self.issue("claims-required", path, "Declare at least one bounded claim with evidence ids", "claims")
@@ -339,8 +349,20 @@ class Checker:
             sources = [evidence[ref] for ref in refs if ref in evidence]
             cv = self.strings(claim["target_versions"], path, field + ".target_versions") if "target_versions" in claim else versions
             ct = self.date(claim["last_tested"], path, field + ".last_tested", True, True) if "last_tested" in claim else tested
-            if cc == "source-claimed" and not any(isinstance(ev.get("kind"), str) and ev.get("kind") in {"source", "historical", "user-report"} for ev in sources):
-                self.issue("source-evidence-required", path, "Source-claimed needs a source/historical record or an explicitly attributed user report, not analysis alone", field)
+            if cc == "source-claimed":
+                attributed = any(isinstance(ev.get("kind"), str) and ev.get("kind") in {"source", "historical", "user-report"} for ev in sources)
+                # Confidence and observation domain are separate. A portable dated
+                # offline record can support its bounded observation, including a
+                # fixture/mock result, without claiming physical-device behavior.
+                # Availability is checked by reference(): normal review preserves
+                # an honest historical claim as degraded; strict review rejects it.
+                recorded = any(ev.get("kind") == "offline-test" and ev.get("provenance") == "offline"
+                               and isinstance(ev.get("observation_mode"), str) and ev["observation_mode"] in OBSERVATION_MODES
+                               and ct is not None and ev["date"] == ct
+                               and ev["access"]["local"] and ev["digest_valid"] for ev in sources)
+                if not attributed and not recorded:
+                    code = "offline-observation-required" if any(ev.get("kind") == "offline-test" for ev in sources) else "source-evidence-required"
+                    self.issue(code, path, "Source-claimed needs an attributed source/historical/user record, or an offline-test observation with explicit host/fixture/mock mode, matching test date and portable local SHA-256 proof", field)
             if cc == "verified-on-device":
                 if ct is None or not _concrete(cv) or not target or any(p in {"any", "unspecified"} for p in target):
                     self.issue("verified-scope-required", path, "Device verification requires a test date, concrete versions and bounded target platforms", field)
@@ -379,8 +401,12 @@ class Checker:
             if ref not in registry:
                 self.issue("unknown-related-id", path, f"No metadata article with stable id {ref}", "related_ids")
         try:
+            # A visible citation to an already checked evidence reference retains
+            # that reference's strict/degraded policy rather than becoming a new
+            # hard body-route error during historical review.
+            evidence_refs = {ev.get("ref") for ev in evidence.values() if isinstance(ev.get("ref"), str)}
             for number, ref in body_links(self.text(path)):
-                if not urlsplit(ref).scheme and not urlsplit(ref).netloc:
+                if ref not in evidence_refs and not urlsplit(ref).scheme and not urlsplit(ref).netloc:
                     self.reference(ref, path, f"body:{number}")
         except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
             self.issue("document-body", path, str(exc))

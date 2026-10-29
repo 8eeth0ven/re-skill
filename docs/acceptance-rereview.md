@@ -22,15 +22,15 @@ The defects below are static control-flow conclusions; proposed reproductions aw
 
 | Run under re-runs/results/ | Assets | ToolRuns | Artifacts | Evidence | Findings | Status |
 |---|---:|---:|---:|---:|---:|---|
-| 20261019T125138Z-4eaa1d38edf4 | 22 | 44 | 190 | 55 | 14 | succeeded |
-| 20261019T124756Z-2f9ed1996ce0 | 5 | 10 | 35 | 10 | 0 | succeeded |
-| 20261019T124759Z-b8edfb788c26 | 1 | 2 | 10 | 2 | 0 | succeeded |
-| 20261019T125220Z-b61faa6e3b1b | 1 | 2 | 6 | 2 | 1 | succeeded |
-| 20261019T125221Z-c221c0de6e7d | 1 | 2 | 6 | 1 | 0 | succeeded |
-| 20261019T125222Z-c2411613cae5 | 1 | 2 | 6 | 1 | 0 | succeeded |
-| 20261019T125223Z-b6899c3ffa92 | 1 | 2 | 5 | 1 | 0 | succeeded |
-| 20261019T125224Z-8c9e80c5d945 | 1 | 2 | 5 | 1 | 0 | succeeded |
-| 20261019T125225Z-b6b37d14a796 | 1 | 2 | 7 | 2 | 0 | succeeded |
+| historical-run-07 | 22 | 44 | 190 | 55 | 14 | succeeded |
+| historical-run-05 | 5 | 10 | 35 | 10 | 0 | succeeded |
+| historical-run-06 | 1 | 2 | 10 | 2 | 0 | succeeded |
+| historical-run-08 | 1 | 2 | 6 | 2 | 1 | succeeded |
+| historical-run-09 | 1 | 2 | 6 | 1 | 0 | succeeded |
+| historical-run-10 | 1 | 2 | 6 | 1 | 0 | succeeded |
+| historical-run-11 | 1 | 2 | 5 | 1 | 0 | succeeded |
+| historical-run-12 | 1 | 2 | 5 | 1 | 0 | succeeded |
+| historical-run-13 | 1 | 2 | 7 | 2 | 0 | succeeded |
 
 All runs had **0 verified**, consistent with candidate/assertion separation, not itself a failure.
 Fixtures had 11 local categories; the twelfth, Web, used a separate service run. New adapters

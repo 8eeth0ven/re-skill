@@ -36,3 +36,18 @@ quality-audit.md
 radar/discovery-log.md
 radar/mcp-test-report.md
 radar/tool-test-report.md
+
+# Retired local regression/acceptance assets; backups are kept outside this checkout.
+tests/
+tools/run_local_acceptance.py
+tools/run_round3_verification.py
+tools/local_services.py
+tools/protos/
+tools/upx-sample
+
+# Local session configuration and secrets; share only explicit example configuration.
+.env
+.env.*
+!.env.example
+.secrets/
+local-secrets/

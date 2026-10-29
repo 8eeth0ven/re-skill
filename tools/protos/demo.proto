@@ -1,8 +1,0 @@
-syntax = "proto3";
-package demo;
-// Local experiment service used only by tools/local_services.py acceptance runs.
-service Echo {
-  rpc Ping (PingRequest) returns (PingReply) {}
-}
-message PingRequest { string message = 1; }
-message PingReply { string message = 1; }

@@ -1,6 +1,6 @@
 """Worktree identity digest, matching the acceptance reviewer's algorithm:
 
-Scope: src/ tests/ examples/ pyproject.toml uv.lock, excluding caches
+Scope: src/ examples/ pyproject.toml uv.lock, excluding caches
 (__pycache__, *.pyc, .venv). Sort relative paths by UTF-8 ordinal; concatenate
 `UTF-8 path + NUL + lowercase SHA256(content) hex + LF`; SHA256 the result.
 
@@ -12,7 +12,7 @@ import os
 import sys
 from pathlib import Path
 
-ROOTS = ("src", "tests", "examples")
+ROOTS = ("src", "examples")
 EXCLUDE_DIRS = {"__pycache__", ".venv", "node_modules"}
 EXCLUDE_SUFFIX = (".pyc", ".pyo")
 

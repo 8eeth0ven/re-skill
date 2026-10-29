@@ -152,4 +152,4 @@
 
 - New content goes into the matching category md (or subdirectory), then a row is added back to this index; this index stores no body content
 - Body text **carries no external links/source attributions/names/verification dates** — only ideas and code; when a source is needed, go through the `../data/` corpus index
-- When in conflict with `~/.zcode/rules`, rules take precedence
+- When in conflict with `<local-rules-root>`, rules take precedence

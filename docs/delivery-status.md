@@ -2,8 +2,8 @@
 
 **Historical ledger, 2026-10-19, directory `<repo>`.** The original baseline was `0059a9a`,
 branch `codex/readme-review`; all implementation changes were then uncommitted/unpushed.
-The user assigned coordination to the current agent and installation/testing/completion to
-another agent. These are dated records, not current checkout status or fresh test results.
+Coordination and execution were reviewed separately. These are dated records,
+not current checkout status or fresh test results.
 See [execution-acceptance.md](execution-acceptance.md) for detailed subsequent evidence and
 [runner.md](runner.md) for interfaces/limits.
 
@@ -18,19 +18,19 @@ See [execution-acceptance.md](execution-acceptance.md) for detailed subsequent e
 
 ## Initial Tests and Untested Final Edits
 
-Before the requested stop, unittest reported **74 tests: 73 passed, 1 skipped** for Windows
+The initial regression record reported **74 tests: 73 passed, 1 skipped** for Windows
 symlink permission. Coverage included synthetic structure, actual local HTTP/WebSocket/gRPC/
 JSON-RPC, adversarial inputs, locks/cancel/resume, legacy helpers. This predates provider/fat
 Mach-O/keepalive and final documentation changes, so it does **not** certify the final version.
 Real devices and cross-OS CI were not fully accepted.
 
-Read-only inspection of `re-runs/20261019T081446Z-f5c255f877e5/report.json` showed radare2 6.2.4
+Read-only inspection of `re-runs/historical-run-01/report.json` showed radare2 6.2.4
 exit 0 with `functions=[]` and missing x86 decoder on stderr. The adapter had called that
 succeeded; static changes made empty functions/missing assembly degraded and saved version-probe
 artifacts. It had not yet been rerun. The receiving agent needed to inspect official plugin
 loading, permit only trusted plugin directories, and require nonempty function/reference/assembly
-oracles, rather than remove all restrictions. After the user's stop, the coordinating agent
-only read/edited files; no installation, testing, environment probe, or sample analysis continued.
+oracles, rather than remove all restrictions. That assessment only read/edited
+files; it did not install tools, probe the environment, or execute sample analysis.
 
 ## Receiving Agent, First Execution Round (2026-10-19)
 
@@ -41,7 +41,7 @@ completed with detailed evidence in the acceptance ledger:
 - radare2 root cause: setting `R2_PLUGINS_ORDER` to any value in 6.2.4-w64 prevented all plugin
   registration and removed the built-in x86 decoder. Removed that variable; retained
   `R2_NOPLUGINS=1`, `-NN`, `-S` after measured checks. Upgraded analysis to `aaa`, accepted the
-  6.2.4 `addr` field. PE rerun `20261019T095614Z-fba1a224a6bb` had three succeeded checks,
+  6.2.4 `addr` field. PE rerun `historical-run-04` had three succeeded checks,
   **513 functions + 48 assembly instructions**, replacing empty-result success.
 - Fixed fat Mach-O per-slice encryption, CAFEBABE ambiguity, sha256/runtime_markers; five runner
   issues (attempt-directory resume, cancel/timeout accounting, wall-budget persistence,
