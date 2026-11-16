@@ -44,6 +44,7 @@ _DOMAIN_EXTRAS = frozenset(".-")  # old domain run class was [\w.-]
 _ASCII_LETTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
 _WORD_CHAR = re.compile(r"\w")  # exact per-char fallback for non-ASCII \w
 _CONTROL_STRIP: dict[int, None] | None = None
+_SURROGATE = re.compile(r"[\ud800-\udfff]")
 
 
 def _strip_control_chars(text: str) -> str:
@@ -340,7 +341,13 @@ def parse_json(data: bytes | str) -> Any:
             raise BudgetExceeded("JSON object/depth budget exceeded")
         if isinstance(value, float) and not math.isfinite(value):
             raise InvalidInput("Non-finite JSON number")
+        # JSON escape syntax can decode lone UTF-16 surrogates. Reject them here,
+        # before redaction or ensure_ascii=False UTF-8 report writes can crash.
+        if isinstance(value, str) and _SURROGATE.search(value):
+            raise InvalidInput("Unpaired Unicode surrogate in JSON string")
         if isinstance(value, dict):
+            if any(_SURROGATE.search(key) for key in value):
+                raise InvalidInput("Unpaired Unicode surrogate in JSON key")
             stack.extend((v, depth + 1) for v in value.values())
         elif isinstance(value, list):
             stack.extend((v, depth + 1) for v in value)
